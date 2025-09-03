@@ -1,0 +1,84 @@
+name: Build and Release APK
+
+on:
+  push:
+    branches:
+      - main  
+  workflow_dispatch: 
+
+env:
+  APK_NAME: "Wallify"
+  APP_VERSION: "1.0.1"
+  CHANGES: |
+    - Basic working
+
+jobs:
+  build:
+    name: Build APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Java
+        uses: actions/setup-java@v3
+        with:
+          java-version: '17' 
+          distribution: temurin
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Decode Keystore
+        run: |
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > android/app/my-release-key.jks
+
+      - name: Create key.properties
+        run: |
+          echo "storePassword=${{ secrets.KEYSTORE_PASSWORD }}" >> android/app/key.properties
+          echo "keyPassword=${{ secrets.KEY_PASSWORD }}" >> android/key.properties
+          echo "keyAlias=${{ secrets.KEY_ALIAS }}" >> android/key.properties
+          echo "storeFile=my-release-key.jks" >> android/key.properties
+        
+      - name: Build Release APK
+        run: flutter build apk --release
+      
+      - name: Rename APK with Custom Name
+        run: mv build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/${{ env.APK_NAME }}.apk
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-apk
+          path: build/app/outputs/flutter-apk/${{ env.APK_NAME }}.apk
+          retention-days: 1
+  
+  release:
+    name: Release APK
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download APK artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: release-apk
+
+      - name: Create GitHub Release (APK)
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: "${{ env.APK_NAME }}.apk"
+          token: ${{ secrets.GH_TOKEN }}
+          tag: ${{ env.APP_VERSION }}
+          name: ${{ env.APP_VERSION }}
+          body: ${{ env.CHANGES }}
+          draft: false
+          prerelease: false
+          skipIfReleaseExists: true
+    

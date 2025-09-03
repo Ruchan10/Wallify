@@ -1,0 +1,4 @@
+- last wallpaper change 
+- time interval between changing wallpapers
+- checkboxes for device ideal, charging, network connected
+- cache for future wallpaper so no need to fetch 
