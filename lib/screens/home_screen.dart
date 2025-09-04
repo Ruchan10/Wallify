@@ -9,6 +9,7 @@ import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:wallify/core/user_shared_prefs.dart';
+import 'package:wallify/core/wallpaper_manager.dart';
 import 'package:wallpaper_manager_flutter/wallpaper_manager_flutter.dart';
 
 class WallpaperScreen extends StatefulWidget {
@@ -31,8 +32,8 @@ class _WallpaperScreenState extends State<WallpaperScreen>
   int deviceWidth = 0;
   int deviceHeight = 0;
   final usp = UserSharedPrefs();
-  final Set<String> selectedSources = {"wallhaven", "unsplash", "pixabay"};
-  String tag = 'nature';
+  Set<String> selectedSources = {"wallhaven", "unsplash", "pixabay"};
+  String? tag;
   StreamSubscription<BatteryState>? _batterySubscription;
 
   @override
@@ -42,29 +43,31 @@ class _WallpaperScreenState extends State<WallpaperScreen>
     _checkCharging();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final size = MediaQuery.of(context).size;
-      deviceWidth = size.width.toInt();
-      deviceHeight = size.height.toInt();
+      UserSharedPrefs.saveDeviceWidth(size.width.toInt());
+      UserSharedPrefs.saveDeviceHeight(size.height.toInt());
 
       final pendingTag = await UserSharedPrefs.getPendingAction();
 
-      if (pendingTag != null) {
-        _addStatus("Resuming pending lock wallpaper...");
-        await _setWallpaperForLocation(
-          pendingTag,
-          WallpaperManagerFlutter.lockScreen,
-        );
-        await UserSharedPrefs.clearPendingAction();
+      if (pendingTag) {
+        _addStatus("Changing lock screen wallpaper...");
+        await UserSharedPrefs.savePendingAction(false);
+    
+        final res = await WallpaperManager.fetchAndSetWallpaper(
+            wallpaperLocation: WallpaperManagerFlutter.lockScreen);
+        _addStatus(res);
       }
     });
     WidgetsBinding.instance.addObserver(this);
   }
 
   void _initialize() async {
+    final selectedSource = await UserSharedPrefs.getSelectedSources();
+    selectedSources = selectedSource.toSet();
     savedTags = await UserSharedPrefs.getTags();
-    wallpaperLocation =
-        await UserSharedPrefs.getWallpaperLocation() ??
-        WallpaperManagerFlutter.bothScreens;
+    wallpaperLocation = await UserSharedPrefs.getWallpaperLocation();
     statusHistory = await UserSharedPrefs.getStatusHistory();
+    deviceWidth = (await UserSharedPrefs.getDeviceWidth()) ?? 0;
+    deviceHeight = (await UserSharedPrefs.getDeviceHeight()) ?? 0;
     setState(() {});
   }
 
@@ -80,14 +83,22 @@ class _WallpaperScreenState extends State<WallpaperScreen>
         savedTags.add(tag);
       });
     }
+    UserSharedPrefs.saveTags(savedTags);
+
     _tagController.clear();
   }
 
   BatteryState? _lastBatteryState;
 
   Future<void> _checkCharging() async {
+// final lastChange = await UserSharedPrefs.getLastWallpaperChange();
+// if(lastChange != null){
+//   final diff = DateTime.now().difference(lastChange);
+//   if(diff.inHours < 1){
+//     return;
+//   }
+// }
     _lastBatteryState = await _battery.batteryState;
-
     // if (_lastBatteryState == BatteryState.charging) {
     //   _addStatus('Device is charging');
     //   fetchAndSetWallpaper();
@@ -96,160 +107,60 @@ class _WallpaperScreenState extends State<WallpaperScreen>
     _batterySubscription = _battery.onBatteryStateChanged.listen((state) {
       if (_lastBatteryState != BatteryState.charging &&
           state == BatteryState.charging) {
-        _addStatus('Device is charging');
-        debugPrint("Device plugged in - changing wallpaper once");
-        fetchAndSetWallpaper();
+        debugPrint("Device plugged in - changing wallpaper");
+        _addStatus("Device plugged in - changing wallpaper");
+        changeWallpaper();
       }
 
       _lastBatteryState = state;
     });
   }
 
-  Future<void> setWallFromBackground() async {
-    savedTags = await UserSharedPrefs.getTags();
-    wallpaperLocation =
-        await UserSharedPrefs.getWallpaperLocation() ??
-        WallpaperManagerFlutter.bothScreens;
-    await fetchAndSetWallpaper();
-  }
 
-  Future<void> fetchAndSetWallpaper() async {
-    _addStatus("Getting and setting wallpaper");
-
-    final random = Random();
-    tag = savedTags.isNotEmpty
-        ? savedTags[random.nextInt(savedTags.length)]
-        : "nature";
+  Future<void> changeWallpaper() async {
+    debugPrint("Started wallpaper change ==============================================");
+    _addStatus("Started wallpaper change");
+    UserSharedPrefs.saveLastWallpaperChange(DateTime.now());
 
     try {
       if (wallpaperLocation == WallpaperManagerFlutter.bothScreens) {
-        // _saveToUsp();
-        _addStatus(
-          "Home wallpaper setting. Lock wallpaper will be applied after restart (if needed).",
-        );
-        await _setWallpaperForLocation(tag, WallpaperManagerFlutter.homeScreen);
+      
+    UserSharedPrefs.savePendingAction(true);
+
+        final res = await WallpaperManager.fetchAndSetWallpaper(
+            wallpaperLocation: WallpaperManagerFlutter.homeScreen);
+        _addStatus(res);
       } else {
-        await _setWallpaperForLocation(tag, wallpaperLocation);
+        final res = await WallpaperManager.fetchAndSetWallpaper(
+            wallpaperLocation: wallpaperLocation);
+        _addStatus(res);
       }
     } catch (e) {
       _addStatus("Error: $e");
+
     }
   }
 
-  Future<void> _setWallpaperForLocation(String tag, int location) async {
-    final random = Random();
-    final selectedSource = sources[random.nextInt(sources.length)];
-
-    String? imageUrl;
-
-    if (selectedSource == "wallhaven") {
-      final res = await http.get(
-        Uri.parse(
-          "https://wallhaven.cc/api/v1/search?q=$tag"
-          "&categories=100&purity=100"
-          "&ratios=portrait"
-          "&atleast=${deviceWidth}x$deviceHeight"
-          "&sorting=random",
-        ),
-      );
-      final data = jsonDecode(res.body);
-      if (data["data"].isNotEmpty) {
-        imageUrl = data["data"][0]["path"];
-      }
-    } else if (selectedSource == "unsplash") {
-      final res = await http.get(
-        Uri.parse(
-          "https://api.unsplash.com/photos/random"
-          "?query=$tag"
-          "&orientation=portrait"
-          "&content_filter=high",
-        ),
-        headers: {
-          "Authorization":
-              "Client-ID yTBcYNAtnRHbrYMn2p4DrBiqzOAfdH9nyexQQtJWO-E",
-        },
-      );
-      final data = jsonDecode(res.body);
-      imageUrl = data["urls"]["regular"];
-    } else if (selectedSource == "pixabay") {
-      final res = await http.get(
-        Uri.parse(
-          "https://pixabay.com/api/"
-          "?key=52028006-a7e910370a5d0158c371bb06a"
-          "&q=$tag"
-          "&image_type=photo"
-          "&orientation=vertical"
-          "&min_width=$deviceWidth&min_height=$deviceHeight"
-          "&per_page=50&safesearch=true",
-        ),
-      );
-      final data = jsonDecode(res.body);
-      final filtered = data["hits"] as List;
-      if (filtered.isNotEmpty) {
-        final idx = random.nextInt(filtered.length);
-        imageUrl = filtered.elementAt(idx)["largeImageURL"];
-      }
-    }
-
-    if (imageUrl == null) {
-      _addStatus(
-        "No wallpaper found for $tag in $selectedSource. Trying again",
-      );
-      fetchAndSetWallpaper();
-      return;
-    }
-
-    final response = await http.get(Uri.parse(imageUrl));
-    final bytes = response.bodyBytes;
-
-    final dir = await getTemporaryDirectory();
-    final filePath =
-        "${dir.path}/wallpaper_${DateTime.now().millisecondsSinceEpoch}_$location.jpg";
-    final file = await File(filePath).writeAsBytes(bytes);
-
-    await WallpaperManagerFlutter().setWallpaper(file, location);
-
-    _addStatus(
-      "Wallpaper set for ${location == WallpaperManagerFlutter.homeScreen ? "Home" : "Lock"} from $selectedSource ($tag)",
-    );
-  }
 
   void _addStatus(String message) {
     final entry = {"title": message, "date": DateTime.now().toString()};
     setState(() {
       statusHistory.insert(0, entry);
     });
-    // UserSharedPrefs.saveStatusHistory(statusHistory);
-  }
-
-  void _saveToUsp() {
-    // Save all current state to SharedPreferences
-    debugPrint('SAVING...=============================================');
-
-    UserSharedPrefs.saveTags(savedTags);
-    UserSharedPrefs.saveWallpaperLocation(wallpaperLocation);
     UserSharedPrefs.saveStatusHistory(statusHistory);
-    UserSharedPrefs.savePendingAction(tag);
   }
+
+
 
   @override
   void dispose() {
     _batterySubscription?.cancel();
+    debugPrint("Disposing==================================================");
     WidgetsBinding.instance.removeObserver(this);
-    _saveToUsp();
     super.dispose();
   }
 
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    switch (state) {
-      case AppLifecycleState.inactive:
-        _saveToUsp();
-        break;
-      default:
-        break;
-    }
-  }
+
 
   @override
   Widget build(BuildContext context) {
@@ -284,6 +195,7 @@ class _WallpaperScreenState extends State<WallpaperScreen>
                         selectedSources.remove(src);
                       }
                     });
+                    UserSharedPrefs.saveSelectedSources(selectedSources.toList());
                   },
                   selectedColor: scheme.primaryContainer,
                   checkmarkColor: scheme.onPrimaryContainer,
@@ -307,7 +219,7 @@ class _WallpaperScreenState extends State<WallpaperScreen>
                       () => wallpaperLocation =
                           WallpaperManagerFlutter.homeScreen,
                     );
-                    // UserSharedPrefs.saveWallpaperLocation(wallpaperLocation);
+                    UserSharedPrefs.saveWallpaperLocation(wallpaperLocation);
                   },
                 ),
                 ChoiceChip(
@@ -319,7 +231,7 @@ class _WallpaperScreenState extends State<WallpaperScreen>
                       () => wallpaperLocation =
                           WallpaperManagerFlutter.lockScreen,
                     );
-                    // UserSharedPrefs.saveWallpaperLocation(wallpaperLocation);
+                    UserSharedPrefs.saveWallpaperLocation(wallpaperLocation);
                   },
                 ),
                 ChoiceChip(
@@ -331,7 +243,7 @@ class _WallpaperScreenState extends State<WallpaperScreen>
                       () => wallpaperLocation =
                           WallpaperManagerFlutter.bothScreens,
                     );
-                    // UserSharedPrefs.saveWallpaperLocation(wallpaperLocation);
+                    UserSharedPrefs.saveWallpaperLocation(wallpaperLocation);
                   },
                 ),
               ],
@@ -342,24 +254,43 @@ class _WallpaperScreenState extends State<WallpaperScreen>
             Row(
               children: [
                 Expanded(
-                  child: TextField(
-                    controller: _tagController,
-                    decoration: InputDecoration(
-                      filled: true,
-                      fillColor: scheme.surfaceContainerHigh,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                    height: 50,
+                   
+                    child: TextField(
+                      controller: _tagController,
+                      decoration: InputDecoration(
+                        filled: true,
+                        fillColor: scheme.surfaceContainerHigh,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        labelText: "Enter a tag",
                       ),
-                      labelText: "Enter a tag",
+                      onSubmitted: (value) {
+                        _addTag(_tagController.text);
+                        UserSharedPrefs.saveTags(savedTags);
+                      },
                     ),
-                    onSubmitted: (value) => _addTag(_tagController.text),
                   ),
                 ),
                 const SizedBox(width: 8),
-                FilledButton.icon(
-                  onPressed: () => _addTag(_tagController.text),
-                  icon: const Icon(Icons.add),
-                  label: const Text("Add"),
+                Container(
+                  height: 50,
+                
+                  child: FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                    onPressed: () {
+                      _addTag(_tagController.text);
+                      UserSharedPrefs.saveTags(savedTags);
+                    },
+                    icon: const Icon(Icons.add),
+                    label: const Text("Add"),
+                  ),
                 ),
               ],
             ),
@@ -374,7 +305,7 @@ class _WallpaperScreenState extends State<WallpaperScreen>
                     deleteIcon: const Icon(Icons.close),
                     onDeleted: () {
                       setState(() => savedTags.remove(tag));
-                      // UserSharedPrefs.saveTags(savedTags);
+                      UserSharedPrefs.saveTags(savedTags);
                     },
                   );
                 }).toList(),
@@ -383,20 +314,61 @@ class _WallpaperScreenState extends State<WallpaperScreen>
             const SizedBox(height: 24),
 
             // --- Info card ---
-            Card(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
-              color: scheme.secondaryContainer,
-              child: ListTile(
-                leading: Icon(Icons.bolt, color: scheme.onSecondaryContainer),
-                title: Text(
-                  "Next wallpaper change: when device is charging ⚡",
-                  style: TextStyle(color: scheme.onSecondaryContainer),
+// --- Last & Next wallpaper info ---
+FutureBuilder<DateTime?>(
+  future: UserSharedPrefs.getLastWallpaperChange(),
+  builder: (context, snapshot) {
+    final lastChange = snapshot.data;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (lastChange != null)
+          Row(
+            children: [
+              Icon(Icons.history, size: 18, color: scheme.onSurfaceVariant),
+              const SizedBox(width: 6),
+              Text(
+                "Last changed: ${DateFormat("MMM d, h:mm a").format(lastChange)}",
+                style: TextStyle(
+                  fontSize: 13,
+                  color: scheme.onSurfaceVariant,
                 ),
               ),
-            ),
-            const SizedBox(height: 24),
+            ],
+          ),
+        const SizedBox(height: 8),
+        Container(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+            color: scheme.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.bolt, size: 18, color: scheme.onSurfaceVariant),
+              const SizedBox(width: 6),
+              Expanded(
+  child: Text(
+    lastChange != null
+        ? "Next change after ${DateFormat("MMM d, h:mm a").format(lastChange.add(const Duration(hours: 1)))} when charging ⚡"
+        : "Next change when device is charging ⚡",
+    style: TextStyle(
+      fontSize: 13,
+      color: scheme.onSurfaceVariant,
+    ),
+  ),
+),
+
+            ],
+          ),
+        ),
+        const SizedBox(height: 24),
+      ],
+    );
+  },
+),
+
+
 
             // --- Status history ---
             Text("History", style: Theme.of(context).textTheme.titleMedium),
@@ -423,7 +395,7 @@ class _WallpaperScreenState extends State<WallpaperScreen>
         ),
       ),
       floatingActionButton: FilledButton.icon(
-        onPressed: fetchAndSetWallpaper,
+        onPressed: changeWallpaper,
         icon: const Icon(Icons.refresh),
         label: const Text("Change Now"),
       ),

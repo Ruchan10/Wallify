@@ -1,6 +1,5 @@
 import 'dart:convert';
 
-import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class UserSharedPrefs {
@@ -8,6 +7,11 @@ class UserSharedPrefs {
   static const _wallpaperLocationKey = "wallpaperLocation";
   static const _statusHistoryKey = "statusHistory";
   static const _pendingActionKey = "pendingAction";
+  static const _deviceHeightKey = "deviceHeight";
+  static const _deviceWidthKey = "deviceWidth";
+  static const _selectedSourcesKey = "selectedSources";
+  static const _wallpaperHistoryKey = "wallpaperHistory";
+  static const _lastWallpaperChangeKey = "lastWallpaperChange";
 
   /// ---- TAGS ----
   static Future<List<String>> getTags() async {
@@ -16,15 +20,14 @@ class UserSharedPrefs {
   }
 
   static Future<void> saveTags(List<String> tags) async {
-    debugPrint("Saving tags: $tags ===================================");
     final prefs = await SharedPreferences.getInstance();
     await prefs.setStringList(_tagsKey, tags);
   }
 
   /// ---- WALLPAPER LOCATION ----
-  static Future<int?> getWallpaperLocation() async {
+  static Future<int> getWallpaperLocation() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getInt(_wallpaperLocationKey);
+    return prefs.getInt(_wallpaperLocationKey) ?? 3;
   }
 
   static Future<void> saveWallpaperLocation(int location) async {
@@ -44,30 +47,76 @@ class UserSharedPrefs {
   static Future<void> saveStatusHistory(
     List<Map<String, String>> history,
   ) async {
-    debugPrint(
-      "Saving status history: $history ===================================",
-    );
     final prefs = await SharedPreferences.getInstance();
     final encoded = jsonEncode(history);
     await prefs.setString(_statusHistoryKey, encoded);
   }
 
   /// ---- PENDING ACTION ----
-  static Future<String?> getPendingAction() async {
+  static Future<bool> getPendingAction() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_pendingActionKey);
+    return prefs.getBool(_pendingActionKey) ?? false;
   }
 
-  static Future<void> savePendingAction(String tag) async {
-    debugPrint(
-      "Saving pending action: $tag ===================================",
-    );
+  static Future<void> savePendingAction(bool pending) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_pendingActionKey, tag);
+    await prefs.setBool(_pendingActionKey, pending);
   }
 
-  static Future<void> clearPendingAction() async {
+
+    static Future<void> saveDeviceHeight(int height) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_pendingActionKey);
+    await prefs.setInt(_deviceHeightKey, height);
   }
+
+  static Future<int?> getDeviceHeight() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt(_deviceHeightKey);
+  }
+
+  static Future<void> saveDeviceWidth(int width) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_deviceWidthKey, width);
+  }
+
+  static Future<int?> getDeviceWidth() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt(_deviceWidthKey);
+  }
+
+    static Future<void> saveSelectedSources(List<String> sources) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(_selectedSourcesKey, sources);
+  }
+
+  static Future<List<String>> getSelectedSources() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getStringList(_selectedSourcesKey) ?? ["wallhaven", "unsplash", "pixabay"];
+
+  }
+
+      static Future<void> saveWallpaperHistory(String imgUrl) async {
+    final prefs = await SharedPreferences.getInstance();
+    final history = prefs.getStringList(_wallpaperHistoryKey) ?? [];
+    history.add(imgUrl);
+    await prefs.setStringList(_wallpaperHistoryKey, history);
+  }
+
+  static Future<List<String>> getWallpaperHistory() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getStringList(_wallpaperHistoryKey) ?? [];
+  }
+
+      static Future<void> saveLastWallpaperChange(DateTime date) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_lastWallpaperChangeKey, date.toString());
+  }
+
+  static Future<DateTime?> getLastWallpaperChange() async {
+    final prefs = await SharedPreferences.getInstance();
+    final dateStr = prefs.getString(_lastWallpaperChangeKey);
+    if (dateStr == null) return null;
+    return DateTime.parse(dateStr);
+  }
+
 }

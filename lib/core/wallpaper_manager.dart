@@ -9,18 +9,22 @@ import 'package:wallify/core/user_shared_prefs.dart';
 import 'package:wallpaper_manager_flutter/wallpaper_manager_flutter.dart';
 
 class WallpaperManager {
-  static final List<String> sources = ["wallhaven", "unsplash", "pixabay"];
+  static List<String> sources = ["wallhaven", "unsplash", "pixabay"];
 
   static final usp = UserSharedPrefs();
 
   // Move your fetch and set wallpaper logic here
-  static Future<void> fetchAndSetWallpaper({
+  static Future<String> fetchAndSetWallpaper({
     List<String>? savedTags,
     int wallpaperLocation = WallpaperManagerFlutter.bothScreens,
-    int deviceWidth = 1080,
-    int deviceHeight = 1920,
+    int deviceWidth = 0,
+    int deviceHeight = 0,
   }) async {
     savedTags ??= await UserSharedPrefs.getTags();
+    sources = await UserSharedPrefs.getSelectedSources();
+    if (sources.isEmpty) {
+      sources = ["wallhaven", "unsplash", "pixabay"];
+    }
 
     final random = Random();
     final tag = savedTags.isNotEmpty
@@ -81,7 +85,10 @@ class WallpaperManager {
         }
       }
 
-      if (imageUrl == null) return;
+      if (imageUrl == null) {
+        fetchAndSetWallpaper();
+        return "No wallpaper found for $tag in $selectedSource. Trying again";
+      }
 
       final response = await http.get(Uri.parse(imageUrl));
       final bytes = response.bodyBytes;
@@ -91,9 +98,12 @@ class WallpaperManager {
           "${dir.path}/wallpaper_${DateTime.now().millisecondsSinceEpoch}_$wallpaperLocation.jpg";
       final file = await File(filePath).writeAsBytes(bytes);
 
-      await WallpaperManagerFlutter().setWallpaper(file, wallpaperLocation);
+       await WallpaperManagerFlutter().setWallpaper(file, wallpaperLocation);
+
+    return "Wallpaper set for ${wallpaperLocation == WallpaperManagerFlutter.homeScreen ? "Home" : "Lock"} from $selectedSource ($tag)";
     } catch (e) {
       debugPrint("Error setting wallpaper: $e");
+      return "Error setting wallpaper: $e";
     }
   }
 }
