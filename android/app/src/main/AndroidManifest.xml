@@ -6,6 +6,7 @@
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
 
     <application
         android:label="Wallify"
@@ -39,11 +40,15 @@
             android:name="flutterEmbedding"
             android:value="2" />
 
-        <receiver android:name=".PowerReceiver" android:enabled="true" android:exported="true">
+        <receiver android:name=".PowerReceiver"
+            android:enabled="true"
+            android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.ACTION_POWER_CONNECTED"/>
+                <action android:name="android.intent.action.ACTION_POWER_DISCONNECTED"/>
             </intent-filter>
         </receiver>
+
         <service
             android:name="id.flutter.flutter_background_service.BackgroundService"
             android:exported="false"

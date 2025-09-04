@@ -3,20 +3,29 @@ package com.rk.wallify
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.os.Build
 import android.util.Log
-import id.flutter.flutter_background_service.BackgroundService
+import io.flutter.plugin.common.MethodChannel
+import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.embedding.engine.FlutterEngineCache
 
 class PowerReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context?, intent: Intent?) {
-        if (intent?.action == Intent.ACTION_POWER_CONNECTED && context != null) {
-            Log.d("Wallify", "⚡ Power connected – starting Wallify background service")
+        Log.d("PowerReceiver", "INITIALIZE")
 
-            val serviceIntent = Intent(context, BackgroundService::class.java)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(serviceIntent)
+        if (intent?.action == Intent.ACTION_POWER_CONNECTED) {
+            Log.d("PowerReceiver", "Device plugged in — notifying service")
+
+            // Get the FlutterEngine running background service
+            val engine = FlutterEngineCache.getInstance().get("wallify_engine")
+
+            if (engine != null) {
+                val channel = MethodChannel(engine.dartExecutor, "id.flutter.background_service")
+                channel.invokeMethod("sendData", mapOf(
+                    "method" to "WALLIFY_CHARGING_EVENT",
+                    "args" to emptyMap<String, Any>()
+                ))
             } else {
-                context.startService(serviceIntent)
+                Log.e("PowerReceiver", "No FlutterEngine available!")
             }
         }
     }

@@ -1,13 +1,10 @@
 import 'dart:async';
-import 'dart:convert';
-import 'dart:io';
-import 'dart:math';
 
 import 'package:battery_plus/battery_plus.dart';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
-import 'package:path_provider/path_provider.dart';
+import 'package:wallify/core/config.dart';
+import 'package:wallify/core/update_manager.dart';
 import 'package:wallify/core/user_shared_prefs.dart';
 import 'package:wallify/core/wallpaper_manager.dart';
 import 'package:wallpaper_manager_flutter/wallpaper_manager_flutter.dart';
@@ -51,11 +48,18 @@ class _WallpaperScreenState extends State<WallpaperScreen>
       if (pendingTag) {
         _addStatus("Changing lock screen wallpaper...");
         await UserSharedPrefs.savePendingAction(false);
-    
+
         final res = await WallpaperManager.fetchAndSetWallpaper(
-            wallpaperLocation: WallpaperManagerFlutter.lockScreen);
+          wallpaperLocation: WallpaperManagerFlutter.lockScreen,
+        );
         _addStatus(res);
       }
+
+      Future.delayed(const Duration(seconds: 10), () {
+        if (Config.getUpdateAvailable()) {
+          UpdateManager.showUpdateDialog(context);
+        }
+      });
     });
     WidgetsBinding.instance.addObserver(this);
   }
@@ -69,6 +73,8 @@ class _WallpaperScreenState extends State<WallpaperScreen>
     deviceWidth = (await UserSharedPrefs.getDeviceWidth()) ?? 0;
     deviceHeight = (await UserSharedPrefs.getDeviceHeight()) ?? 0;
     setState(() {});
+
+    UpdateManager.checkForUpdates();
   }
 
   String _formatDate(String dateStr) {
@@ -91,13 +97,13 @@ class _WallpaperScreenState extends State<WallpaperScreen>
   BatteryState? _lastBatteryState;
 
   Future<void> _checkCharging() async {
-// final lastChange = await UserSharedPrefs.getLastWallpaperChange();
-// if(lastChange != null){
-//   final diff = DateTime.now().difference(lastChange);
-//   if(diff.inHours < 1){
-//     return;
-//   }
-// }
+    // final lastChange = await UserSharedPrefs.getLastWallpaperChange();
+    // if(lastChange != null){
+    //   final diff = DateTime.now().difference(lastChange);
+    //   if(diff.inHours < 1){
+    //     return;
+    //   }
+    // }
     _lastBatteryState = await _battery.batteryState;
     // if (_lastBatteryState == BatteryState.charging) {
     //   _addStatus('Device is charging');
@@ -116,31 +122,31 @@ class _WallpaperScreenState extends State<WallpaperScreen>
     });
   }
 
-
   Future<void> changeWallpaper() async {
-    debugPrint("Started wallpaper change ==============================================");
+    debugPrint(
+      "Started wallpaper change ==============================================",
+    );
     _addStatus("Started wallpaper change");
     UserSharedPrefs.saveLastWallpaperChange(DateTime.now());
 
     try {
       if (wallpaperLocation == WallpaperManagerFlutter.bothScreens) {
-      
-    UserSharedPrefs.savePendingAction(true);
+        UserSharedPrefs.savePendingAction(true);
 
         final res = await WallpaperManager.fetchAndSetWallpaper(
-            wallpaperLocation: WallpaperManagerFlutter.homeScreen);
+          wallpaperLocation: WallpaperManagerFlutter.homeScreen,
+        );
         _addStatus(res);
       } else {
         final res = await WallpaperManager.fetchAndSetWallpaper(
-            wallpaperLocation: wallpaperLocation);
+          wallpaperLocation: wallpaperLocation,
+        );
         _addStatus(res);
       }
     } catch (e) {
       _addStatus("Error: $e");
-
     }
   }
-
 
   void _addStatus(String message) {
     final entry = {"title": message, "date": DateTime.now().toString()};
@@ -150,8 +156,6 @@ class _WallpaperScreenState extends State<WallpaperScreen>
     UserSharedPrefs.saveStatusHistory(statusHistory);
   }
 
-
-
   @override
   void dispose() {
     _batterySubscription?.cancel();
@@ -159,8 +163,6 @@ class _WallpaperScreenState extends State<WallpaperScreen>
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
-
-
 
   @override
   Widget build(BuildContext context) {
@@ -195,7 +197,9 @@ class _WallpaperScreenState extends State<WallpaperScreen>
                         selectedSources.remove(src);
                       }
                     });
-                    UserSharedPrefs.saveSelectedSources(selectedSources.toList());
+                    UserSharedPrefs.saveSelectedSources(
+                      selectedSources.toList(),
+                    );
                   },
                   selectedColor: scheme.primaryContainer,
                   checkmarkColor: scheme.onPrimaryContainer,
@@ -254,9 +258,9 @@ class _WallpaperScreenState extends State<WallpaperScreen>
             Row(
               children: [
                 Expanded(
-                  child: Container(
+                  child: SizedBox(
                     height: 50,
-                   
+
                     child: TextField(
                       controller: _tagController,
                       decoration: InputDecoration(
@@ -275,9 +279,9 @@ class _WallpaperScreenState extends State<WallpaperScreen>
                   ),
                 ),
                 const SizedBox(width: 8),
-                Container(
+                SizedBox(
                   height: 50,
-                
+
                   child: FilledButton.icon(
                     style: FilledButton.styleFrom(
                       shape: RoundedRectangleBorder(
@@ -314,61 +318,66 @@ class _WallpaperScreenState extends State<WallpaperScreen>
             const SizedBox(height: 24),
 
             // --- Info card ---
-// --- Last & Next wallpaper info ---
-FutureBuilder<DateTime?>(
-  future: UserSharedPrefs.getLastWallpaperChange(),
-  builder: (context, snapshot) {
-    final lastChange = snapshot.data;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (lastChange != null)
-          Row(
-            children: [
-              Icon(Icons.history, size: 18, color: scheme.onSurfaceVariant),
-              const SizedBox(width: 6),
-              Text(
-                "Last changed: ${DateFormat("MMM d, h:mm a").format(lastChange)}",
-                style: TextStyle(
-                  fontSize: 13,
-                  color: scheme.onSurfaceVariant,
-                ),
-              ),
-            ],
-          ),
-        const SizedBox(height: 8),
-        Container(
-          padding: const EdgeInsets.symmetric(vertical: 10),
-          decoration: BoxDecoration(
-            color: scheme.surfaceContainerHighest,
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Row(
-            children: [
-              Icon(Icons.bolt, size: 18, color: scheme.onSurfaceVariant),
-              const SizedBox(width: 6),
-              Expanded(
-  child: Text(
-    lastChange != null
-        ? "Next change after ${DateFormat("MMM d, h:mm a").format(lastChange.add(const Duration(hours: 1)))} when charging ⚡"
-        : "Next change when device is charging ⚡",
-    style: TextStyle(
-      fontSize: 13,
-      color: scheme.onSurfaceVariant,
-    ),
-  ),
-),
-
-            ],
-          ),
-        ),
-        const SizedBox(height: 24),
-      ],
-    );
-  },
-),
-
-
+            // --- Last & Next wallpaper info ---
+            FutureBuilder<DateTime?>(
+              future: UserSharedPrefs.getLastWallpaperChange(),
+              builder: (context, snapshot) {
+                final lastChange = snapshot.data;
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (lastChange != null)
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.history,
+                            size: 18,
+                            color: scheme.onSurfaceVariant,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            "Last changed: ${DateFormat("MMM d, h:mm a").format(lastChange)}",
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: scheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
+                      ),
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      decoration: BoxDecoration(
+                        color: scheme.surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.bolt,
+                            size: 18,
+                            color: scheme.onSurfaceVariant,
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              lastChange != null
+                                  ? "Next change after ${DateFormat("MMM d, h:mm a").format(lastChange.add(const Duration(hours: 1)))} when charging ⚡"
+                                  : "Next change when device is charging ⚡",
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: scheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                  ],
+                );
+              },
+            ),
 
             // --- Status history ---
             Text("History", style: Theme.of(context).textTheme.titleMedium),

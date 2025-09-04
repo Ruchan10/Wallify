@@ -6,9 +6,9 @@ import 'package:wallify/core/wallpaper_manager.dart';
 import 'package:wallpaper_manager_flutter/wallpaper_manager_flutter.dart';
 
 void initializeService() async {
-ensureNotificationPermission();
+  ensureNotificationPermission();
 
-  FlutterBackgroundService().configure(
+  await FlutterBackgroundService().configure(
     androidConfiguration: AndroidConfiguration(
       onStart: onStart,
       autoStart: true,
@@ -18,11 +18,10 @@ ensureNotificationPermission();
       initialNotificationContent: 'Listening for charging events...',
       foregroundServiceTypes: [AndroidForegroundType.dataSync],
     ),
-    iosConfiguration: IosConfiguration(
-    ),
+    iosConfiguration: IosConfiguration(),
   );
 
-  FlutterBackgroundService().startService();
+  await FlutterBackgroundService().startService();
 }
 
 // // Service start function
@@ -41,7 +40,6 @@ ensureNotificationPermission();
 //         try {
 //       if (wallpaperLocation == WallpaperManagerFlutter.bothScreens)  {
 //     UserSharedPrefs.savePendingAction(true);
-      
 
 //         final res = await WallpaperManager.fetchAndSetWallpaper(
 //             wallpaperLocation: WallpaperManagerFlutter.homeScreen);
@@ -74,33 +72,46 @@ ensureNotificationPermission();
 //   //   }
 //   // });
 // }
+
 @pragma('vm:entry-point')
 Future<void> onStart(ServiceInstance service) async {
   final status = await UserSharedPrefs.getStatusHistory();
   status.add({"title": "Service started", "date": DateTime.now().toString()});
   await UserSharedPrefs.saveStatusHistory(status);
-    debugPrint("ON START ===============================");
+
+  debugPrint("ON START ===============================");
 
   service.on("WALLIFY_CHARGING_EVENT").listen((event) async {
-debugPrint("Wallify Service: WALLIFY_CHARGING_EVENT event received ===============================");
+    debugPrint(
+      "Wallify Service: WALLIFY_CHARGING_EVENT event received ===============================",
+    );
   });
 
+  FlutterBackgroundService().invoke("WALLIFY_CHARGING_EVENT");
 
   service.on("charging").listen((event) async {
-    debugPrint("Wallify Service: Charging event received ===============================");
+    debugPrint(
+      "Wallify Service: Charging event received $event===============================",
+    );
 
     final wallpaperLocation = await UserSharedPrefs.getWallpaperLocation();
 
     try {
       if (wallpaperLocation == WallpaperManagerFlutter.bothScreens) {
         final res1 = await WallpaperManager.fetchAndSetWallpaper(
-            wallpaperLocation: WallpaperManagerFlutter.homeScreen);
+          wallpaperLocation: WallpaperManagerFlutter.homeScreen,
+        );
         final res2 = await WallpaperManager.fetchAndSetWallpaper(
-            wallpaperLocation: WallpaperManagerFlutter.lockScreen);
-        status.add({"title": "$res1 & $res2", "date": DateTime.now().toString()});
-      } else if (wallpaperLocation != null) {
+          wallpaperLocation: WallpaperManagerFlutter.lockScreen,
+        );
+        status.add({
+          "title": "$res1 & $res2",
+          "date": DateTime.now().toString(),
+        });
+      } else {
         final res = await WallpaperManager.fetchAndSetWallpaper(
-            wallpaperLocation: wallpaperLocation);
+          wallpaperLocation: wallpaperLocation,
+        );
         status.add({"title": res, "date": DateTime.now().toString()});
       }
     } catch (e) {
@@ -110,8 +121,6 @@ debugPrint("Wallify Service: WALLIFY_CHARGING_EVENT event received =============
     await UserSharedPrefs.saveStatusHistory(status);
   });
 }
-
-
 
 Future<void> ensureNotificationPermission() async {
   if (await Permission.notification.isDenied) {

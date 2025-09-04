@@ -6,10 +6,12 @@ import io.flutter.embedding.engine.FlutterEngineCache
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.os.Build
+import android.util.Log
 
 class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        Log.e("MainActivity", "configureFlutterEngine")
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
@@ -23,5 +25,6 @@ class MainActivity : FlutterActivity() {
 
         // Cache engine for PowerReceiver
         FlutterEngineCache.getInstance().put("wallify_engine", flutterEngine)
+
     }
 }

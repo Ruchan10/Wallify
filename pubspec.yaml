@@ -38,12 +38,14 @@ dependencies:
   battery_plus: ^6.2.3
   http: ^1.5.0
   path_provider: ^2.1.5
-  wallpaper_manager_flutter: ^1.0.1
+  wallpaper_manager_flutter: ^1.0.2
   intl: ^0.20.2
   package_rename: ^1.10.0
   icons_launcher: ^3.0.2
   flutter_background_service: ^5.1.0
   permission_handler: ^12.0.1
+  dio: ^5.9.0
+  url_launcher: ^6.3.2
 
 dev_dependencies:
   flutter_test:
