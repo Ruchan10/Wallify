@@ -88,7 +88,7 @@ packages:
       sha256: "09bad715f418841f976c77db72d5398dc1253c21fb9c0c7f0b0b985860b2d58e"
       url: "https://pub.dev"
     source: hosted
-    version: "1.0.2"
+    version: "1.0.3"
   cupertino_icons:
     dependency: "direct main"
     description:
@@ -255,7 +255,7 @@ packages:
       sha256: "8dcda04c3fc16c14f48a7bb586d4be1f0d1572731b6d81d51772ef47c02081e0"
       url: "https://pub.dev"
     source: hosted
-    version: "11.0.2"
+    version: "11.0.1"
   leak_tracker_flutter_testing:
     dependency: transitive
     description:
@@ -684,7 +684,7 @@ packages:
       sha256: afe9b419a91270e0bed2a76b1380bd4fe800a568494431bbf1d3308c0cdf39eb
       url: "https://pub.dev"
     source: hosted
-    version: "1.0.2"
+    version: "1.0.1"
   web:
     dependency: transitive
     description:

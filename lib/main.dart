@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:wallify/core/background_service.dart';
 import 'package:wallify/core/wallpaper_manager.dart';
 import 'package:wallify/screens/home_screen.dart';
@@ -9,13 +8,29 @@ void main() {
   WidgetsFlutterBinding.ensureInitialized();
   initializeService();
 
-  const MethodChannel('wallify_channel').setMethodCallHandler((call) async {
-    if (call.method == 'changeWallpaper') {
-      await WallpaperManager.fetchAndSetWallpaper();
+  // const MethodChannel('wallify_channel').setMethodCallHandler((call) async {
+  //   if (call.method == 'changeWallpaper') {
+  //     await WallpaperManager.fetchAndSetWallpaper();
+  //   }
+  // });
+
+  const platform = MethodChannel("wallify/background");
+  platform.setMethodCallHandler((call) async {
+    if (call.method == "charging_event") {
+      final String event = call.arguments ?? "UNKNOWN";
+
+      if (event == "CHARGING") {
+        debugPrint(
+          "⚡ Device charging → changing wallpaper.. ==========================================.",
+        );
+        await WallpaperManager.fetchAndSetWallpaper();
+      } else if (event == "DISCONNECTED") {
+        debugPrint(
+          "🔋 Device unplugged → no wallpaper change ==========================================.",
+        );
+      }
     }
   });
-
-  
 
   runApp(const MyApp());
 }
