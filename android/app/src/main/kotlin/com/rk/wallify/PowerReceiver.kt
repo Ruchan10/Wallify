@@ -5,27 +5,22 @@ import android.content.Context
 import android.content.Intent
 import android.util.Log
 import io.flutter.plugin.common.MethodChannel
+import io.flutter.embedding.engine.FlutterEngineCache
 
 class PowerReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context?, intent: Intent?) {
-        val chargingStatus = when (intent?.action) {
+        val isCharging = when(intent?.action) {
             Intent.ACTION_POWER_CONNECTED -> true
-            Intent.ACTION_POWER_DISCONNECTED -> false
-            else -> null
+            else -> return
         }
 
-        chargingStatus?.let {
-            Log.e("PowerReceiver", "Charging status: $it")
+        Log.e("PowerReceiver", "Charging status: $isCharging")
 
-            // Send to Flutter background service
-            val engine = MainActivity.serviceEngine
-            engine?.dartExecutor?.let { executor ->
-                MethodChannel(executor, "wallify_channel").invokeMethod(
-                    "charging",
-                    it
-                )
-            }
+        // Send event to Flutter
+        val engine = FlutterEngineCache.getInstance().get("background_engine")
+        engine?.dartExecutor?.let { executor ->
+            MethodChannel(executor, "wallify_channel").invokeMethod("charging", isCharging)
         }
     }
 }

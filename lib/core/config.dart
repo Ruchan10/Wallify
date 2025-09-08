@@ -6,7 +6,7 @@ enum SpeedType { notice, table, team, gallery, news }
 class Config {
   static bool _updateAvaliable = false;
   static bool _isUpdateDialogOpen = false;
-  static String _appVersion = '1.0.3';
+  static String _appVersion = '1.0.4';
   static String _appName = 'SmartBadapatra';
   static UserSharedPrefs usp = UserSharedPrefs();
   static bool _hasInternet = false;

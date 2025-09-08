@@ -1,6 +1,5 @@
 import 'dart:ui';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -15,10 +14,7 @@ void initializeService() async {
     androidConfiguration: AndroidConfiguration(
       onStart: onStart,
       autoStart: true,
-      isForegroundMode: true,
-      notificationChannelId: 'wallify_channel',
-      initialNotificationTitle: 'Wallify Service',
-      initialNotificationContent: 'Listening for charging events...',
+      isForegroundMode: false,
       foregroundServiceTypes: [AndroidForegroundType.dataSync],
     ),
     iosConfiguration: IosConfiguration(),
@@ -26,15 +22,11 @@ void initializeService() async {
 
   await service.startService();
   const MethodChannel('wallify_channel').setMethodCallHandler((call) async {
-    debugPrint(
-      "Charging event received $call==============================",
-    );
     if (call.method == 'charging') {
       bool isCharging = call.arguments as bool;
       service.invoke("charging", {"charging": isCharging});
     }
   });
-
 }
 
 @pragma('vm:entry-point')
@@ -45,19 +37,7 @@ Future<void> onStart(ServiceInstance service) async {
   status.add({"title": "Service started", "date": DateTime.now().toString()});
   await UserSharedPrefs.saveStatusHistory(status);
 
-  debugPrint("ON START ===============================");
-
-  service.on("WALLIFY_CHARGING_EVENT").listen((event) async {
-    debugPrint(
-      "Wallify Service: WALLIFY_CHARGING_EVENT event received ===============================",
-    );
-  });
-
   service.on("charging").listen((event) async {
-    debugPrint(
-      "Wallify Service: Charging event received $event===============================",
-    );
-
     final wallpaperLocation = await UserSharedPrefs.getWallpaperLocation();
 
     try {

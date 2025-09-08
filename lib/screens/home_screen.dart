@@ -97,13 +97,7 @@ class _WallpaperScreenState extends State<WallpaperScreen>
   BatteryState? _lastBatteryState;
 
   Future<void> _checkCharging() async {
-    // final lastChange = await UserSharedPrefs.getLastWallpaperChange();
-    // if(lastChange != null){
-    //   final diff = DateTime.now().difference(lastChange);
-    //   if(diff.inHours < 1){
-    //     return;
-    //   }
-    // }
+
     _lastBatteryState = await _battery.batteryState;
     // if (_lastBatteryState == BatteryState.charging) {
     //   _addStatus('Device is charging');
@@ -113,7 +107,6 @@ class _WallpaperScreenState extends State<WallpaperScreen>
     _batterySubscription = _battery.onBatteryStateChanged.listen((state) {
       if (_lastBatteryState != BatteryState.charging &&
           state == BatteryState.charging) {
-        debugPrint("Device plugged in - changing wallpaper");
         _addStatus("Device plugged in - changing wallpaper");
         changeWallpaper();
       }
@@ -123,9 +116,6 @@ class _WallpaperScreenState extends State<WallpaperScreen>
   }
 
   Future<void> changeWallpaper() async {
-    debugPrint(
-      "Started wallpaper change ==============================================",
-    );
     _addStatus("Started wallpaper change");
     UserSharedPrefs.saveLastWallpaperChange(DateTime.now());
 
@@ -159,7 +149,6 @@ class _WallpaperScreenState extends State<WallpaperScreen>
   @override
   void dispose() {
     _batterySubscription?.cancel();
-    debugPrint("Disposing==================================================");
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }

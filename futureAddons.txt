@@ -2,3 +2,6 @@
 - time interval between changing wallpapers
 - checkboxes for device ideal, charging, network connected
 - cache for future wallpaper so no need to fetch 
+- object and face detection
+- history page 
+- discover page 

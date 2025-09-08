@@ -20,6 +20,13 @@ class WallpaperManager {
     int deviceWidth = 0,
     int deviceHeight = 0,
   }) async {
+    final lastChange = await UserSharedPrefs.getLastWallpaperChange();
+    if (lastChange != null) {
+      final diff = DateTime.now().difference(lastChange);
+      if (diff.inHours < 1) {
+        return "Wallpaper changed less than an hour ago";
+      }
+    }
     savedTags ??= await UserSharedPrefs.getTags();
     sources = await UserSharedPrefs.getSelectedSources();
     if (sources.isEmpty) {
@@ -98,9 +105,9 @@ class WallpaperManager {
           "${dir.path}/wallpaper_${DateTime.now().millisecondsSinceEpoch}_$wallpaperLocation.jpg";
       final file = await File(filePath).writeAsBytes(bytes);
 
-       await WallpaperManagerFlutter().setWallpaper(file, wallpaperLocation);
+      await WallpaperManagerFlutter().setWallpaper(file, wallpaperLocation);
 
-    return "Wallpaper set for ${wallpaperLocation == WallpaperManagerFlutter.homeScreen ? "Home" : "Lock"} from $selectedSource ($tag)";
+      return "Wallpaper set for ${wallpaperLocation == WallpaperManagerFlutter.homeScreen ? "Home" : "Lock"} from $selectedSource ($tag)";
     } catch (e) {
       debugPrint("Error setting wallpaper: $e");
       return "Error setting wallpaper: $e";
