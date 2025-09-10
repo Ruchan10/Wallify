@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class UserSharedPrefs {
@@ -12,6 +13,7 @@ class UserSharedPrefs {
   static const _selectedSourcesKey = "selectedSources";
   static const _wallpaperHistoryKey = "wallpaperHistory";
   static const _lastWallpaperChangeKey = "lastWallpaperChange";
+  static const _keyInterval = "wallpaper_interval";
 
   /// ---- TAGS ----
   static Future<List<String>> getTags() async {
@@ -63,8 +65,7 @@ class UserSharedPrefs {
     await prefs.setBool(_pendingActionKey, pending);
   }
 
-
-    static Future<void> saveDeviceHeight(int height) async {
+  static Future<void> saveDeviceHeight(int height) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_deviceHeightKey, height);
   }
@@ -75,6 +76,7 @@ class UserSharedPrefs {
   }
 
   static Future<void> saveDeviceWidth(int width) async {
+
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_deviceWidthKey, width);
   }
@@ -84,18 +86,18 @@ class UserSharedPrefs {
     return prefs.getInt(_deviceWidthKey);
   }
 
-    static Future<void> saveSelectedSources(List<String> sources) async {
+  static Future<void> saveSelectedSources(List<String> sources) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setStringList(_selectedSourcesKey, sources);
   }
 
   static Future<List<String>> getSelectedSources() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getStringList(_selectedSourcesKey) ?? ["wallhaven", "unsplash", "pixabay"];
-
+    return prefs.getStringList(_selectedSourcesKey) ??
+        ["wallhaven", "unsplash", "pixabay"];
   }
 
-      static Future<void> saveWallpaperHistory(String imgUrl) async {
+  static Future<void> saveWallpaperHistory(String imgUrl) async {
     final prefs = await SharedPreferences.getInstance();
     final history = prefs.getStringList(_wallpaperHistoryKey) ?? [];
     history.add(imgUrl);
@@ -107,7 +109,7 @@ class UserSharedPrefs {
     return prefs.getStringList(_wallpaperHistoryKey) ?? [];
   }
 
-      static Future<void> saveLastWallpaperChange(DateTime date) async {
+  static Future<void> saveLastWallpaperChange(DateTime date) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_lastWallpaperChangeKey, date.toString());
   }
@@ -119,4 +121,13 @@ class UserSharedPrefs {
     return DateTime.parse(dateStr);
   }
 
+  static Future<void> saveInterval(int minutes) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_keyInterval, minutes);
+  }
+
+  static Future<int?> getInterval() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt(_keyInterval);
+  }
 }

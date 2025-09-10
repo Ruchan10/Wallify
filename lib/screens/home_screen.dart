@@ -32,6 +32,8 @@ class _WallpaperScreenState extends State<WallpaperScreen>
   Set<String> selectedSources = {"wallhaven", "unsplash", "pixabay"};
   String? tag;
   StreamSubscription<BatteryState>? _batterySubscription;
+  int _intervalHours = 1;
+  TextEditingController _intervalController = TextEditingController(text: "1");
 
   @override
   void initState() {
@@ -39,10 +41,6 @@ class _WallpaperScreenState extends State<WallpaperScreen>
     _initialize();
     _checkCharging();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      final size = MediaQuery.of(context).size;
-      UserSharedPrefs.saveDeviceWidth(size.width.toInt());
-      UserSharedPrefs.saveDeviceHeight(size.height.toInt());
-
       final pendingTag = await UserSharedPrefs.getPendingAction();
 
       if (pendingTag) {
@@ -72,6 +70,10 @@ class _WallpaperScreenState extends State<WallpaperScreen>
     statusHistory = await UserSharedPrefs.getStatusHistory();
     deviceWidth = (await UserSharedPrefs.getDeviceWidth()) ?? 0;
     deviceHeight = (await UserSharedPrefs.getDeviceHeight()) ?? 0;
+    _intervalHours = await UserSharedPrefs.getInterval() ?? 1;
+    _intervalController = TextEditingController(
+      text: _intervalHours.toString(),
+    );
     setState(() {});
 
     UpdateManager.checkForUpdates();
@@ -97,12 +99,7 @@ class _WallpaperScreenState extends State<WallpaperScreen>
   BatteryState? _lastBatteryState;
 
   Future<void> _checkCharging() async {
-
     _lastBatteryState = await _battery.batteryState;
-    // if (_lastBatteryState == BatteryState.charging) {
-    //   _addStatus('Device is charging');
-    //   fetchAndSetWallpaper();
-    // }
 
     _batterySubscription = _battery.onBatteryStateChanged.listen((state) {
       if (_lastBatteryState != BatteryState.charging &&
@@ -115,9 +112,8 @@ class _WallpaperScreenState extends State<WallpaperScreen>
     });
   }
 
-  Future<void> changeWallpaper() async {
+  Future<void> changeWallpaper({bool changeNow = false}) async {
     _addStatus("Started wallpaper change");
-    UserSharedPrefs.saveLastWallpaperChange(DateTime.now());
 
     try {
       if (wallpaperLocation == WallpaperManagerFlutter.bothScreens) {
@@ -125,11 +121,13 @@ class _WallpaperScreenState extends State<WallpaperScreen>
 
         final res = await WallpaperManager.fetchAndSetWallpaper(
           wallpaperLocation: WallpaperManagerFlutter.homeScreen,
+          changeNow: changeNow,
         );
         _addStatus(res);
       } else {
         final res = await WallpaperManager.fetchAndSetWallpaper(
           wallpaperLocation: wallpaperLocation,
+          changeNow: changeNow,
         );
         _addStatus(res);
       }
@@ -156,7 +154,12 @@ class _WallpaperScreenState extends State<WallpaperScreen>
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    if (deviceHeight == 0 || deviceWidth == 0) {
+      final size = MediaQuery.of(context).size;
 
+      UserSharedPrefs.saveDeviceWidth(size.width.toInt());
+      UserSharedPrefs.saveDeviceHeight(size.height.toInt());
+    }
     return Scaffold(
       backgroundColor: scheme.surface,
       appBar: AppBar(
@@ -170,34 +173,32 @@ class _WallpaperScreenState extends State<WallpaperScreen>
         child: ListView(
           children: [
             // --- Sources Selector ---
-            Text("Sources", style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              children: sources.map((src) {
-                return FilterChip(
-                  label: Text(src),
-                  selected: selectedSources.contains(src),
-                  onSelected: (val) {
-                    setState(() {
-                      if (val) {
-                        selectedSources.add(src);
-                      } else {
-                        selectedSources.remove(src);
-                      }
-                    });
-                    UserSharedPrefs.saveSelectedSources(
-                      selectedSources.toList(),
-                    );
-                  },
-                  selectedColor: scheme.primaryContainer,
-                  checkmarkColor: scheme.onPrimaryContainer,
-                );
-              }).toList(),
-            ),
-            const SizedBox(height: 24),
-
-            // --- Wallpaper location selector ---
+            // Text("Sources", style: Theme.of(context).textTheme.titleMedium),
+            // const SizedBox(height: 8),
+            // Wrap(
+            //   spacing: 8,
+            //   children: sources.map((src) {
+            //     return FilterChip(
+            //       label: Text(src),
+            //       selected: selectedSources.contains(src),
+            //       onSelected: (val) {
+            //         setState(() {
+            //           if (val) {
+            //             selectedSources.add(src);
+            //           } else {
+            //             selectedSources.remove(src);
+            //           }
+            //         });
+            //         UserSharedPrefs.saveSelectedSources(
+            //           selectedSources.toList(),
+            //         );
+            //       },
+            //       selectedColor: scheme.primaryContainer,
+            //       checkmarkColor: scheme.onPrimaryContainer,
+            //     );
+            //   }).toList(),
+            // ),
+            // const SizedBox(height: 24),
             Text("Apply To", style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 8),
             Wrap(
@@ -241,7 +242,85 @@ class _WallpaperScreenState extends State<WallpaperScreen>
                 ),
               ],
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 20),
+
+            // --- Interval input ---
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Expanded(
+                  child: Text(
+                    "Auto Change Interval (hours):",
+                    style: Theme.of(context).textTheme.titleMedium,
+                    maxLines: 2,
+                    overflow: TextOverflow.visible,
+                  ),
+                ),
+                const SizedBox(width: 8),
+
+                SizedBox(
+                  width: 120,
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _intervalController,
+                          keyboardType: TextInputType.number,
+                          textAlign: TextAlign.center,
+                          decoration: InputDecoration(
+                            filled: true,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          onSubmitted: (value) {
+                            final hours = int.tryParse(value);
+                            if (hours != null && hours > 0) {
+                              setState(() => _intervalHours = hours);
+                              UserSharedPrefs.saveInterval(hours);
+                            } else {
+                              // reset invalid input to current value
+                              _intervalController.text = _intervalHours
+                                  .toString();
+                            }
+                          },
+                        ),
+                      ),
+                      Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.arrow_drop_up),
+                            onPressed: () {
+                              setState(() {
+                                _intervalHours++;
+                                _intervalController.text = _intervalHours
+                                    .toString();
+                              });
+                              UserSharedPrefs.saveInterval(_intervalHours);
+                            },
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.arrow_drop_down),
+                            onPressed: () {
+                              if (_intervalHours > 1) {
+                                setState(() {
+                                  _intervalHours--;
+                                  _intervalController.text = _intervalHours
+                                      .toString();
+                                });
+                                UserSharedPrefs.saveInterval(_intervalHours);
+                              }
+                            },
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
 
             // --- Tag Input + Add button ---
             Row(
@@ -304,7 +383,7 @@ class _WallpaperScreenState extends State<WallpaperScreen>
                 }).toList(),
               ),
             ],
-            const SizedBox(height: 24),
+            const SizedBox(height: 20),
 
             // --- Info card ---
             // --- Last & Next wallpaper info ---
@@ -351,7 +430,7 @@ class _WallpaperScreenState extends State<WallpaperScreen>
                           Expanded(
                             child: Text(
                               lastChange != null
-                                  ? "Next change after ${DateFormat("MMM d, h:mm a").format(lastChange.add(const Duration(hours: 1)))} when charging ⚡"
+                                  ? "Next change after ${DateFormat("MMM d, h:mm a").format(lastChange.add(Duration(hours: _intervalHours)))} when charging ⚡"
                                   : "Next change when device is charging ⚡",
                               style: TextStyle(
                                 fontSize: 13,
@@ -393,7 +472,7 @@ class _WallpaperScreenState extends State<WallpaperScreen>
         ),
       ),
       floatingActionButton: FilledButton.icon(
-        onPressed: changeWallpaper,
+        onPressed: () => changeWallpaper(changeNow: true),
         icon: const Icon(Icons.refresh),
         label: const Text("Change Now"),
       ),

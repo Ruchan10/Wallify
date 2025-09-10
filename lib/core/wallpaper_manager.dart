@@ -1,15 +1,19 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
+import 'dart:ui' as ui show Rect;
 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
+import 'package:wallify/core/human_detector.dart' as HumanDetector;
+import 'package:wallify/core/image_cropper.dart';
 import 'package:wallify/core/user_shared_prefs.dart';
 import 'package:wallpaper_manager_flutter/wallpaper_manager_flutter.dart';
 
 class WallpaperManager {
   static List<String> sources = ["wallhaven", "unsplash", "pixabay"];
+  static int? interval = 1;
 
   static final usp = UserSharedPrefs();
 
@@ -19,12 +23,15 @@ class WallpaperManager {
     int wallpaperLocation = WallpaperManagerFlutter.bothScreens,
     int deviceWidth = 0,
     int deviceHeight = 0,
+    bool changeNow = false,
   }) async {
     final lastChange = await UserSharedPrefs.getLastWallpaperChange();
+    interval = await UserSharedPrefs.getInterval();
+
     if (lastChange != null) {
       final diff = DateTime.now().difference(lastChange);
-      if (diff.inHours < 1) {
-        return "Wallpaper changed less than an hour ago";
+      if (diff.inHours < interval! && !changeNow) {
+        return "Wallpaper changed less than $interval hours ago";
       }
     }
     savedTags ??= await UserSharedPrefs.getTags();
@@ -93,7 +100,7 @@ class WallpaperManager {
       }
 
       if (imageUrl == null) {
-        fetchAndSetWallpaper();
+        fetchAndSetWallpaper(changeNow: changeNow);
         return "No wallpaper found for $tag in $selectedSource. Trying again";
       }
 
@@ -103,9 +110,36 @@ class WallpaperManager {
       final dir = await getTemporaryDirectory();
       final filePath =
           "${dir.path}/wallpaper_${DateTime.now().millisecondsSinceEpoch}_$wallpaperLocation.jpg";
-      final file = await File(filePath).writeAsBytes(bytes);
+      await File(filePath).writeAsBytes(bytes);
 
-      await WallpaperManagerFlutter().setWallpaper(file, wallpaperLocation);
+      if (await HumanDetector.containsHuman(filePath)) {
+        fetchAndSetWallpaper(changeNow: changeNow);
+
+        return "Wallpaper contains human";
+      }
+      final obj = await detectMainObject(filePath);
+
+      if (obj == null) {
+        fetchAndSetWallpaper(changeNow: changeNow);
+        return "No object found or human detected, skipping...";
+      }
+
+      final croppedPath = await cropAroundObject(
+        filePath: filePath,
+        boundingBox: ui.Rect.fromLTWH(
+          obj.boundingBox.left.toDouble(),
+          obj.boundingBox.top.toDouble(),
+          obj.boundingBox.width.toDouble(),
+          obj.boundingBox.height.toDouble(),
+        ),
+      );
+
+      UserSharedPrefs.saveLastWallpaperChange(DateTime.now());
+
+      await WallpaperManagerFlutter().setWallpaper(
+        croppedPath!,
+        wallpaperLocation,
+      );
 
       return "Wallpaper set for ${wallpaperLocation == WallpaperManagerFlutter.homeScreen ? "Home" : "Lock"} from $selectedSource ($tag)";
     } catch (e) {
