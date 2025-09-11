@@ -40,6 +40,7 @@ class _WallpaperScreenState extends State<WallpaperScreen>
     super.initState();
     _initialize();
     _checkCharging();
+    UpdateManager.checkForUpdates();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final pendingTag = await UserSharedPrefs.getPendingAction();
 

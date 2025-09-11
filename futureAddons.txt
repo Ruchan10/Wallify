@@ -2,5 +2,5 @@
 - cache for future wallpaper so no need to fetch 
 - history page 
 - discover page 
-- cache more wallpapers while getting wallpaper
 - if no internet, use cached wallpaper
+- export/import settings

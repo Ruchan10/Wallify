@@ -27,7 +27,6 @@ class UpdateManager {
       if (versionResponse.statusCode != 200) {
         return;
       }
-
       final versionData =
           json.decode(versionResponse.body) as Map<String, dynamic>;
       final latestVersion = versionData['version']?.toString();
@@ -37,17 +36,13 @@ class UpdateManager {
         return;
       }
 
-      final releasesResponse = await http
-          .get(Uri.parse(_releasesUrl))
-          .timeout(const Duration(seconds: 10));
-
+      final releasesResponse = await http.get(Uri.parse(_releasesUrl));
       if (releasesResponse.statusCode != 200) {
         return;
       }
 
       final releasesData =
           json.decode(releasesResponse.body) as Map<String, dynamic>;
-
       Config.setupdateAvailable(true);
 
       _cacheUpdateInfo(versionData, releasesData);
@@ -63,104 +58,6 @@ class UpdateManager {
     if (!status.isGranted) {
       return false;
     }
-    return true;
-  }
-
-  // static void showInstallDialog(BuildContext context) async {
-  //   try {
-  //     int? sdkVersion;
-
-  //     final androidInfo = await DeviceInfoPlugin().androidInfo;
-  //     sdkVersion = androidInfo.version.sdkInt;
-
-  //     if (sdkVersion >= 26) {
-  //       final status = await Permission.requestInstallPackages.status;
-  //       if (!status.isGranted) {
-  //         showRequestPermission(context);
-  //         return;
-  //       }
-  //     }
-  //     showSnackBar(
-  //       context: context,
-  //       message: 'Downloading Update...',
-  //     );
-  //     final apkPath = await downloadApk(await _getDownloadUrl());
-
-  //     await OpenFile.open(apkPath);
-  //   } catch (e) {
-  //     _log.severe('Install failed', e);
-  //   }
-  // }
-
-  static Future<bool> showRequestPermission(BuildContext context) async {
-    if (Config.getIsUpdateDialogopen()) {
-      return false;
-    }
-    Config.setIsUpdateDialogopen(true);
-    await showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                "Update Available",
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-              ),
-              SizedBox(height: 16),
-              Text(
-                'To install this update allow installation permission',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 16),
-              ),
-              Text(
-                'You only need to do this once',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 16),
-              ),
-            ],
-          ),
-          actionsAlignment: MainAxisAlignment.center,
-          actions: <Widget>[
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                OutlinedButton(
-                  onPressed: () {
-                    try {
-                      Navigator.of(context).pop();
-
-                      Future.delayed(Duration(milliseconds: 300), () {
-                        Config.setIsUpdateDialogopen(false);
-                      });
-                    } catch (e) {
-                      Config.setIsUpdateDialogopen(false);
-                      Navigator.pop(context);
-                    }
-                  },
-                  child: Text("Cancel", style: TextStyle(fontSize: 16)),
-                ),
-                SizedBox(width: 16),
-                FilledButton(
-                  onPressed: () {
-                    requestPermission().then((value) {
-                      // if (value) {
-                      //   showInstallDialog(context);
-                      // }
-                    });
-                    Config.setIsUpdateDialogopen(false);
-                    Navigator.of(context).pop();
-                  },
-                  child: Text("Allow", style: TextStyle(fontSize: 16)),
-                ),
-              ],
-            ),
-          ],
-        );
-      },
-    );
     return true;
   }
 
@@ -200,20 +97,13 @@ class UpdateManager {
 
   static Future<String> _getDownloadUrl() async {
     final versionData = Config.getCachedVersionData();
+
     return versionData[_downloadUrlKey]?.toString() ?? '';
   }
 
   static Future<void> launchURL(Uri url) async {
-    if (await canLaunchUrl(url)) {
-      await launchUrl(
-        url,
-        mode: LaunchMode.externalApplication,
-        webViewConfiguration: const WebViewConfiguration(
-          enableJavaScript: true,
-        ),
-      );
-    } else {
-      throw 'Could not launch $url';
+    if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
+      throw Exception('Could not launch $url');
     }
   }
 

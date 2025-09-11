@@ -6,7 +6,7 @@ import 'dart:ui' as ui show Rect;
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
-import 'package:wallify/core/human_detector.dart' as HumanDetector;
+import 'package:wallify/core/human_detector.dart' as humandetector;
 import 'package:wallify/core/image_cropper.dart';
 import 'package:wallify/core/user_shared_prefs.dart';
 import 'package:wallpaper_manager_flutter/wallpaper_manager_flutter.dart';
@@ -112,7 +112,7 @@ class WallpaperManager {
           "${dir.path}/wallpaper_${DateTime.now().millisecondsSinceEpoch}_$wallpaperLocation.jpg";
       await File(filePath).writeAsBytes(bytes);
 
-      if (await HumanDetector.containsHuman(filePath)) {
+      if (await humandetector.containsHuman(filePath)) {
         fetchAndSetWallpaper(changeNow: changeNow);
 
         return "Wallpaper contains human";
