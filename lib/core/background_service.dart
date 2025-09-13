@@ -39,6 +39,8 @@ Future<void> onStart(ServiceInstance service) async {
 
   service.on("charging").listen((event) async {
     final wallpaperLocation = await UserSharedPrefs.getWallpaperLocation();
+    status.add({"title": "Device Charging", "date": DateTime.now().toString()});
+    await UserSharedPrefs.saveStatusHistory(status);
 
     try {
       if (wallpaperLocation == WallpaperManagerFlutter.bothScreens) {

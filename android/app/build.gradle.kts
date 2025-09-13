@@ -59,6 +59,10 @@ android {
             isShrinkResources = false
             signingConfig = signingConfigs.getByName("release")
         }
+        debug {
+            applicationIdSuffix = ".debug"   
+            versionNameSuffix = "-debug"     
+        }
     }
 }
 

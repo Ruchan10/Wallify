@@ -26,8 +26,6 @@ class _WallpaperScreenState extends State<WallpaperScreen>
   int wallpaperLocation = WallpaperManagerFlutter.bothScreens;
 
   List<Map<String, String>> statusHistory = [];
-  int deviceWidth = 0;
-  int deviceHeight = 0;
   final usp = UserSharedPrefs();
   Set<String> selectedSources = {"wallhaven", "unsplash", "pixabay"};
   String? tag;
@@ -50,11 +48,12 @@ class _WallpaperScreenState extends State<WallpaperScreen>
 
         final res = await WallpaperManager.fetchAndSetWallpaper(
           wallpaperLocation: WallpaperManagerFlutter.lockScreen,
+          changeNow: true,
         );
         _addStatus(res);
       }
 
-      Future.delayed(const Duration(seconds: 10), () {
+      Future.delayed(const Duration(seconds: 3), () {
         if (Config.getUpdateAvailable()) {
           UpdateManager.showUpdateDialog(context);
         }
@@ -69,8 +68,7 @@ class _WallpaperScreenState extends State<WallpaperScreen>
     savedTags = await UserSharedPrefs.getTags();
     wallpaperLocation = await UserSharedPrefs.getWallpaperLocation();
     statusHistory = await UserSharedPrefs.getStatusHistory();
-    deviceWidth = (await UserSharedPrefs.getDeviceWidth()) ?? 0;
-    deviceHeight = (await UserSharedPrefs.getDeviceHeight()) ?? 0;
+
     _intervalHours = await UserSharedPrefs.getInterval() ?? 1;
     _intervalController = TextEditingController(
       text: _intervalHours.toString(),
@@ -114,8 +112,6 @@ class _WallpaperScreenState extends State<WallpaperScreen>
   }
 
   Future<void> changeWallpaper({bool changeNow = false}) async {
-    _addStatus("Started wallpaper change");
-
     try {
       if (wallpaperLocation == WallpaperManagerFlutter.bothScreens) {
         UserSharedPrefs.savePendingAction(true);
@@ -155,12 +151,10 @@ class _WallpaperScreenState extends State<WallpaperScreen>
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    if (deviceHeight == 0 || deviceWidth == 0) {
-      final size = MediaQuery.of(context).size;
+    final size = MediaQuery.of(context).size;
 
-      UserSharedPrefs.saveDeviceWidth(size.width.toInt());
-      UserSharedPrefs.saveDeviceHeight(size.height.toInt());
-    }
+    UserSharedPrefs.saveDeviceWidth(size.width.toInt());
+    UserSharedPrefs.saveDeviceHeight(size.height.toInt());
     return Scaffold(
       backgroundColor: scheme.surface,
       appBar: AppBar(

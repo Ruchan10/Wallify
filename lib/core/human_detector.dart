@@ -6,9 +6,6 @@ import 'package:google_mlkit_object_detection/google_mlkit_object_detection.dart
 
 /// Returns true if the image contains humans (face or person label).
 Future<bool> containsHuman(String imagePath) async {
-  debugPrint(
-    "Checking for humans in $imagePath =========================================",
-  );
   final file = File(imagePath);
   if (!await file.exists()) return false;
 
@@ -46,7 +43,7 @@ Future<bool> containsHuman(String imagePath) async {
     final inputImage = InputImage.fromFilePath(imagePath);
     final objects = await objectDetector.processImage(inputImage);
     await objectDetector.close();
-
+    debugPrint("Object detected: $objects =============================");
     if (objects.isNotEmpty) {
       for (final obj in objects) {
         for (final label in obj.labels) {

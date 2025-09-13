@@ -4,7 +4,6 @@ import 'dart:ui' as ui show Rect;
 import 'package:flutter/material.dart';
 import 'package:google_mlkit_object_detection/google_mlkit_object_detection.dart';
 import 'package:image/image.dart' as img;
-import 'package:wallify/core/user_shared_prefs.dart';
 
 class DetectedObjectResult {
   final ui.Rect boundingBox;
@@ -14,10 +13,6 @@ class DetectedObjectResult {
 
 /// Returns a detected object bounding box if found, null if no object or human.
 Future<DetectedObjectResult?> detectMainObject(String imagePath) async {
-  debugPrint(
-    'detectMainObject: $imagePath =========================================',
-  );
-
   final options = ObjectDetectorOptions(
     mode: DetectionMode.single,
     classifyObjects: true,
@@ -27,63 +22,29 @@ Future<DetectedObjectResult?> detectMainObject(String imagePath) async {
   final detector = ObjectDetector(options: options);
 
   final inputImage = InputImage.fromFilePath(imagePath);
-  debugPrint(
-    'Input image: $inputImage =========================================',
-  );
   final objects = await detector.processImage(inputImage);
-  debugPrint(
-    'Object detected after processing: $objects =========================================',
-  );
-  // await detector.close();
-  // debugPrint(
-  //   'Object detected after processing and closing: ${objects.first.labels.first.text} =========================================',
-  // );
   for (final obj in objects) {
-    // for (final label in obj.labels) {
-    //   final text = label.text.toLowerCase();
-    //   if (text.contains('person') || text.contains('human')) {
-    //     debugPrint(
-    //       'Object detected: ${obj.labels.first.text} =========================================',
-    //     );
-    //     return null;
-    //   }
-    // }
-
-    // If not human, return this object's bounding box
-    debugPrint(
-      'Object detected: ${obj.labels} =========================================',
-    );
     return DetectedObjectResult(
       obj.boundingBox,
       obj.labels.isNotEmpty ? obj.labels.first.text : 'object',
     );
   }
-  debugPrint('Object not detected =========================================');
   return null;
 }
 
 Future<File?> cropAroundObject({
   required String filePath,
   required ui.Rect boundingBox,
+  int deviceWidth = 360,
+  int deviceHeight = 800,
 }) async {
-  debugPrint(
-    'cropAroundObject: $filePath =========================================',
-  );
-
   try {
-    final deviceWidth = (await UserSharedPrefs.getDeviceWidth())!;
-    final deviceHeight = (await UserSharedPrefs.getDeviceHeight())!;
-    debugPrint(
-      'cropAroundObject 1 : $deviceWidth, $deviceHeight =========================================',
-    );
     final bytes = await File(filePath).readAsBytes();
     final src = img.decodeImage(bytes);
     if (src == null) return null;
 
     final aspectRatio = deviceWidth / deviceHeight;
-    debugPrint(
-      'cropAroundObject 2 : $aspectRatio =========================================',
-    );
+
     // Center crop around object
     int objCenterX = (boundingBox.left + boundingBox.width ~/ 2).toInt();
     int objCenterY = (boundingBox.top + boundingBox.height ~/ 2).toInt();
@@ -121,7 +82,6 @@ Future<File?> cropAroundObject({
     // Save new file
     final newPath = filePath.replaceFirst('.jpg', '_cropped.jpg');
     await File(newPath).writeAsBytes(img.encodeJpg(resized, quality: 100));
-    debugPrint("Cropped file saved at $newPath ==========================");
     return File(newPath);
   } catch (e) {
     debugPrint("Error cropping image: $e ==========================");

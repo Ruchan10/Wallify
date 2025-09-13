@@ -14,6 +14,8 @@ import 'package:wallpaper_manager_flutter/wallpaper_manager_flutter.dart';
 class WallpaperManager {
   static List<String> sources = ["wallhaven", "unsplash", "pixabay"];
   static int? interval = 1;
+  static int deviceWidth = 360;
+  static int deviceHeight = 800;
 
   static final usp = UserSharedPrefs();
 
@@ -21,8 +23,6 @@ class WallpaperManager {
   static Future<String> fetchAndSetWallpaper({
     List<String>? savedTags,
     int wallpaperLocation = WallpaperManagerFlutter.bothScreens,
-    int deviceWidth = 0,
-    int deviceHeight = 0,
     bool changeNow = false,
   }) async {
     final lastChange = await UserSharedPrefs.getLastWallpaperChange();
@@ -34,6 +34,8 @@ class WallpaperManager {
         return "Wallpaper changed less than $interval hours ago";
       }
     }
+    deviceWidth = await UserSharedPrefs.getDeviceWidth();
+    deviceHeight = await UserSharedPrefs.getDeviceHeight();
     savedTags ??= await UserSharedPrefs.getTags();
     sources = await UserSharedPrefs.getSelectedSources();
     if (sources.isEmpty) {
@@ -115,7 +117,7 @@ class WallpaperManager {
       if (await humandetector.containsHuman(filePath)) {
         fetchAndSetWallpaper(changeNow: changeNow);
 
-        return "Wallpaper contains human";
+        return "Wallpaper contains human. Trying again";
       }
       final obj = await detectMainObject(filePath);
 
@@ -132,6 +134,8 @@ class WallpaperManager {
           obj.boundingBox.width.toDouble(),
           obj.boundingBox.height.toDouble(),
         ),
+        deviceWidth: deviceWidth,
+        deviceHeight: deviceHeight,
       );
 
       UserSharedPrefs.saveLastWallpaperChange(DateTime.now());

@@ -4,3 +4,5 @@
 - discover page 
 - if no internet, use cached wallpaper
 - export/import settings
+- auto start on boot up
+- ask user to set battey usage to unrestricted

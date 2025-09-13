@@ -1,6 +1,5 @@
 import 'dart:convert';
 
-import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class UserSharedPrefs {
@@ -66,24 +65,25 @@ class UserSharedPrefs {
   }
 
   static Future<void> saveDeviceHeight(int height) async {
+    if (height <= 0) return;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_deviceHeightKey, height);
   }
 
-  static Future<int?> getDeviceHeight() async {
+  static Future<int> getDeviceHeight() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getInt(_deviceHeightKey);
+    return prefs.getInt(_deviceHeightKey) ?? 800;
   }
 
   static Future<void> saveDeviceWidth(int width) async {
-
+    if (width <= 0) return;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_deviceWidthKey, width);
   }
 
-  static Future<int?> getDeviceWidth() async {
+  static Future<int> getDeviceWidth() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getInt(_deviceWidthKey);
+    return prefs.getInt(_deviceWidthKey) ?? 360;
   }
 
   static Future<void> saveSelectedSources(List<String> sources) async {

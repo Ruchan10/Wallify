@@ -1,7 +1,7 @@
 class Config {
   static bool _updateAvaliable = false;
   static bool _isUpdateDialogOpen = false;
-  static String _appVersion = '1.0.6';
+  static String _appVersion = '1.0.7';
   static String _appName = 'Wallify';
   static bool _hasInternet = false;
 
