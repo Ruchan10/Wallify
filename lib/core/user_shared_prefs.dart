@@ -13,6 +13,7 @@ class UserSharedPrefs {
   static const _wallpaperHistoryKey = "wallpaperHistory";
   static const _lastWallpaperChangeKey = "lastWallpaperChange";
   static const _keyInterval = "wallpaper_interval";
+  static const _favWallpaperKey = "favWallpaper";
 
   /// ---- TAGS ----
   static Future<List<String>> getTags() async {
@@ -107,6 +108,25 @@ class UserSharedPrefs {
   static Future<List<String>> getWallpaperHistory() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getStringList(_wallpaperHistoryKey) ?? [];
+  }
+
+  static Future<void> saveFavWallpaper(String imgUrl) async {
+    final prefs = await SharedPreferences.getInstance();
+    final history = prefs.getStringList(_favWallpaperKey) ?? [];
+    history.add(imgUrl);
+    await prefs.setStringList(_favWallpaperKey, history);
+  }
+
+  static Future<void> removeFavWallpaper(String imgUrl) async {
+    final prefs = await SharedPreferences.getInstance();
+    final history = prefs.getStringList(_favWallpaperKey) ?? [];
+    history.remove(imgUrl);
+    await prefs.setStringList(_favWallpaperKey, history);
+  }
+
+  static Future<List<String>> getFavWallpaper() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getStringList(_favWallpaperKey) ?? [];
   }
 
   static Future<void> saveLastWallpaperChange(DateTime date) async {

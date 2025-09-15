@@ -6,17 +6,17 @@ import 'package:intl/intl.dart';
 import 'package:wallify/core/config.dart';
 import 'package:wallify/core/update_manager.dart';
 import 'package:wallify/core/user_shared_prefs.dart';
-import 'package:wallify/core/wallpaper_manager.dart';
+import 'package:wallify/functions/wallpaper_manager.dart';
 import 'package:wallpaper_manager_flutter/wallpaper_manager_flutter.dart';
 
-class WallpaperScreen extends StatefulWidget {
-  const WallpaperScreen({super.key});
+class AutomateWallpaper extends StatefulWidget {
+  const AutomateWallpaper({super.key});
 
   @override
-  State<WallpaperScreen> createState() => _WallpaperScreenState();
+  State<AutomateWallpaper> createState() => _AutomateWallpaperState();
 }
 
-class _WallpaperScreenState extends State<WallpaperScreen>
+class _AutomateWallpaperState extends State<AutomateWallpaper>
     with WidgetsBindingObserver {
   final TextEditingController _tagController = TextEditingController();
   final Battery _battery = Battery();

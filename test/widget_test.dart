@@ -1,6 +1,6 @@
 import 'dart:ui' as img;
 
-import 'package:wallify/core/image_cropper.dart';
+import 'package:wallify/functions/image_cropper.dart';
 
 Future<void> setWallpaperWithDetection(
   String imagePath,

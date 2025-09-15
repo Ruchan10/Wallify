@@ -1,10 +1,11 @@
+import 'package:android_intent_plus/android_intent.dart';
 import 'dart:ui';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:wallify/core/user_shared_prefs.dart';
-import 'package:wallify/core/wallpaper_manager.dart';
+import 'package:wallify/functions/wallpaper_manager.dart';
 import 'package:wallpaper_manager_flutter/wallpaper_manager_flutter.dart';
 
 void initializeService() async {
@@ -27,6 +28,7 @@ void initializeService() async {
       service.invoke("charging", {"charging": isCharging});
     }
   });
+  // _requestBatteryOptPermission();
 }
 
 @pragma('vm:entry-point')
@@ -73,3 +75,15 @@ Future<void> ensureNotificationPermission() async {
     await Permission.notification.request();
   }
 }
+
+
+  Future<void> _requestBatteryOptPermission() async {
+      final status = await Permission.ignoreBatteryOptimizations.request();
+      if (status.isGranted) {
+      } else {
+        const intent = AndroidIntent(
+          action: 'android.settings.IGNORE_BATTERY_OPTIMIZATION_SETTINGS',
+        );
+        await intent.launch();
+      }
+  }

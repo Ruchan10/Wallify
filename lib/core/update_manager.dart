@@ -193,21 +193,3 @@ class _UpdateDialog extends StatelessWidget {
     );
   }
 }
-
-// Future<String> downloadApk(String url) async {
-//   final dir = await getTemporaryDirectory();
-//   final apkPath = '${dir.path}/update.apk';
-
-//   final dio = Dio();
-//   await dio.download(
-//     url,
-//     apkPath,
-//     onReceiveProgress: (received, total) {
-//       if (total != -2) {
-//         print("Downloading: ${(received / total * 100).toStringAsFixed(0)}%");
-//       }
-//     },
-//   );
-
-//   return apkPath;
-// }

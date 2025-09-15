@@ -6,8 +6,8 @@ import 'dart:ui' as ui show Rect;
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
-import 'package:wallify/core/human_detector.dart' as humandetector;
-import 'package:wallify/core/image_cropper.dart';
+import 'package:wallify/functions/human_detector.dart' as humandetector;
+import 'package:wallify/functions/image_cropper.dart';
 import 'package:wallify/core/user_shared_prefs.dart';
 import 'package:wallpaper_manager_flutter/wallpaper_manager_flutter.dart';
 
@@ -24,10 +24,14 @@ class WallpaperManager {
     List<String>? savedTags,
     int wallpaperLocation = WallpaperManagerFlutter.bothScreens,
     bool changeNow = false,
+    String? imageUrl,
   }) async {
+    String selectedSource = "wallhaven";
+    String tag = "nature";
     final lastChange = await UserSharedPrefs.getLastWallpaperChange();
     interval = await UserSharedPrefs.getInterval();
-
+    try{
+    if (imageUrl == null) {
     if (lastChange != null) {
       final diff = DateTime.now().difference(lastChange);
       if (diff.inHours < interval! && !changeNow) {
@@ -43,13 +47,13 @@ class WallpaperManager {
     }
 
     final random = Random();
-    final tag = savedTags.isNotEmpty
+     tag = savedTags.isNotEmpty
         ? savedTags[random.nextInt(savedTags.length)]
         : "nature";
 
-    final selectedSource = sources[random.nextInt(sources.length)];
+    selectedSource = sources[random.nextInt(sources.length)];
 
-    String? imageUrl;
+    // String? imageUrl;
 
     try {
       if (selectedSource == "wallhaven") {
@@ -105,7 +109,11 @@ class WallpaperManager {
         fetchAndSetWallpaper(changeNow: changeNow);
         return "No wallpaper found for $tag in $selectedSource. Trying again";
       }
-
+      } catch (e) {
+      debugPrint("Error setting wallpaper: $e");
+      return "Error setting wallpaper: $e";
+    }
+}
       final response = await http.get(Uri.parse(imageUrl));
       final bytes = response.bodyBytes;
 
@@ -139,6 +147,7 @@ class WallpaperManager {
       );
 
       UserSharedPrefs.saveLastWallpaperChange(DateTime.now());
+      UserSharedPrefs.saveWallpaperHistory(imageUrl);
 
       await WallpaperManagerFlutter().setWallpaper(
         croppedPath!,

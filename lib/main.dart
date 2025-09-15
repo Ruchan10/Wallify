@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:wallify/core/background_service.dart';
-import 'package:wallify/core/wallpaper_manager.dart';
-import 'package:wallify/screens/home_screen.dart';
+import 'package:wallify/functions/background_service.dart';
+import 'package:wallify/functions/wallpaper_manager.dart';
+import 'package:wallify/screens/automate_screen.dart';
+import 'package:wallify/screens/nav_bar.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -82,7 +83,7 @@ class MyApp extends StatelessWidget {
       theme: lightTheme,
       darkTheme: darkTheme,
       themeMode: ThemeMode.system,
-      home: const WallpaperScreen(),
+      home: const MainScaffold(),
     );
   }
 }
