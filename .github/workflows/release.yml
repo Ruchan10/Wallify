@@ -8,10 +8,9 @@ on:
 
 env:
   APK_NAME: "Wallify"
-  APP_VERSION: "1.0.9"
+  APP_VERSION: "1.1.0"
   CHANGES: |
-    - discover, recents, and settings Page Added and refined
-    - Better wallpaper handling
+    - Minor Bug Fixes
     - Misc Improvements
 
 jobs:

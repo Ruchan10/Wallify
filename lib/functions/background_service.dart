@@ -24,7 +24,7 @@ void initializeService() async {
       autoStart: true,
       isForegroundMode: true,
       foregroundServiceTypes: [AndroidForegroundType.dataSync],
-      initialNotificationContent: "Wallify Running",
+      initialNotificationContent: "Wallify Service Running",
       initialNotificationTitle: "Listening for charging events",
       notificationChannelId: "wallify_channel",
       foregroundServiceNotificationId: 1,

@@ -1,19 +1,20 @@
   import 'dart:convert';
   import 'package:cached_network_image/cached_network_image.dart';
   import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
   import 'package:http/http.dart' as http;
   import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
   import 'package:wallify/core/user_shared_prefs.dart';
   import 'package:wallify/screens/wallpaper_preview.dart';
 
-  class DiscoverPage extends StatefulWidget {
+  class DiscoverPage extends ConsumerStatefulWidget {
     const DiscoverPage({super.key});
 
     @override
-    State<DiscoverPage> createState() => _DiscoverPageState();
+    ConsumerState<DiscoverPage> createState() => _DiscoverPageState();
   }
 
-  class _DiscoverPageState extends State<DiscoverPage> {
+  class _DiscoverPageState extends ConsumerState<DiscoverPage> {
     final TextEditingController _searchController = TextEditingController();
     List<String> _images = [];
     bool _isLoading = false;
@@ -38,9 +39,14 @@
           );
         }
       });
+      _configureImageCache();
+    }
+    void _configureImageCache() {
+      PaintingBinding.instance.imageCache.maximumSize = 150;
+      PaintingBinding.instance.imageCache.maximumSizeBytes = 150 * 1024 * 1024;
     }
 
-    Future<void> _fetchImages({String? query, int count = 1}) async {
+    Future<void> _fetchImages({String? query, int count = 1, bool isSearch = false}) async {
       setState(() {
         _isLoading = true;
       });
@@ -65,8 +71,8 @@
         final unsplashRes = await http.get(
           Uri.parse(
             "https://api.unsplash.com/photos"
-            "${query == null ? "" : "?query=$query"}"
-            "?page=$count",
+            "${query == null ? "?" : "?query=$query&"}"
+            "page=$count",
           ),
           headers: {
             "Authorization":
@@ -104,7 +110,11 @@
         debugPrint("❌ Error fetching images: $e ====================");
       }
       setState(() {
-        _images.addAll(results);
+        if (isSearch) {
+          _images = results;
+        } else {
+          _images.addAll(results);
+        }
         _isLoading = false;
       });
     }
@@ -119,7 +129,6 @@
     @override
     Widget build(BuildContext context) {
       final colorScheme = Theme.of(context).colorScheme;
-      final inputDecoration = Theme.of(context).inputDecorationTheme;
       return Scaffold(
         appBar: AppBar(
           title: const Text("Discover"),
@@ -139,8 +148,9 @@
               
                 ),
                 onSubmitted: (value) {
+                  debugPrint("Search submitted: $value ====================");
                   if (value.isNotEmpty) {
-                    _fetchImages(query: value);
+                    _fetchImages(query: value.trim(), isSearch: true);
                   }
                 },
               ),
@@ -152,11 +162,14 @@
                           style: TextStyle(color: colorScheme.onSurface),
                         ),
                       )
-                    : MasonryGridView.count(
-                      scrollDirection: Axis.vertical,
-                      crossAxisCount: 2,
+                    : MasonryGridView.builder(
+                                                key: PageStorageKey("discover_grid"),
+
+                      controller: _scrollController,
+                      gridDelegate: SliverSimpleGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 2,
+                      ),
                       mainAxisSpacing: 8,
-                      shrinkWrap: true,
                       crossAxisSpacing: 8,
                       itemCount: _images.length,
                       itemBuilder: (context, index) {
@@ -164,7 +177,7 @@
                         final isFav = favorites.contains(img);
                                   
                         return ClipRRect(
-                          key: ValueKey(index),
+                          key: PageStorageKey(img),
                           borderRadius: BorderRadius.circular(16),
                           child: Stack(
                             children: [
@@ -182,7 +195,7 @@
                                   );
                                 },
                                 child: CachedNetworkImage(
-                                  key: ValueKey(img),
+                                  key: PageStorageKey(img),
                                   cacheKey: img,
                                   imageUrl: img,
                                   fit: BoxFit.cover,

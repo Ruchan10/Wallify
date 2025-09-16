@@ -5,6 +5,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:wallify/core/config.dart';
+import 'package:wallify/core/snackbar.dart';
 import 'package:wallify/core/theme_provider.dart';
 import 'package:wallify/core/update_manager.dart';
 import 'package:wallify/core/user_shared_prefs.dart';
@@ -152,8 +153,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> with WidgetsBinding
       await SettingsBackup.importSettings(file);
 
       setState(() {}); 
-      SnackBar(
-                  content: Text("Settings imported successfully"),
+      showSnackBar(
+                  context: context,
+                  message: "Settings imported successfully",
                 );
     }
             },
@@ -170,8 +172,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> with WidgetsBinding
               if (Config.getUpdateAvailable()) {
                 UpdateManager.showUpdateDialog(context);
               } else {
-                SnackBar(
-                  content: Text("You're on the latest version"),
+                showSnackBar(
+                  context: context,
+                  message: "You're on the latest version",
                 );
               }
             },

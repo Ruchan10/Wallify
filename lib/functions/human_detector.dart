@@ -4,12 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import 'package:google_mlkit_object_detection/google_mlkit_object_detection.dart';
 
-/// Returns true if the image contains humans (face or person label).
 Future<bool> containsHuman(String imagePath) async {
   final file = File(imagePath);
   if (!await file.exists()) return false;
 
-  // 1) Face detection (fast)
   final faceOptions = FaceDetectorOptions(
     performanceMode: FaceDetectorMode.fast,
     enableLandmarks: false,
@@ -31,7 +29,6 @@ Future<bool> containsHuman(String imagePath) async {
     } catch (_) {}
   }
 
-  // 2) Object detection with classification (for full-body people)
   final options = ObjectDetectorOptions(
     mode: DetectionMode.single,
     classifyObjects: true,
@@ -43,7 +40,6 @@ Future<bool> containsHuman(String imagePath) async {
     final inputImage = InputImage.fromFilePath(imagePath);
     final objects = await objectDetector.processImage(inputImage);
     await objectDetector.close();
-    debugPrint("Object detected: $objects =============================");
     if (objects.isNotEmpty) {
       for (final obj in objects) {
         for (final label in obj.labels) {
