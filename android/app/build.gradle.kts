@@ -24,7 +24,7 @@ if (keystorePropertiesFile.exists()) {
 
 android {
     namespace = "com.rk.wallify"
-    compileSdk = 34
+    compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
@@ -39,9 +39,10 @@ android {
     defaultConfig {
         applicationId = "com.rk.wallify"
         minSdk = flutter.minSdkVersion
-        targetSdk = 34
+        targetSdk = 36
         versionCode = flutterVersionCode.toInt()
         versionName = flutterVersionName
+        vectorDrawables.useSupportLibrary = true
     }
 
     signingConfigs {
