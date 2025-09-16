@@ -44,6 +44,7 @@ android {
         versionName = flutterVersionName
         vectorDrawables.useSupportLibrary = true
     }
+1.1.0
 
     signingConfigs {
         create("release") {
