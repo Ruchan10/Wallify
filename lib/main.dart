@@ -1,14 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:wallify/core/app_theme.dart';
+import 'package:wallify/core/theme_provider.dart';
 import 'package:wallify/functions/background_service.dart';
+import 'package:wallify/functions/background_service.dart' as BackgroundService;
 import 'package:wallify/functions/wallpaper_manager.dart';
-import 'package:wallify/screens/automate_screen.dart';
+import 'package:wallify/screens/settings_page.dart';
 import 'package:wallify/screens/nav_bar.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   initializeService();
-
   // const MethodChannel('wallify_channel').setMethodCallHandler((call) async {
   //   if (call.method == 'changeWallpaper') {
   //     await WallpaperManager.fetchAndSetWallpaper();
@@ -33,56 +36,21 @@ void main() {
     }
   });
 
-  runApp(const MyApp());
+  runApp(const ProviderScope(child: MyApp()));
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends ConsumerWidget {
   const MyApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    final lightColorScheme = const ColorScheme(
-      brightness: Brightness.light,
-      primary: Color(0xFF7E57C2),
-      onPrimary: Colors.white,
-      secondary: Color(0xFFFF7043),
-      onSecondary: Colors.white,
-      surface: Colors.white,
-      onSurface: Color(0xFF1C1B1F),
-      error: Color(0xFFD32F2F),
-      onError: Colors.white,
-    );
-
-    final darkColorScheme = ColorScheme(
-      brightness: Brightness.dark,
-      primary: const Color(0xFFB39DDB),
-      onPrimary: const Color(0xFF1C1B1F),
-      secondary: const Color(0xFFFF8A65),
-      onSecondary: const Color(0xFF1C1B1F),
-      surface: const Color(0xFF1E1E1E),
-      onSurface: const Color(0xFFE6E1E5),
-      error: const Color(0xFFEF5350),
-      onError: const Color(0xFF1C1B1F),
-    );
-
-    ThemeData lightTheme = ThemeData(
-      colorScheme: lightColorScheme,
-      useMaterial3: true,
-      chipTheme: ChipThemeData(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      ),
-    );
-
-    ThemeData darkTheme = ThemeData(
-      colorScheme: darkColorScheme,
-      useMaterial3: true,
-    );
+  Widget build(BuildContext context, WidgetRef ref) {
+    final themeMode = ref.watch(themeProvider);
 
     return MaterialApp(
-      title: 'Auto Wallpaper',
-      theme: lightTheme,
-      darkTheme: darkTheme,
-      themeMode: ThemeMode.system,
+      title: 'Wallify',
+      theme: AppTheme.lightTheme,
+      darkTheme: AppTheme.darkTheme,
+      themeMode: themeMode,
       home: const MainScaffold(),
     );
   }

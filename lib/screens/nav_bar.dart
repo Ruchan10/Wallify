@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:wallify/screens/automate_screen.dart';
+import 'package:wallify/screens/settings_page.dart';
 import 'package:wallify/screens/discover_page.dart';
-import 'package:wallify/screens/history_page.dart';
+import 'package:wallify/screens/recents_page.dart';
 
 class MainScaffold extends StatefulWidget {
   const MainScaffold({super.key});
@@ -15,36 +15,41 @@ class _MainScaffoldState extends State<MainScaffold> {
 
   final List<Widget> _pages = [
     const DiscoverPage(),
-    const HistoryPage(),
-    const AutomateWallpaper(),
+    const FavoritesHistoryPage(),
+    const SettingsPage(),
   ];
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Scaffold(
       body: _pages[_selectedIndex],
 
       /// Material 3 NavigationBar
       bottomNavigationBar: NavigationBar(
+        elevation:4,
         selectedIndex: _selectedIndex,
+        backgroundColor: colorScheme.surface,
+        indicatorColor: colorScheme.primary.withValues(alpha: 0.2),
         onDestinationSelected: (index) {
           setState(() => _selectedIndex = index);
         },
-        destinations: const [
+        destinations: [
           NavigationDestination(
-            icon: Icon(Icons.explore_outlined),
-            selectedIcon: Icon(Icons.explore),
+            icon: Icon(Icons.explore_outlined, color: colorScheme.onSurface),
+            selectedIcon: Icon(Icons.explore, color: colorScheme.primary),
             label: "Discover",
           ),
           NavigationDestination(
-            icon: Icon(Icons.history_rounded),
-            selectedIcon: Icon(Icons.history),
+            icon: Icon(Icons.history_rounded, color: colorScheme.onSurface),
+            selectedIcon: Icon(Icons.history, color: colorScheme.primary),
             label: "Recents",
           ),
     
           NavigationDestination(
-            icon: Icon(Icons.settings_outlined),
-            selectedIcon: Icon(Icons.settings),
+            icon: Icon(Icons.settings_outlined, color: colorScheme.onSurface),
+            selectedIcon: Icon(Icons.settings, color: colorScheme.primary),
             label: "Settings",
           ),
         ],

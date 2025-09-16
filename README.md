@@ -50,5 +50,3 @@ Feel free to open a pull request.
 
 MIT License
 ✅ This setup avoids raw `<script>` in Markdown (since GitHub README doesn’t render JavaScript). Instead, I used the **BuyMeACoffee image API** which works perfectly inside GitHub README.  
-
-Do you want me to also add **badges** (Flutter, GitHub stars, downloads, license) at the top for a more professional look?

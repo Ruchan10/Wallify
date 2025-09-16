@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -14,6 +15,7 @@ class UserSharedPrefs {
   static const _lastWallpaperChangeKey = "lastWallpaperChange";
   static const _keyInterval = "wallpaper_interval";
   static const _favWallpaperKey = "favWallpaper";
+  static const _imageUrlsKey = "imageUrls";
 
   /// ---- TAGS ----
   static Future<List<String>> getTags() async {
@@ -109,6 +111,31 @@ class UserSharedPrefs {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getStringList(_wallpaperHistoryKey) ?? [];
   }
+
+  static Future<void> saveImageUrls(List<String> urls) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(_imageUrlsKey, urls);
+  }
+
+ static Future<String?> getImageUrl() async {
+    final prefs = await SharedPreferences.getInstance();
+    final urls = prefs.getStringList(_imageUrlsKey) ?? [];
+
+    if (urls.isEmpty) {
+      return null;
+    }
+
+    final random = Random();
+    final index = random.nextInt(urls.length);
+    final selectedUrl = urls[index];
+
+    urls.removeAt(index);
+
+    await prefs.setStringList(_imageUrlsKey, urls);
+
+    return selectedUrl;
+  }
+
 
   static Future<void> saveFavWallpaper(String imgUrl) async {
     final prefs = await SharedPreferences.getInstance();

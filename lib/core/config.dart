@@ -1,13 +1,13 @@
 class Config {
   static bool _updateAvaliable = false;
   static bool _isUpdateDialogOpen = false;
-  static String _appVersion = '1.0.8';
+  static String _appVersion = '1.0.9';
   static String _appName = 'Wallify';
   static bool _hasInternet = false;
-
   static Map<String, dynamic> _versionData = {};
   static String _cachedLatestVersion = '';
   static String _cachedReleaseNotes = '';
+  static List<String> _imageUrls = [];
 
   static String getAppVersion() {
     return _appVersion;
@@ -71,5 +71,12 @@ class Config {
 
   static String getCachedReleaseNotes() {
     return _cachedReleaseNotes;
+  }
+
+  static List<String> getImageUrls() {
+    return _imageUrls;
+  }
+  static void setImageUrls(List<String> imageUrls) {
+    _imageUrls = imageUrls;
   }
 }

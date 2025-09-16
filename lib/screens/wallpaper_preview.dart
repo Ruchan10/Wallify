@@ -1,8 +1,10 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:photo_view/photo_view.dart';
+import 'package:photo_view/photo_view_gallery.dart';
+import 'package:wallify/core/user_shared_prefs.dart';
 import 'package:wallify/functions/wallpaper_manager.dart';
 import 'package:wallpaper_manager_flutter/wallpaper_manager_flutter.dart';
-// import your own WallpaperManager if you wrapped it
 
 class WallpaperPreviewPage extends StatefulWidget {
   final String imageUrl;
@@ -42,7 +44,7 @@ class _WallpaperPreviewPageState extends State<WallpaperPreviewPage> {
             mainAxisSize: MainAxisSize.min,
             children: [
               ListTile(
-                leading: const Icon(Icons.home),
+                leading: Icon(Icons.home, color: colorScheme.primary), 
                 title: const Text("Set as Home Screen"),
                 onTap: () async {
                   Navigator.pop(context);
@@ -50,7 +52,7 @@ class _WallpaperPreviewPageState extends State<WallpaperPreviewPage> {
                 },
               ),
               ListTile(
-                leading: const Icon(Icons.lock),
+                leading: Icon(Icons.lock, color: colorScheme.primary), 
                 title: const Text("Set as Lock Screen"),
                 onTap: () async {
                   Navigator.pop(context);
@@ -58,7 +60,7 @@ class _WallpaperPreviewPageState extends State<WallpaperPreviewPage> {
                 },
               ),
               ListTile(
-                leading: const Icon(Icons.phone_android),
+                leading: Icon(Icons.phone_android, color: colorScheme.primary), 
                 title: const Text("Set as Both"),
                 onTap: () async {
                   Navigator.pop(context);
@@ -74,14 +76,13 @@ class _WallpaperPreviewPageState extends State<WallpaperPreviewPage> {
 
   Future<void> _setWallpaper(int location) async {
     try {
-      
       await WallpaperManager.fetchAndSetWallpaper(
         wallpaperLocation: location,
         imageUrl: widget.imageUrl,
       );
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Wallpaper set successfully!")),
+        const SnackBar(content: Text("Wallpaper set successfully!")),
       );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -103,58 +104,50 @@ class _WallpaperPreviewPageState extends State<WallpaperPreviewPage> {
       extendBodyBehindAppBar: true,
       body: Stack(
         children: [
-          /// Fullscreen Image
+          /// Fullscreen interactive wallpaper preview
           Positioned.fill(
-            child: InteractiveViewer(
-              child: 
-               CachedNetworkImage(
-  imageUrl: widget.imageUrl,
-  fit: BoxFit.cover,
-  placeholder: (context, url) => Container(
-    height: 200,
-    color: Colors.grey[200],
-    child: const Center(
-      child: CircularProgressIndicator(),
-    ),
-  ),
-  errorWidget: (context, url, error) => Container(
-    height: 200,
-    color: Colors.grey[200],
-    child: const Icon(Icons.broken_image, color: Colors.grey),
-  ),
-),
+            child: PhotoView(
+              imageProvider: CachedNetworkImageProvider(widget.imageUrl),
+              minScale: PhotoViewComputedScale.contained, 
+              maxScale: PhotoViewComputedScale.covered * 4, 
+              initialScale: PhotoViewComputedScale.contained,
+              backgroundDecoration: const BoxDecoration(color: Colors.black),
+              enableRotation: false,
             ),
           ),
 
-          /// Buttons (bottom right)
+          /// Floating buttons (bottom right)
           Positioned(
             bottom: 24,
             right: 24,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                /// Love button
-                FloatingActionButton(
+                /// Favorite toggle
+                FloatingActionButton.extended(
                   heroTag: "fav_btn",
-                  mini: true,
-                  backgroundColor: Colors.black54,
+                  backgroundColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.8),
+                  foregroundColor: colorScheme.onSurface,
                   onPressed: () {
                     setState(() => _isFavorite = !_isFavorite);
-                    // TODO: Save to favorites in shared prefs/db
+                    if (_isFavorite) {
+                      UserSharedPrefs.removeFavWallpaper(widget.imageUrl);
+                    } else {
+                      UserSharedPrefs.saveFavWallpaper(widget.imageUrl);
+                    }
                   },
-                  child: Icon(
+                  label: Icon(
                     _isFavorite ? Icons.favorite : Icons.favorite_border,
-                    color: _isFavorite
-                        ? colorScheme.secondary
-                        : colorScheme.onPrimary,
+                    color: _isFavorite ? colorScheme.secondary : colorScheme.onSurface,
                   ),
                 ),
                 const SizedBox(height: 12),
 
-                /// Set Wallpaper button
+                /// Set wallpaper button
                 FloatingActionButton.extended(
                   heroTag: "set_wallpaper_btn",
                   backgroundColor: colorScheme.primary,
+                  foregroundColor: colorScheme.onPrimary,
                   onPressed: () => _showSetWallpaperOptions(context),
                   icon: const Icon(Icons.wallpaper),
                   label: const Text("Set"),

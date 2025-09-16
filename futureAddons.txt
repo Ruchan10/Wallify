@@ -1,15 +1,8 @@
-- checkboxes for device ideal, charging, network connected, human detected 
-- cache for future wallpaper so no need to fetch 
-- automate page to settings page (theme, export,import, update, select sources) diff section for auto wallpaper
-- if no internet, use cached wallpaper
-- export/import settings
-- make the wallpaper changes more streamlined(maybe save the responses from each url at once and then change wallpaper(randomly from the saved list then remove) from that one by one only fetch again if the saved fetch list is empty )
-- in settings allow error/crash reporting
-- add fav wallpapers to sources
-- permission dialog to change batery usage
 - in wallpaper preview page make the image draggable, buttons should have same width
+- in settings allow error/crash reporting
+- more info on wallpaper in preview
+- auto start on device boot up
 
-- history page 
-- discover page 
-- auto start on boot up
-- ask user to set battey usage to unrestricted
+
+
+- use a single function to fetch images
