@@ -1,9 +1,9 @@
 - in wallpaper preview page make the image draggable, buttons should have same width
-- checkboxes
+- checkboxes (charging, human, etc)
 - in settings allow error/crash reporting
 - more info on wallpaper in preview
+- filters in discover
+- save wallpapers in config file
+
+
 - auto start on device boot up
-
-
-- scrollaing reloads the images
-- use a single function to fetch images

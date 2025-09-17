@@ -20,7 +20,6 @@ class WallpaperManager {
   static String tag = "nature";
   static final usp = UserSharedPrefs();
 
-  // Move your fetch and set wallpaper logic here
   static Future<String> fetchAndSetWallpaper({
     List<String>? savedTags,
     int wallpaperLocation = WallpaperManagerFlutter.bothScreens,
@@ -168,7 +167,6 @@ class WallpaperManager {
     } catch (e) {
       debugPrint("❌ Error fetching images: $e");
     }
-
     return urls;
   }
 }
