@@ -1,7 +1,4 @@
 - checkboxes (charging, human, etc)
 - in settings allow error/crash reporting
 - more info on wallpaper in preview
-- filters in discover
 - how to implement orientationin wallheaven with other filters in other api as well 
-
-- auto start on device boot up

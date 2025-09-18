@@ -1,160 +1,170 @@
-import 'package:cached_network_image/cached_network_image.dart';
-import 'package:flutter/material.dart';
-import 'package:photo_view/photo_view.dart';
-import 'package:wallify/core/user_shared_prefs.dart';
-import 'package:wallify/functions/wallpaper_manager.dart';
-import 'package:wallpaper_manager_flutter/wallpaper_manager_flutter.dart';
+class _DiscoverPageState extends ConsumerState<DiscoverPage> {
+  final TextEditingController _searchController = TextEditingController();
+  List<String> _images = Config.getImageUrls();
+  bool _isLoading = false;
+  int count = 1;
+  final ScrollController _scrollController = ScrollController();
 
-class WallpaperPreviewPage extends StatefulWidget {
-  final String imageUrl;
-  final bool isFavorite;
+  String? _lastQuery;
+  final Set<String> favorites = {};
+  String? _selectedSorting;
+  String? _selectedPurity;
+  String? _selectedOrientation;
+  String? _selectedCategory;
+  String? _selectedRange;
 
-  const WallpaperPreviewPage({
-    super.key,
-    required this.imageUrl,
-    this.isFavorite = false,
-  });
-
-  @override
-  State<WallpaperPreviewPage> createState() => _WallpaperPreviewPageState();
-}
-
-class _WallpaperPreviewPageState extends State<WallpaperPreviewPage> {
-  late bool _isFavorite;
+  bool _showTopBar = true; // 👈 track visibility
+  double _lastOffset = 0;  // 👈 track last scroll position
 
   @override
   void initState() {
     super.initState();
-    _isFavorite = widget.isFavorite;
-  }
-
-  void _showSetWallpaperOptions(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme; // ✅ Use theme
-
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: colorScheme.surface, // ✅ Theme
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (context) {
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                leading: Icon(Icons.home, color: colorScheme.primary), // ✅ Theme
-                title: const Text("Set as Home Screen"),
-                onTap: () async {
-                  Navigator.pop(context);
-                  await _setWallpaper(WallpaperManagerFlutter.homeScreen);
-                },
-              ),
-              ListTile(
-                leading: Icon(Icons.lock, color: colorScheme.primary), // ✅ Theme
-                title: const Text("Set as Lock Screen"),
-                onTap: () async {
-                  Navigator.pop(context);
-                  await _setWallpaper(WallpaperManagerFlutter.lockScreen);
-                },
-              ),
-              ListTile(
-                leading: Icon(Icons.phone_android, color: colorScheme.primary), // ✅ Theme
-                title: const Text("Set as Both"),
-                onTap: () async {
-                  Navigator.pop(context);
-                  await _setWallpaper(WallpaperManagerFlutter.bothScreens);
-                },
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  Future<void> _setWallpaper(int location) async {
-    try {
-      await WallpaperManager.fetchAndSetWallpaper(
-        wallpaperLocation: location,
-        imageUrl: widget.imageUrl,
-      );
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Wallpaper set successfully!")),
-      );
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Error: $e")),
-      );
+    if (Config.getImageUrls().isEmpty) {
+      _fetchImages();
     }
+
+    _scrollController.addListener(() {
+      final offset = _scrollController.position.pixels;
+
+      // Hide when scrolling down, show when scrolling up
+      if (offset > _lastOffset && _showTopBar) {
+        setState(() => _showTopBar = false);
+      } else if (offset < _lastOffset && !_showTopBar) {
+        setState(() => _showTopBar = true);
+      }
+
+      _lastOffset = offset;
+
+      // Pagination
+      if (_scrollController.position.pixels >=
+          _scrollController.position.maxScrollExtent - 200 &&
+          !_isLoading) {
+        count++;
+        _fetchImages(query: _searchController.text.isNotEmpty
+            ? _searchController.text
+            : null);
+      }
+    });
   }
+
+  // ... keep your _fetchImages and _showFilters methods ...
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme; // ✅ Use theme
+    final colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
-      backgroundColor: Colors.black, // keep preview dark
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-      ),
-      extendBodyBehindAppBar: true,
-      body: Stack(
-        children: [
-          /// Fullscreen interactive wallpaper preview
-          Positioned.fill(
-            child: PhotoView(
-              imageProvider: CachedNetworkImageProvider(widget.imageUrl),
-              minScale: PhotoViewComputedScale.contained,
-              maxScale: PhotoViewComputedScale.covered * 4,
-              initialScale: PhotoViewComputedScale.contained,
-              backgroundDecoration: const BoxDecoration(color: Colors.black),
-              enableRotation: false,
+      body: SafeArea(
+        child: Column(
+          children: [
+            /// 🔹 Animated Top Bar (Search + Filter)
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeInOut,
+              height: _showTopBar ? 100 : 0, // 👈 collapse height
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: _showTopBar
+                  ? Column(
+                      spacing: 8,
+                      children: [
+                        TextField(
+                          controller: _searchController,
+                          decoration: InputDecoration(
+                            hintText: "Search...",
+                            suffixIcon: _searchController.text.isNotEmpty
+                                ? IconButton(
+                                    icon: const Icon(Icons.clear),
+                                    onPressed: () {
+                                      setState(() {
+                                        _searchController.clear();
+                                        _lastQuery = null;
+                                        _images.clear();
+                                      });
+                                      _fetchImages();
+                                    },
+                                  )
+                                : null,
+                          ),
+                          onSubmitted: (value) {
+                            if (value.isNotEmpty) {
+                              _fetchImages(query: value.trim(), isSearch: true);
+                            }
+                          },
+                          onChanged: (_) => setState(() {}),
+                        ),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            TextButton.icon(
+                              icon: const Icon(Icons.filter_list),
+                              label: const Text("Filters"),
+                              onPressed: () => _showFilters(context),
+                            ),
+                          ],
+                        ),
+                      ],
+                    )
+                  : null,
             ),
-          ),
 
-          /// Floating buttons (bottom right)
-          Positioned(
-            bottom: 24,
-            right: 24,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                /// Favorite toggle
-                FloatingActionButton.extended(
-                  heroTag: "fav_btn",
-                  backgroundColor: colorScheme.surfaceVariant.withOpacity(0.8), // ✅ Theme
-                  foregroundColor: colorScheme.onSurface, // ✅ Theme
-                  onPressed: () {
-                    setState(() => _isFavorite = !_isFavorite);
-                    if (_isFavorite) {
-                      UserSharedPrefs.saveFavWallpaper(widget.imageUrl);
-                    } else {
-                      UserSharedPrefs.removeFavWallpaper(widget.imageUrl);
-                    }
-                  },
-                  label: Icon(
-                    _isFavorite ? Icons.favorite : Icons.favorite_border,
-                    color: _isFavorite ? colorScheme.secondary : colorScheme.onSurface, // ✅ Theme
+            if (_lastQuery != null && _showTopBar)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 16, bottom: 8),
+                  child: Text(
+                    "Showing results for \"$_lastQuery\"",
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
                   ),
                 ),
-                const SizedBox(height: 12),
+              ),
 
-                /// Set wallpaper button
-                FloatingActionButton.extended(
-                  heroTag: "set_wallpaper_btn",
-                  backgroundColor: colorScheme.primary, // ✅ Theme
-                  foregroundColor: colorScheme.onPrimary, // ✅ Theme
-                  onPressed: () => _showSetWallpaperOptions(context),
-                  icon: const Icon(Icons.wallpaper),
-                  label: const Text("Set"),
-                ),
-              ],
+            /// 🔹 Images Grid
+            Expanded(
+              child: _images.isEmpty
+                  ? Center(
+                      child: Text(
+                        _isLoading ? "Loading..." : "No wallpapers",
+                        style: TextStyle(color: colorScheme.onSurface),
+                      ),
+                    )
+                  : MasonryGridView.builder(
+                      key: const PageStorageKey("discover_grid"),
+                      controller: _scrollController,
+                      gridDelegate:
+                          SliverSimpleGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 2,
+                      ),
+                      mainAxisSpacing: 4,
+                      crossAxisSpacing: 4,
+                      itemCount: _images.length,
+                      itemBuilder: (context, index) {
+                        final img = _images[index];
+                        final isFav = favorites.contains(img);
+
+                        return ImageTile(
+                          img: img,
+                          isFav: isFav,
+                          onFavToggle: () {
+                            setState(() {
+                              if (isFav) {
+                                favorites.remove(img);
+                                UserSharedPrefs.removeFavWallpaper(img);
+                              } else {
+                                favorites.add(img);
+                                UserSharedPrefs.saveFavWallpaper(img);
+                              }
+                            });
+                          },
+                        );
+                      },
+                    ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

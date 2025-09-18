@@ -31,7 +31,7 @@ class _FavoritesHistoryPageState extends State<FavoritesHistoryPage> {
     final colorScheme = Theme.of(context).colorScheme;
 
     if (images.isEmpty) {
-      return Center(child: Text("No wallpapers found",
+      return Center(child: Text(isHistory ? "No history found" : "No favorites found",
       style: TextStyle(color: colorScheme.onSurface), ));
     }
 
@@ -126,7 +126,7 @@ class _FavoritesHistoryPageState extends State<FavoritesHistoryPage> {
           foregroundColor: colorScheme.onPrimary,
           bottom: TabBar(
             indicatorColor: colorScheme.secondary.withValues(alpha: 0.8),
-            labelColor: colorScheme.secondary,
+            labelColor: colorScheme.onSurface,
             unselectedLabelColor: colorScheme.onSurface.withValues(alpha: 0.7),
             tabs: [
               Tab(text: "Favorites"),

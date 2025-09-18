@@ -8,10 +8,10 @@ on:
 
 env:
   APK_NAME: "Wallify"
-  APP_VERSION: "1.1.2"
+  APP_VERSION: "1.1.3"
   CHANGES: |
-    - Filters Added
-    - Repeated api call fixed
+    - Source fixed
+    - Hide search&filter section
     - Misc Improvements
 
 jobs:

@@ -182,7 +182,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> with WidgetsBinding
           const Divider(),
           SizedBox(height: 16),
 
-          // ========== AUTOMATE WALLPAPER ==========
           Text("Automate Wallpaper",
               style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 12),
@@ -191,7 +190,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> with WidgetsBinding
 
           const SizedBox(height: 20),
 
-          // --- History ---
           Text("History", style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),
           if (statusHistory.isEmpty)
