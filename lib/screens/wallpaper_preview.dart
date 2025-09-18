@@ -112,7 +112,7 @@ class _WallpaperPreviewPageState extends State<WallpaperPreviewPage> {
               maxScale: PhotoViewComputedScale.covered * 4, 
               initialScale: PhotoViewComputedScale.contained,
               backgroundDecoration: const BoxDecoration(color: Colors.black),
-              enableRotation: false,
+              enableRotation: true,
             ),
           ),
 
@@ -123,8 +123,7 @@ class _WallpaperPreviewPageState extends State<WallpaperPreviewPage> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                /// Favorite toggle
-                FloatingActionButton.extended(
+                FloatingActionButton(
                   heroTag: "fav_btn",
                   backgroundColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.8),
                   foregroundColor: colorScheme.onSurface,
@@ -136,21 +135,19 @@ class _WallpaperPreviewPageState extends State<WallpaperPreviewPage> {
                       UserSharedPrefs.saveFavWallpaper(widget.imageUrl);
                     }
                   },
-                  label: Icon(
+                  child: Icon(
                     _isFavorite ? Icons.favorite : Icons.favorite_border,
                     color: _isFavorite ? colorScheme.secondary : colorScheme.onSurface,
                   ),
                 ),
                 const SizedBox(height: 12),
 
-                /// Set wallpaper button
-                FloatingActionButton.extended(
+                FloatingActionButton(
                   heroTag: "set_wallpaper_btn",
                   backgroundColor: colorScheme.primary,
                   foregroundColor: colorScheme.onPrimary,
                   onPressed: () => _showSetWallpaperOptions(context),
-                  icon: const Icon(Icons.wallpaper),
-                  label: const Text("Set"),
+                  child: const Icon(Icons.wallpaper),
                 ),
               ],
             ),

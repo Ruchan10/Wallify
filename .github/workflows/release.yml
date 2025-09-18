@@ -8,9 +8,11 @@ on:
 
 env:
   APK_NAME: "Wallify"
-  APP_VERSION: "1.1.1"
+  APP_VERSION: "1.1.2"
   CHANGES: |
-    - images reloading fixed
+    - Filters Added
+    - Repeated api call fixed
+    - Misc Improvements
 
 jobs:
   build:

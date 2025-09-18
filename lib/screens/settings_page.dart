@@ -165,8 +165,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> with WidgetsBinding
 
           // ========== CHECK UPDATE ==========
           ListTile(
-            leading:  Icon(Icons.system_update, color: scheme.primary),
-            title: const Text("Check for Updates"),
+            leading:  Icon(Config.getUpdateAvailable() ? Icons.update : Icons.system_update, color: scheme.primary),
+            title: Config.getUpdateAvailable() ? Text("Update Available") : Text("Check for Updates"),
             onTap: () {
               UpdateManager.checkForUpdates();
               if (Config.getUpdateAvailable()) {

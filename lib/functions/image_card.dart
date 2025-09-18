@@ -1,5 +1,6 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:wallify/screens/wallpaper_preview.dart';
 
 class ImageTile extends StatefulWidget {
   final String img;
@@ -22,26 +23,37 @@ class _ImageTileState extends State<ImageTile> with AutomaticKeepAliveClientMixi
     final colorScheme = Theme.of(context).colorScheme;
 
     return ClipRRect(
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(8),
       child: Stack(
         children: [
-          CachedNetworkImage(
-            imageUrl: widget.img,
-            fit: BoxFit.cover,
-            placeholder: (context, url) => Container(
-              height: 200,
-              color: colorScheme.surface.withValues(alpha: 0.3),
-              child: const Center(child: CircularProgressIndicator()),
-            ),
-            errorWidget: (context, url, error) => Container(
-              height: 200,
-              color: colorScheme.surface.withValues(alpha: 0.2),
-              child: Icon(Icons.broken_image, color: colorScheme.onSurface.withValues(alpha: 0.5)),
+          GestureDetector(
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) =>
+                      WallpaperPreviewPage(imageUrl: widget.img, isFavorite: widget.isFav),
+                ),
+              );
+            },
+            child: CachedNetworkImage(
+              imageUrl: widget.img,
+              fit: BoxFit.cover,
+              placeholder: (context, url) => Container(
+                height: 200,
+                color: colorScheme.surface.withValues(alpha: 0.3),
+                child: const Center(child: CircularProgressIndicator()),
+              ),
+              errorWidget: (context, url, error) => Container(
+                height: 200,
+                color: colorScheme.surface.withValues(alpha: 0.2),
+                child: Icon(Icons.broken_image, color: colorScheme.onSurface.withValues(alpha: 0.5)),
+              ),
             ),
           ),
           Positioned(
-            top: 8,
-            right: 8,
+            top: 4,
+            right: 4,
             child: IconButton(
               style: IconButton.styleFrom(
                 backgroundColor: colorScheme.surface.withValues(alpha: 0.6),
