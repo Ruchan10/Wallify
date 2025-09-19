@@ -113,7 +113,7 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
       /// 🔹 Unsplash
       final unsplashRes = await http.get(
         Uri.parse(
-          "https://api.unsplash.com/photos"
+          "${query == null ? "https://api.unsplash.com/photos" : "https://api.unsplash.com/search/photos"}"
           "?order_by=relevant"
           "${query == null ? "" : "&query=$query"}"
           "${_selectedSorting == null ? "" : "&order_by=${_selectedSorting == "dater_added" ? "latest" : "relevant"}"}"
@@ -127,8 +127,12 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
         },
       );
       final unsplashData = jsonDecode(unsplashRes.body);
+      if(query == null){
       debugPrint("Unsplash: ${unsplashData.length} ===================");
-      for (var item in unsplashData) {
+      }else{
+        debugPrint("Unsplash: ${unsplashData["results"].length} ===================");
+      }
+      for (var item in query == null ? unsplashData : unsplashData["results"]) {
         results.add(item["urls"]["regular"]);
         precacheImage(
           CachedNetworkImageProvider(item["urls"]["regular"]),
@@ -150,7 +154,6 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
         ),
       );
       final pixabayData = jsonDecode(pixabayRes.body);
-      debugPrint("Pixabay: ${pixabayData["hits"].length} ===================");
       for (var item in pixabayData["hits"]) {
         results.add(item["largeImageURL"]);
         precacheImage(

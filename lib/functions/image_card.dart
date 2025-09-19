@@ -40,12 +40,12 @@ class _ImageTileState extends State<ImageTile> with AutomaticKeepAliveClientMixi
               imageUrl: widget.img,
               fit: BoxFit.cover,
               placeholder: (context, url) => Container(
-                height: 200,
+                height: 100,
                 color: colorScheme.surface.withValues(alpha: 0.3),
                 child: const Center(child: CircularProgressIndicator()),
               ),
               errorWidget: (context, url, error) => Container(
-                height: 200,
+                height: 100,
                 color: colorScheme.surface.withValues(alpha: 0.2),
                 child: Icon(Icons.broken_image, color: colorScheme.onSurface.withValues(alpha: 0.5)),
               ),

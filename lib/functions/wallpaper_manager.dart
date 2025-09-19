@@ -28,23 +28,22 @@ class WallpaperManager {
   }) async {
     final lastChange = await UserSharedPrefs.getLastWallpaperChange();
     interval = await UserSharedPrefs.getInterval();
-    imageUrl = await UserSharedPrefs.getImageUrl();
+    imageUrl ??= await UserSharedPrefs.getImageUrl();
 
+    bool hasInternet = await BackgroundService.hasInternet();
 
-      bool hasInternet = await BackgroundService.hasInternet();
-
-      if (!hasInternet) {
-        final offlineFile = await BackgroundService.getRandomCachedWallpaper();
-        if (offlineFile == null) {
-          return "No internet and no cached wallpapers available.";
-        }
-
-        await WallpaperManagerFlutter().setWallpaper(
-          offlineFile.path,
-          wallpaperLocation,
-        );
-        return "Offline wallpaper set from cache 🖼️";
+    if (!hasInternet) {
+      final offlineFile = await BackgroundService.getRandomCachedWallpaper();
+      if (offlineFile == null) {
+        return "No internet and no cached wallpapers available.";
       }
+
+      await WallpaperManagerFlutter().setWallpaper(
+        offlineFile.path,
+        wallpaperLocation,
+      );
+      return "Offline wallpaper set from cache 🖼️";
+    }
       
     try {
       if (imageUrl == null) {
@@ -162,6 +161,7 @@ class WallpaperManager {
       );
       final pixabayData = jsonDecode(pixabayRes.body);
       for (var item in pixabayData["hits"]) {
+
         urls.add(item["largeImageURL"]);
       }
     } catch (e) {

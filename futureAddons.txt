@@ -1,3 +1,7 @@
+- get info off of unsplash and pixabay
+- when setting wallpaper a crop and set UI
+
+
 - checkboxes (charging, human, etc)
 - in settings allow error/crash reporting
 - more info on wallpaper in preview

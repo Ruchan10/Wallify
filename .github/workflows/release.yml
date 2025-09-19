@@ -8,10 +8,10 @@ on:
 
 env:
   APK_NAME: "Wallify"
-  APP_VERSION: "1.1.3"
+  APP_VERSION: "1.1.4"
   CHANGES: |
-    - Source fixed
-    - Hide search&filter section
+    - Better searching algorithm
+    - Info section in wallpaper preview
     - Misc Improvements
 
 jobs:
