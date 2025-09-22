@@ -4,9 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:wallify/core/app_theme.dart';
 import 'package:wallify/core/theme_provider.dart';
 import 'package:wallify/functions/background_service.dart';
-import 'package:wallify/functions/background_service.dart' as BackgroundService;
 import 'package:wallify/functions/wallpaper_manager.dart';
-import 'package:wallify/screens/settings_page.dart';
 import 'package:wallify/screens/nav_bar.dart';
 
 void main() {

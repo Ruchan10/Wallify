@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'dart:convert';
 
 class WallpaperInfoSheet extends StatelessWidget {
   final Map<String, dynamic> info;

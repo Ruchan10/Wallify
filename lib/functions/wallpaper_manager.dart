@@ -6,10 +6,10 @@ import 'dart:ui' as ui show Rect;
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
+import 'package:wallify/core/user_shared_prefs.dart';
 import 'package:wallify/functions/background_service.dart' as BackgroundService;
 import 'package:wallify/functions/human_detector.dart' as humandetector;
 import 'package:wallify/functions/image_cropper.dart';
-import 'package:wallify/core/user_shared_prefs.dart';
 import 'package:wallpaper_manager_flutter/wallpaper_manager_flutter.dart';
 
 class WallpaperManager {
@@ -22,7 +22,7 @@ class WallpaperManager {
 
   static Future<String> fetchAndSetWallpaper({
     List<String>? savedTags,
-    int wallpaperLocation = WallpaperManagerFlutter.bothScreens,
+    int wallpaperLocation = WallpaperManagerFlutter.homeScreen,
     bool changeNow = false,
     String? imageUrl,
   }) async {
@@ -44,7 +44,7 @@ class WallpaperManager {
       );
       return "Offline wallpaper set from cache 🖼️";
     }
-      
+
     try {
       if (imageUrl == null) {
         if (lastChange != null) {
@@ -114,7 +114,6 @@ class WallpaperManager {
   }
 
   static Future<List<String>> _fetchImagesFromAllSources() async {
-
     try {
       urls.addAll(await UserSharedPrefs.getFavWallpaper());
       // Wallhaven
@@ -161,7 +160,6 @@ class WallpaperManager {
       );
       final pixabayData = jsonDecode(pixabayRes.body);
       for (var item in pixabayData["hits"]) {
-
         urls.add(item["largeImageURL"]);
       }
     } catch (e) {

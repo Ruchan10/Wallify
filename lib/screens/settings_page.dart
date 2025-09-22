@@ -31,7 +31,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> with WidgetsBinding
 
   StreamSubscription<BatteryState>? _batterySubscription;
   int _intervalHours = 1;
-  TextEditingController _intervalController = TextEditingController(text: "1");
+  final TextEditingController _intervalController = TextEditingController(text: "1");
 
   BatteryState? _lastBatteryState;
 

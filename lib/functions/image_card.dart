@@ -7,7 +7,7 @@ class ImageTile extends StatefulWidget {
   final bool isFav;
   final VoidCallback onFavToggle;
 
-  const ImageTile({required this.img, required this.isFav, required this.onFavToggle});
+  const ImageTile({super.key, required this.img, required this.isFav, required this.onFavToggle});
 
   @override
   State<ImageTile> createState() => _ImageTileState();

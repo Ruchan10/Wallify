@@ -1,7 +1,7 @@
 class _DiscoverPageState extends ConsumerState<DiscoverPage> {
   final TextEditingController _searchController = TextEditingController();
-  List<String> _images = Config.getImageUrls();
-  bool _isLoading = false;
+  final List<String> _images = Config.getImageUrls();
+  final bool _isLoading = false;
   int count = 1;
   final ScrollController _scrollController = ScrollController();
 

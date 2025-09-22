@@ -99,7 +99,7 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
                     ? "110"
                     : "111"}"}"
           "${_selectedSorting == null ? "" : "&sorting=${_selectedRange == null ? _selectedSorting : "toplist"}"}"
-          "${_selectedRange == null ? "" : "&topRange=${_selectedRange}"}"
+          "${_selectedRange == null ? "" : "&topRange=$_selectedRange"}"
           "${query == null ? "" : "&q=$query"}",
         ),
       );

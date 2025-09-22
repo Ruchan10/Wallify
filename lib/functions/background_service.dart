@@ -16,7 +16,7 @@ import 'package:wallpaper_manager_flutter/wallpaper_manager_flutter.dart';
 bool _listenersInitialized = false;
 
 void initializeService() async {
-  ensureNotificationPermission();
+  await ensureNotificationPermission();
   final service = FlutterBackgroundService();
   await service.configure(
     androidConfiguration: AndroidConfiguration(
