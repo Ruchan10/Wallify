@@ -1,4 +1,4 @@
-- get info off of unsplash and pixabay
+- get info off of unsplash and pixabay - need to save id as well while quering
 - when setting wallpaper a crop and set UI
 
 

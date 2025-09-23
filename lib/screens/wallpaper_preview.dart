@@ -1,8 +1,11 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:image_cropper/image_cropper.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:photo_view/photo_view.dart';
 import 'package:wallify/core/snackbar.dart';
 import 'package:wallify/core/user_shared_prefs.dart';
@@ -81,36 +84,66 @@ class _WallpaperPreviewPageState extends State<WallpaperPreviewPage> {
       },
     );
   }
-
+    
   Future<void> _setWallpaper(int location) async {
     try {
-      await WallpaperManager.fetchAndSetWallpaper(
-        wallpaperLocation: location,
-        imageUrl: widget.imageUrl,
+      final response = await http.get(Uri.parse(widget.imageUrl));
+      final dir = await getTemporaryDirectory();
+      final file = File("${dir.path}/wallpaper.jpg");
+      await file.writeAsBytes(response.bodyBytes);
+
+      final croppedFile = await ImageCropper().cropImage(
+        sourcePath: file.path,
+        uiSettings: [
+          AndroidUiSettings(
+            toolbarTitle: "Crop Wallpaper",
+            toolbarColor: Theme.of(context).colorScheme.surface,
+            toolbarWidgetColor: Theme.of(context).colorScheme.onSurface,
+            activeControlsWidgetColor: Theme.of(context).colorScheme.primary,
+            initAspectRatio: CropAspectRatioPreset.original,
+            lockAspectRatio: false,
+          ),
+          IOSUiSettings(
+            title: "Crop Wallpaper",
+            aspectRatioLockEnabled: false,
+          ),
+        ],
       );
 
-      showSnackBar(context: context, message: "Wallpaper set successfully");
+
+      if (croppedFile == null) {
+        showSnackBar(context: context, message: "Crop canceled", color: Colors.red);
+        return;
+      }
+
+      await WallpaperManagerFlutter().setWallpaper(
+        croppedFile.path,
+        location,
+      );
+
+      showSnackBar(context: context, message: "Wallpaper set successfully ✅");
     } catch (e) {
-      showSnackBar(context: context, message: "Error: $e");
+      showSnackBar(context: context, message: "Error: $e", color: Colors.red);
     }
   }
 
+
   Future<void> _loadInfo() async {
-  debugPrint("URL:- ${widget.imageUrl} ===============================");
+    debugPrint("URL:- ${widget.imageUrl} ===============================");
 
-  Map<String, dynamic>? data;
+    Map<String, dynamic>? data;
 
-  if (widget.imageUrl.contains("wallhaven")) {
-    data = await fetchWallhavenInfo(widget.imageUrl);
-  } else if (widget.imageUrl.contains("pixabay.com")) {
-    data = await fetchPixabayInfo(widget.imageUrl);
-  } else if (widget.imageUrl.contains("unsplash.com")) {
-    data = await fetchUnsplashInfo(widget.imageUrl);
+    if (widget.imageUrl.contains("wallhaven")) {
+      data = await fetchWallhavenInfo(widget.imageUrl);
+    } else if (widget.imageUrl.contains("pixabay.com")) {
+      data = await fetchPixabayInfo(widget.imageUrl);
+    } else if (widget.imageUrl.contains("unsplash.com")) {
+      data = await fetchUnsplashInfo(widget.imageUrl);
+    }
+
+    setState(() => _info = data);
+    debugPrint(jsonEncode(_info), wrapWidth: 1024);
   }
-
-  setState(() => _info = data);
-  debugPrint(jsonEncode(_info), wrapWidth: 1024);
-}
 
 Future<Map<String, dynamic>?> fetchWallhavenInfo(String url) async {
   try {
