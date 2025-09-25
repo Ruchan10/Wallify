@@ -2,6 +2,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import 'package:wallify/core/user_shared_prefs.dart';
+import 'package:wallify/model/wallpaper_model.dart';
 import 'package:wallify/screens/wallpaper_preview.dart';
 
 class FavoritesHistoryPage extends StatefulWidget {
@@ -12,8 +13,8 @@ class FavoritesHistoryPage extends StatefulWidget {
 }
 
 class _FavoritesHistoryPageState extends State<FavoritesHistoryPage> {
-  List<String> historyWalls = [];
-  List<String> favWalls = [];
+  List<Wallpaper> historyWalls = [];
+  List<Wallpaper> favWalls = [];
 
   @override
   void initState() {
@@ -23,11 +24,11 @@ class _FavoritesHistoryPageState extends State<FavoritesHistoryPage> {
 
   void _initialize() async {
     historyWalls = await UserSharedPrefs.getWallpaperHistory();
-    favWalls = await UserSharedPrefs.getFavWallpaper();
+    favWalls = await UserSharedPrefs.getFavWallpapers();
     setState(() {});
   }
 
-  Widget _buildGrid(List<String> images, {required bool isHistory}) {
+  Widget _buildGrid(List<Wallpaper> images, {required bool isHistory}) {
     final colorScheme = Theme.of(context).colorScheme;
 
     if (images.isEmpty) {
@@ -43,8 +44,8 @@ class _FavoritesHistoryPageState extends State<FavoritesHistoryPage> {
         crossAxisSpacing: 8,
         itemCount: images.length,
         itemBuilder: (context, index) {
-          final url = images[index];
-          final isFav = favWalls.contains(url);
+          final wallpaper = images[index];
+          final isFav = favWalls.contains(wallpaper);
       
           return ClipRRect(
             borderRadius: BorderRadius.circular(12),
@@ -56,13 +57,13 @@ class _FavoritesHistoryPageState extends State<FavoritesHistoryPage> {
                       context,
                       MaterialPageRoute(
                         builder: (context) =>
-                            WallpaperPreviewPage(imageUrl: url, isFavorite: isFav),
+                            WallpaperPreviewPage(wallpaper: wallpaper, isFavorite: isFav),
                       ),
                     );
                   },
                   child: CachedNetworkImage(
-                    key: ValueKey(url),
-                    imageUrl: url,
+                    key: ValueKey(wallpaper.url),
+                    imageUrl: wallpaper.url,
                     fit: BoxFit.cover,
                     placeholder: (context, url) => Container(
                       height: 200,
@@ -93,11 +94,11 @@ class _FavoritesHistoryPageState extends State<FavoritesHistoryPage> {
                     onPressed: () {
                       setState(() {
                         if (isFav) {
-                          favWalls.remove(url);
-                          UserSharedPrefs.removeFavWallpaper(url);
+                          favWalls.remove(wallpaper);
+                          UserSharedPrefs.removeFavWallpaper(wallpaper);
                         } else {
-                          favWalls.add(url);
-                          UserSharedPrefs.saveFavWallpaper(url);
+                          favWalls.add(wallpaper);
+                          UserSharedPrefs.saveFavWallpaper(wallpaper);
                         }
                       });
                     },

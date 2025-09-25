@@ -1,13 +1,14 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:wallify/model/wallpaper_model.dart';
 import 'package:wallify/screens/wallpaper_preview.dart';
 
 class ImageTile extends StatefulWidget {
-  final String img;
+  final Wallpaper wallpaper;
   final bool isFav;
   final VoidCallback onFavToggle;
 
-  const ImageTile({super.key, required this.img, required this.isFav, required this.onFavToggle});
+  const ImageTile({super.key, required this.wallpaper, required this.isFav, required this.onFavToggle});
 
   @override
   State<ImageTile> createState() => _ImageTileState();
@@ -32,12 +33,12 @@ class _ImageTileState extends State<ImageTile> with AutomaticKeepAliveClientMixi
                 context,
                 MaterialPageRoute(
                   builder: (context) =>
-                      WallpaperPreviewPage(imageUrl: widget.img, isFavorite: widget.isFav),
+                      WallpaperPreviewPage(wallpaper: widget.wallpaper, isFavorite: widget.isFav),
                 ),
               );
             },
             child: CachedNetworkImage(
-              imageUrl: widget.img,
+              imageUrl: widget.wallpaper.url,
               fit: BoxFit.cover,
               placeholder: (context, url) => Container(
                 height: 100,

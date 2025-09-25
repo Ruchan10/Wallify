@@ -11,15 +11,16 @@ import 'package:wallify/core/snackbar.dart';
 import 'package:wallify/core/user_shared_prefs.dart';
 import 'package:wallify/functions/wallpaper_info_sheet.dart';
 import 'package:wallify/functions/wallpaper_manager.dart';
+import 'package:wallify/model/wallpaper_model.dart';
 import 'package:wallpaper_manager_flutter/wallpaper_manager_flutter.dart';
 
 class WallpaperPreviewPage extends StatefulWidget {
-  final String imageUrl;
+  final Wallpaper wallpaper;
   final bool isFavorite;
 
   const WallpaperPreviewPage({
     super.key,
-    required this.imageUrl,
+    required this.wallpaper,
     this.isFavorite = false,
   });
 
@@ -87,7 +88,7 @@ class _WallpaperPreviewPageState extends State<WallpaperPreviewPage> {
     
   Future<void> _setWallpaper(int location) async {
     try {
-      final response = await http.get(Uri.parse(widget.imageUrl));
+      final response = await http.get(Uri.parse(widget.wallpaper.url));
       final dir = await getTemporaryDirectory();
       final file = File("${dir.path}/wallpaper.jpg");
       await file.writeAsBytes(response.bodyBytes);
@@ -129,36 +130,28 @@ class _WallpaperPreviewPageState extends State<WallpaperPreviewPage> {
 
 
   Future<void> _loadInfo() async {
-    debugPrint("URL:- ${widget.imageUrl} ===============================");
+    debugPrint("URL:- ${widget.wallpaper.url} ===============================");
 
     Map<String, dynamic>? data;
 
-    if (widget.imageUrl.contains("wallhaven")) {
-      data = await fetchWallhavenInfo(widget.imageUrl);
-    } else if (widget.imageUrl.contains("pixabay.com")) {
-      data = await fetchPixabayInfo(widget.imageUrl);
-    } else if (widget.imageUrl.contains("unsplash.com")) {
-      data = await fetchUnsplashInfo(widget.imageUrl);
+    if (widget.wallpaper.url.contains("wallhaven")) {
+      data = await fetchWallhavenInfo(widget.wallpaper.id);
+    } else if (widget.wallpaper.url.contains("pixabay.com")) {
+      data = await fetchPixabayInfo(widget.wallpaper.id);
+    } else if (widget.wallpaper.url.contains("unsplash.com")) {
+      data = await fetchUnsplashInfo(widget.wallpaper.id);
     }
 
     setState(() => _info = data);
     debugPrint(jsonEncode(_info), wrapWidth: 1024);
   }
 
-Future<Map<String, dynamic>?> fetchWallhavenInfo(String url) async {
+Future<Map<String, dynamic>?> fetchWallhavenInfo(String id) async {
   try {
-    final regex = RegExp(r'wallhaven-([a-z0-9]+)\.');
-    final match = regex.firstMatch(url);
-    if (match == null) return null;
-
-    final id = match.group(1);
-    final res = await http.get(
-      Uri.parse("https://wallhaven.cc/api/v1/w/$id"),
-    );
-    debugPrint("${res.body} =================");
-
+    final res = await http.get(Uri.parse("https://wallhaven.cc/api/v1/w/$id"));
     if (res.statusCode == 200) {
       final json = jsonDecode(res.body)["data"];
+      debugPrint(jsonEncode(json), wrapWidth: 1024);
       return {
         "source": "Wallhaven",
         "id": json["id"],
@@ -174,21 +167,18 @@ Future<Map<String, dynamic>?> fetchWallhavenInfo(String url) async {
   return null;
 }
 
-Future<Map<String, dynamic>?> fetchPixabayInfo(String url) async {
+Future<Map<String, dynamic>?> fetchPixabayInfo(String id) async {
   try {
     const apiKey = "52028006-a7e910370a5d0158c371bb06a";
-    final uri = Uri.parse(url);
-    final fileName = uri.pathSegments.last;
-
     final res = await http.get(
-      Uri.parse("https://pixabay.com/api/?key=$apiKey&q=$fileName"),
+      Uri.parse("https://pixabay.com/api/?key=$apiKey&id=$id"),
     );
 
-    debugPrint("${res.body} =================");
     if (res.statusCode == 200) {
       final hits = jsonDecode(res.body)["hits"];
       if (hits.isNotEmpty) {
         final img = hits[0];
+        debugPrint(jsonEncode(img), wrapWidth: 1024);
         return {
           "source": "Pixabay",
           "id": img["id"].toString(),
@@ -205,24 +195,17 @@ Future<Map<String, dynamic>?> fetchPixabayInfo(String url) async {
   return null;
 }
 
-Future<Map<String, dynamic>?> fetchUnsplashInfo(String url) async {
+Future<Map<String, dynamic>?> fetchUnsplashInfo(String id) async {
   try {
     const accessKey = "yTBcYNAtnRHbrYMn2p4DrBiqzOAfdH9nyexQQtJWO-E";
-    final uri = Uri.parse(url);
-
-    final regex = RegExp(r'photo-([a-zA-Z0-9_-]+)');
-    final match = regex.firstMatch(uri.toString());
-
-    if (match == null) return null;
-    final photoId = match.group(1);
-
     final res = await http.get(
-      Uri.parse("https://api.unsplash.com/photos/$photoId?client_id=$accessKey"),
+      Uri.parse("https://api.unsplash.com/photos/$id?client_id=$accessKey"),
     );
 
     if (res.statusCode == 200) {
       final json = jsonDecode(res.body);
-      return {
+      debugPrint(jsonEncode(json), wrapWidth: 1024);
+        return {
         "source": "Unsplash",
         "id": json["id"],
         "uploader": json["user"]["name"],
@@ -276,7 +259,7 @@ showModalBottomSheet(
           /// Fullscreen interactive wallpaper preview
           Positioned.fill(
             child: PhotoView(
-              imageProvider: CachedNetworkImageProvider(widget.imageUrl),
+              imageProvider: CachedNetworkImageProvider(widget.wallpaper.url),
               minScale: PhotoViewComputedScale.contained,
               maxScale: PhotoViewComputedScale.covered * 4,
               initialScale: PhotoViewComputedScale.contained,
@@ -313,9 +296,9 @@ showModalBottomSheet(
                   onPressed: () {
                     setState(() => _isFavorite = !_isFavorite);
                     if (_isFavorite) {
-                      UserSharedPrefs.removeFavWallpaper(widget.imageUrl);
+                      UserSharedPrefs.removeFavWallpaper(widget.wallpaper);
                     } else {
-                      UserSharedPrefs.saveFavWallpaper(widget.imageUrl);
+                      UserSharedPrefs.saveFavWallpaper(widget.wallpaper);
                     }
                   },
                   child: Icon(

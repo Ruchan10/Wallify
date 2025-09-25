@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:math';
 
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:wallify/model/wallpaper_model.dart';
 
 class UserSharedPrefs {
   static const _tagsKey = "tags";
@@ -99,61 +100,91 @@ class UserSharedPrefs {
     return prefs.getStringList(_selectedSourcesKey) ??
         ["wallhaven", "unsplash", "pixabay"];
   }
-
-  static Future<void> saveWallpaperHistory(String imgUrl) async {
+static Future<void> saveWallpaperHistory(Wallpaper wallpaper) async {
     final prefs = await SharedPreferences.getInstance();
     final history = prefs.getStringList(_wallpaperHistoryKey) ?? [];
-    history.add(imgUrl);
-    await prefs.setStringList(_wallpaperHistoryKey, history);
-  }
 
-  static Future<List<String>> getWallpaperHistory() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getStringList(_wallpaperHistoryKey) ?? [];
-  }
+    final entry = jsonEncode(wallpaper.toJson());
 
-  static Future<void> saveImageUrls(List<String> urls) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setStringList(_imageUrlsKey, urls);
-  }
+    // Avoid duplicates by checking `id`
+    final exists = history.any((item) {
+      final decoded = jsonDecode(item);
+      return decoded["id"] == wallpaper.id;
+    });
 
- static Future<String?> getImageUrl() async {
-    final prefs = await SharedPreferences.getInstance();
-    final urls = prefs.getStringList(_imageUrlsKey) ?? [];
-
-    if (urls.isEmpty) {
-      return null;
+    if (!exists) {
+      history.add(entry);
+      await prefs.setStringList(_wallpaperHistoryKey, history);
     }
+  }
+
+  /// Get full wallpaper history
+  static Future<List<Wallpaper>> getWallpaperHistory() async {
+    final prefs = await SharedPreferences.getInstance();
+    final history = prefs.getStringList(_wallpaperHistoryKey) ?? [];
+
+    return history.map((e) => Wallpaper.fromJson(jsonDecode(e))).toList();
+  }
+static Future<void> saveWallpapers(List<Wallpaper> wallpapers) async {
+    final prefs = await SharedPreferences.getInstance();
+    final jsonList = wallpapers.map((w) => jsonEncode(w.toJson())).toList();
+    await prefs.setStringList(_imageUrlsKey, jsonList);
+  }
+
+  /// Get one random wallpaper (and remove it from the list)
+  static Future<Wallpaper?> getRandomWallpaper() async {
+    final prefs = await SharedPreferences.getInstance();
+    final jsonList = prefs.getStringList(_imageUrlsKey) ?? [];
+
+    if (jsonList.isEmpty) return null;
+
+    final wallpapers =
+        jsonList.map((e) => Wallpaper.fromJson(jsonDecode(e))).toList();
 
     final random = Random();
-    final index = random.nextInt(urls.length);
-    final selectedUrl = urls[index];
+    final index = random.nextInt(wallpapers.length);
+    final selected = wallpapers[index];
 
-    urls.removeAt(index);
+    wallpapers.removeAt(index);
 
-    await prefs.setStringList(_imageUrlsKey, urls);
+    // Save back the reduced list
+    final updatedJsonList =
+        wallpapers.map((w) => jsonEncode(w.toJson())).toList();
+    await prefs.setStringList(_imageUrlsKey, updatedJsonList);
 
-    return selectedUrl;
+    return selected;
   }
 
-
-  static Future<void> saveFavWallpaper(String imgUrl) async {
+  static Future<void> saveFavWallpaper(Wallpaper wallpaper) async {
     final prefs = await SharedPreferences.getInstance();
     final history = prefs.getStringList(_favWallpaperKey) ?? [];
-    history.add(imgUrl);
+
+    // Encode new wallpaper as JSON
+    final entry = jsonEncode(wallpaper.toJson());
+
+    if (!history.contains(entry)) {
+      history.add(entry);
+      await prefs.setStringList(_favWallpaperKey, history);
+    }
+  }
+
+  static Future<void> removeFavWallpaper(Wallpaper wallpaper) async {
+    final prefs = await SharedPreferences.getInstance();
+    final history = prefs.getStringList(_favWallpaperKey) ?? [];
+
+    history.removeWhere((item) {
+      final decoded = jsonDecode(item);
+      return decoded["id"] == wallpaper.id; // remove by id
+    });
+
     await prefs.setStringList(_favWallpaperKey, history);
   }
 
-  static Future<void> removeFavWallpaper(String imgUrl) async {
+  static Future<List<Wallpaper>> getFavWallpapers() async {
     final prefs = await SharedPreferences.getInstance();
     final history = prefs.getStringList(_favWallpaperKey) ?? [];
-    history.remove(imgUrl);
-    await prefs.setStringList(_favWallpaperKey, history);
-  }
 
-  static Future<List<String>> getFavWallpaper() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getStringList(_favWallpaperKey) ?? [];
+    return history.map((e) => Wallpaper.fromJson(jsonDecode(e))).toList();
   }
 
   static Future<void> saveLastWallpaperChange(DateTime date) async {

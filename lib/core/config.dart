@@ -1,13 +1,15 @@
+import 'package:wallify/model/wallpaper_model.dart';
+
 class Config {
   static bool _updateAvaliable = false;
   static bool _isUpdateDialogOpen = false;
-  static String _appVersion = '1.1.5';
+  static String _appVersion = '1.1.6';
   static String _appName = 'Wallify';
   static bool _hasInternet = false;
   static Map<String, dynamic> _versionData = {};
   static String _cachedLatestVersion = '';
   static String _cachedReleaseNotes = '';
-  static List<String> _imageUrls = [];
+  static List<Wallpaper> _imageUrls = [];
 
   static String getAppVersion() {
     return _appVersion;
@@ -73,11 +75,11 @@ class Config {
     return _cachedReleaseNotes;
   }
 
-  static List<String> getImageUrls() {
+  static List<Wallpaper> getImageUrls() {
     return _imageUrls;
   }
 
-  static void setImageUrls(List<String> imageUrls) {
+  static void setImageUrls(List<Wallpaper> imageUrls) {
     _imageUrls = imageUrls;
   }
 }

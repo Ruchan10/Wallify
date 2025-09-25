@@ -10,6 +10,7 @@ import 'package:wallify/core/config.dart';
 import 'package:wallify/core/update_manager.dart';
 import 'package:wallify/core/user_shared_prefs.dart';
 import 'package:wallify/functions/image_card.dart';
+import 'package:wallify/model/wallpaper_model.dart';
 import 'package:wallify/screens/wallpaper_preview.dart';
 
 class DiscoverPage extends ConsumerStatefulWidget {
@@ -21,7 +22,8 @@ class DiscoverPage extends ConsumerStatefulWidget {
 
 class _DiscoverPageState extends ConsumerState<DiscoverPage> {
   final TextEditingController _searchController = TextEditingController();
-  List<String> _images = Config.getImageUrls();
+  // List<String> _images = Config.getImageUrls();
+  List<Wallpaper> _images = [];
   bool _isLoading = false;
   int count = 1;
   final ScrollController _scrollController = ScrollController();
@@ -80,8 +82,7 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
       if (query != null && isSearch) _lastQuery = query;
     });
 
-    final List<String> results = [];
-
+final List<Wallpaper> results = [];
     try {
       /// 🔹 Wallhaven
       final wallRes = await http.get(
@@ -104,11 +105,11 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
         ),
       );
       final wallData = jsonDecode(wallRes.body);
-      debugPrint("Wallhaven: ${wallData["data"].length} ===================");
-      for (var item in wallData["data"]) {
-        results.add(item["path"]);
-        precacheImage(CachedNetworkImageProvider(item["path"]), context);
-      }
+      debugPrint("Wallhaven: ${wallData["data"]} ===================");
+for (var item in wallData["data"]) {
+  results.add(Wallpaper(id: item["id"], url: item["path"]));
+  precacheImage(CachedNetworkImageProvider(item["path"]), context);
+}
 
       /// 🔹 Unsplash
       final unsplashRes = await http.get(
@@ -132,13 +133,10 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
       }else{
         debugPrint("Unsplash: ${unsplashData["results"].length} ===================");
       }
-      for (var item in query == null ? unsplashData : unsplashData["results"]) {
-        results.add(item["urls"]["regular"]);
-        precacheImage(
-          CachedNetworkImageProvider(item["urls"]["regular"]),
-          context,
-        );
-      }
+for (var item in query == null ? unsplashData : unsplashData["results"]) {
+  results.add(Wallpaper(id: item["id"], url: item["urls"]["regular"]));
+  precacheImage(CachedNetworkImageProvider(item["urls"]["regular"]), context);
+}
 
       /// 🔹 Pixabay
       final pixabayRes = await http.get(
@@ -154,13 +152,10 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
         ),
       );
       final pixabayData = jsonDecode(pixabayRes.body);
-      for (var item in pixabayData["hits"]) {
-        results.add(item["largeImageURL"]);
-        precacheImage(
-          CachedNetworkImageProvider(item["largeImageURL"]),
-          context,
-        );
-      }
+for (var item in pixabayData["hits"]) {
+  results.add(Wallpaper(id: item["id"].toString(), url: item["largeImageURL"]));
+  precacheImage(CachedNetworkImageProvider(item["largeImageURL"]), context);
+}
     } catch (e) {
       debugPrint("❌ Error fetching images: $e ====================");
     }
@@ -461,15 +456,15 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
                         final isFav = favorites.contains(img);
 
                         return ImageTile(
-                          img: img,
+                          wallpaper: img,
                           isFav: isFav,
                           onFavToggle: () {
                             setState(() {
                               if (isFav) {
-                                favorites.remove(img);
+                                favorites.remove(img.url);
                                 UserSharedPrefs.removeFavWallpaper(img);
                               } else {
-                                favorites.add(img);
+                                favorites.add(img.url);
                                 UserSharedPrefs.saveFavWallpaper(img);
                               }
                             });
