@@ -17,6 +17,7 @@ class UserSharedPrefs {
   static const _keyInterval = "wallpaper_interval";
   static const _favWallpaperKey = "favWallpaper";
   static const _imageUrlsKey = "imageUrls";
+  static const _errorReportingKey = "errorReportingEnabled";
 
   /// ---- TAGS ----
   static Future<List<String>> getTags() async {
@@ -207,5 +208,16 @@ static Future<void> saveWallpapers(List<Wallpaper> wallpapers) async {
   static Future<int?> getInterval() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getInt(_keyInterval);
+  }
+
+  /// ---- ERROR REPORTING ----
+  static Future<bool> getErrorReportingEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_errorReportingKey) ?? true; 
+  }
+
+  static Future<void> setErrorReportingEnabled(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_errorReportingKey, enabled);
   }
 }

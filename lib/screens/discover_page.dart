@@ -1,17 +1,16 @@
 import 'dart:async';
 import 'dart:convert';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
-import 'package:wallify/core/config.dart';
+import 'package:wallify/core/config.dart' as app_config;
+import 'package:wallify/core/performance_config.dart';
 import 'package:wallify/core/update_manager.dart';
 import 'package:wallify/core/user_shared_prefs.dart';
 import 'package:wallify/functions/image_card.dart';
 import 'package:wallify/model/wallpaper_model.dart';
-import 'package:wallify/screens/wallpaper_preview.dart';
 
 class DiscoverPage extends ConsumerStatefulWidget {
   const DiscoverPage({super.key});
@@ -37,43 +36,61 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
   String? _selectedRange;
   bool _showTopBar = true;
   double _lastOffset = 0;
+  
+  // Memory management - limit total images in memory
+  static const int maxImages = PerformanceConfig.maxImagesInMemory;
 
   @override
   void initState() {
     super.initState();
-    if (Config.getImageUrls().isEmpty) {
+    if (app_config.Config.getImageUrls().isEmpty) {
       _fetchImages();
     }
     UpdateManager.checkForUpdates();
-    _scrollController.addListener(() {
-      final offset = _scrollController.position.pixels;
-
-      if (offset > _lastOffset && _showTopBar) {
-        setState(() => _showTopBar = false);
-      } else if (offset < _lastOffset && !_showTopBar) {
-        setState(() => _showTopBar = true);
-      }
-
-      _lastOffset = offset;
-      if (_scrollController.position.pixels >=
-              _scrollController.position.maxScrollExtent - 200 &&
-          !_isLoading) {
-        count++;
-        _fetchImages(
-          query: _searchController.text.isNotEmpty
-              ? _searchController.text
-              : null,
-        );
-      }
-    });
+    _scrollController.addListener(_onScroll);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Future.delayed(const Duration(seconds: 5), () {
-        if (Config.getUpdateAvailable()) {
+        if (app_config.Config.getUpdateAvailable()) {
           UpdateManager.showUpdateDialog(context);
         }
       });
     });
+  }
+  
+  void _onScroll() {
+    if (!mounted) return;
+    
+    final offset = _scrollController.position.pixels;
+
+    if (offset > _lastOffset && _showTopBar) {
+      setState(() => _showTopBar = false);
+    } else if (offset < _lastOffset && !_showTopBar) {
+      setState(() => _showTopBar = true);
+    }
+
+    _lastOffset = offset;
+    
+    // Load more images when near bottom
+    if (_scrollController.position.pixels >=
+            _scrollController.position.maxScrollExtent - 200 &&
+        !_isLoading &&
+        _images.length < maxImages) { // Prevent unlimited growth
+      count++;
+      _fetchImages(
+        query: _searchController.text.isNotEmpty
+            ? _searchController.text
+            : null,
+      );
+    }
+  }
+  
+  @override
+  void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
+    _searchController.dispose();
+    super.dispose();
   }
 
   Future<void> _fetchImages({String? query, bool isSearch = false}) async {
@@ -108,7 +125,7 @@ final List<Wallpaper> results = [];
       debugPrint("Wallhaven: ${wallData["data"]} ===================");
 for (var item in wallData["data"]) {
   results.add(Wallpaper(id: item["id"], url: item["path"]));
-  precacheImage(CachedNetworkImageProvider(item["path"]), context);
+  // Removed precacheImage - let CachedNetworkImage handle lazy loading
 }
 
       /// 🔹 Unsplash
@@ -135,7 +152,7 @@ for (var item in wallData["data"]) {
       }
 for (var item in query == null ? unsplashData : unsplashData["results"]) {
   results.add(Wallpaper(id: item["id"], url: item["urls"]["regular"]));
-  precacheImage(CachedNetworkImageProvider(item["urls"]["regular"]), context);
+  // Removed precacheImage - let CachedNetworkImage handle lazy loading
 }
 
       /// 🔹 Pixabay
@@ -154,7 +171,7 @@ for (var item in query == null ? unsplashData : unsplashData["results"]) {
       final pixabayData = jsonDecode(pixabayRes.body);
 for (var item in pixabayData["hits"]) {
   results.add(Wallpaper(id: item["id"].toString(), url: item["largeImageURL"]));
-  precacheImage(CachedNetworkImageProvider(item["largeImageURL"]), context);
+  // Removed precacheImage - let CachedNetworkImage handle lazy loading
 }
     } catch (e) {
       debugPrint("❌ Error fetching images: $e ====================");
@@ -164,10 +181,14 @@ for (var item in pixabayData["hits"]) {
         _images = results;
       } else {
         _images.addAll(results);
+        // Limit total images to prevent memory issues
+        if (_images.length > maxImages) {
+          _images = _images.sublist(_images.length - maxImages);
+        }
       }
       _isLoading = false;
     });
-    Config.setImageUrls(_images);
+    app_config.Config.setImageUrls(_images);
   }
 
   void _showFilters(BuildContext context) {
@@ -451,24 +472,31 @@ for (var item in pixabayData["hits"]) {
                       mainAxisSpacing: 4,
                       crossAxisSpacing: 4,
                       itemCount: _images.length,
+                      // Performance optimizations
+                      addAutomaticKeepAlives: PerformanceConfig.addAutomaticKeepAlives,
+                      addRepaintBoundaries: PerformanceConfig.addRepaintBoundaries,
+                      addSemanticIndexes: false, // Reduce overhead
+                      cacheExtent: PerformanceConfig.gridCacheExtent.toDouble(),
                       itemBuilder: (context, index) {
                         final img = _images[index];
                         final isFav = favorites.contains(img);
 
-                        return ImageTile(
-                          wallpaper: img,
-                          isFav: isFav,
-                          onFavToggle: () {
-                            setState(() {
-                              if (isFav) {
-                                favorites.remove(img.url);
-                                UserSharedPrefs.removeFavWallpaper(img);
-                              } else {
-                                favorites.add(img.url);
-                                UserSharedPrefs.saveFavWallpaper(img);
-                              }
-                            });
-                          },
+                        return RepaintBoundary(
+                          child: ImageTile(
+                            wallpaper: img,
+                            isFav: isFav,
+                            onFavToggle: () {
+                              setState(() {
+                                if (isFav) {
+                                  favorites.remove(img.url);
+                                  UserSharedPrefs.removeFavWallpaper(img);
+                                } else {
+                                  favorites.add(img.url);
+                                  UserSharedPrefs.saveFavWallpaper(img);
+                                }
+                              });
+                            },
+                          ),
                         );
                       },
                     ),

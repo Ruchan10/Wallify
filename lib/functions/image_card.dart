@@ -1,5 +1,6 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:wallify/core/performance_config.dart';
 import 'package:wallify/model/wallpaper_model.dart';
 import 'package:wallify/screens/wallpaper_preview.dart';
 
@@ -14,13 +15,11 @@ class ImageTile extends StatefulWidget {
   State<ImageTile> createState() => _ImageTileState();
 }
 
-class _ImageTileState extends State<ImageTile> with AutomaticKeepAliveClientMixin {
-  @override
-  bool get wantKeepAlive => true;
+class _ImageTileState extends State<ImageTile> {
+  // Removed AutomaticKeepAliveClientMixin to prevent keeping all widgets in memory
 
   @override
   Widget build(BuildContext context) {
-    super.build(context); 
     final colorScheme = Theme.of(context).colorScheme;
 
     return ClipRRect(
@@ -40,10 +39,13 @@ class _ImageTileState extends State<ImageTile> with AutomaticKeepAliveClientMixi
             child: CachedNetworkImage(
               imageUrl: widget.wallpaper.url,
               fit: BoxFit.cover,
+              maxWidthDiskCache: PerformanceConfig.thumbnailWidth * 2,
+              maxHeightDiskCache: PerformanceConfig.thumbnailHeight * 2,
+              fadeInDuration: PerformanceConfig.fadeInDuration,
               placeholder: (context, url) => Container(
-                height: 100,
+                height: 200,
                 color: colorScheme.surface.withValues(alpha: 0.3),
-                child: const Center(child: CircularProgressIndicator()),
+                child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
               ),
               errorWidget: (context, url, error) => Container(
                 height: 100,

@@ -1,10 +1,10 @@
 // This is a generated file; do not edit or check into version control.
-FLUTTER_ROOT=/home/rk10/flutter
-FLUTTER_APPLICATION_PATH=/home/rk10/Documents/wallify
+FLUTTER_ROOT=/usr/local/Caskroom/flutter/3.29.2/flutter
+FLUTTER_APPLICATION_PATH=/Users/inovaara002/Wallify
 COCOAPODS_PARALLEL_CODE_SIGN=true
 FLUTTER_BUILD_DIR=build
-FLUTTER_BUILD_NAME=1.1.6
-FLUTTER_BUILD_NUMBER=1.1.6
+FLUTTER_BUILD_NAME=1.1.7
+FLUTTER_BUILD_NUMBER=1.1.7
 DART_OBFUSCATION=false
 TRACK_WIDGET_CREATION=true
 TREE_SHAKE_ICONS=false

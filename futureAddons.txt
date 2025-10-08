@@ -1,9 +1,3 @@
-- export doesnt work 
-- get info off of unsplash and pixabay - need to save id as well while quering
-- when setting wallpaper a crop and set UI
-- compatiable with lower end devices
-- no info when viewing history 
-
 - checkboxes (charging, human, etc)
 - in settings allow error/crash reporting
 - more info on wallpaper in preview

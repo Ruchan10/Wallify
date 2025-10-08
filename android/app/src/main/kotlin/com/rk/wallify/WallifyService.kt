@@ -37,7 +37,7 @@ class WallifyService : Service() {
             val notification: Notification = NotificationCompat.Builder(this, "wallify_channel")
                 .setContentTitle("Wallify Running")
                 .setContentText("Listening for charging events")
-                .setSmallIcon(R.mipmap.ic_launcher)
+                .setSmallIcon(R.drawable.ic_bg_service_small) // Use custom notification icon
                 .build()
             startForeground(1, notification)
         }

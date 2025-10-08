@@ -14,12 +14,29 @@ class SettingsBackup {
       "interval": prefs.getInt("_keyInterval") ?? 1,
     };
 
-    final dir = await getApplicationDocumentsDirectory();
-    final file = File("${dir.path}/wallify_settings_backup.json");
+    final jsonString = const JsonEncoder.withIndent('  ').convert(data);
 
-    await file.writeAsString(jsonEncode(data), flush: true);
+    Directory? downloadsDir;
+
+    if (Platform.isAndroid) {
+      downloadsDir = Directory('/storage/emulated/0/Download');
+      if (!await downloadsDir.exists()) {
+        downloadsDir = await getApplicationDocumentsDirectory();
+      }
+    } else if (Platform.isIOS) {
+      downloadsDir = await getApplicationDocumentsDirectory();
+    } else {
+      downloadsDir = await getDownloadsDirectory() ?? await getApplicationDocumentsDirectory();
+    }
+
+    final filePath = "${downloadsDir.path}/wallify_settings_backup.json";
+    final file = File(filePath);
+
+    await file.writeAsString(jsonString, flush: true);
+
     return file;
   }
+
 
   static Future<void> importSettings(File file) async {
     final prefs = await SharedPreferences.getInstance();

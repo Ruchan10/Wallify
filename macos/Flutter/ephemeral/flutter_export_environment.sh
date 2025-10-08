@@ -1,11 +1,11 @@
 #!/bin/sh
 # This is a generated file; do not edit or check into version control.
-export "FLUTTER_ROOT=/home/rk10/flutter"
-export "FLUTTER_APPLICATION_PATH=/home/rk10/Documents/wallify"
+export "FLUTTER_ROOT=/usr/local/Caskroom/flutter/3.29.2/flutter"
+export "FLUTTER_APPLICATION_PATH=/Users/inovaara002/Wallify"
 export "COCOAPODS_PARALLEL_CODE_SIGN=true"
 export "FLUTTER_BUILD_DIR=build"
-export "FLUTTER_BUILD_NAME=1.1.6"
-export "FLUTTER_BUILD_NUMBER=1.1.6"
+export "FLUTTER_BUILD_NAME=1.1.7"
+export "FLUTTER_BUILD_NUMBER=1.1.7"
 export "DART_OBFUSCATION=false"
 export "TRACK_WIDGET_CREATION=true"
 export "TREE_SHAKE_ICONS=false"

@@ -8,9 +8,12 @@ on:
 
 env:
   APK_NAME: "Wallify"
-  APP_VERSION: "1.1.6"
+  APP_VERSION: "1.1.7"
   CHANGES: |
-    - Working on info section
+    - Performance improvements
+    - Info section complete
+    - Wallpaper preview crop and set UI
+    - Error reporting
 
 jobs:
   build:

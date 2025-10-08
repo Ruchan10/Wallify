@@ -21,7 +21,8 @@ class SettingsPage extends ConsumerStatefulWidget {
   ConsumerState<SettingsPage> createState() => _SettingsPageState();
 }
 
-class _SettingsPageState extends ConsumerState<SettingsPage> with WidgetsBindingObserver {
+class _SettingsPageState extends ConsumerState<SettingsPage>
+    with WidgetsBindingObserver {
   final TextEditingController _tagController = TextEditingController();
   final Battery _battery = Battery();
 
@@ -31,7 +32,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> with WidgetsBinding
 
   StreamSubscription<BatteryState>? _batterySubscription;
   int _intervalHours = 1;
-  final TextEditingController _intervalController = TextEditingController(text: "1");
+  final TextEditingController _intervalController = TextEditingController(
+    text: "1",
+  );
 
   BatteryState? _lastBatteryState;
 
@@ -116,16 +119,45 @@ class _SettingsPageState extends ConsumerState<SettingsPage> with WidgetsBinding
           Text("Appearance", style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 8),
           ListTile(
-            leading:  Icon(Icons.brightness_6, color: scheme.primary),
+            leading: Icon(Icons.brightness_6, color: scheme.primary),
             title: const Text("Theme"),
             subtitle: const Text("Switch between light and dark mode"),
             trailing: Switch(
               value: isDark,
               onChanged: (val) {
-                             ref.read(themeProvider.notifier).toggleTheme(val);
+                ref.read(themeProvider.notifier).toggleTheme(val);
               },
               activeThumbColor: scheme.secondary,
             ),
+          ),
+          
+          // ========== ERROR REPORTING ==========
+          FutureBuilder<bool>(
+            future: UserSharedPrefs.getErrorReportingEnabled(),
+            builder: (context, snapshot) {
+              final isEnabled = snapshot.data ?? false;
+              return ListTile(
+                leading: Icon(Icons.bug_report, color: scheme.primary),
+                title: const Text("Error Reporting"),
+                subtitle: const Text("Send crash reports to help improve the app"),
+                trailing: Switch(
+                  value: isEnabled,
+                  onChanged: (val) async {
+                    await UserSharedPrefs.setErrorReportingEnabled(val);
+                    setState(() {});
+                    if (mounted) {
+                      showSnackBar(
+                        context: context,
+                        message: val
+                            ? "Error reporting enabled"
+                            : "Error reporting disabled",
+                      );
+                    }
+                  },
+                  activeThumbColor: scheme.secondary,
+                ),
+              );
+            },
           ),
           const Divider(),
 
@@ -137,27 +169,35 @@ class _SettingsPageState extends ConsumerState<SettingsPage> with WidgetsBinding
             leading: Icon(Icons.upload_file, color: scheme.primary),
             title: const Text("Export Settings"),
             onTap: () async {
-              final file = await SettingsBackup.exportSettings();
+              await SettingsBackup.exportSettings();
+              if (mounted) {
+                showSnackBar(
+                  context: context,
+                  message: "Settings file exported to Downloads folder",
+                );
+              }
             },
           ),
           ListTile(
             leading: Icon(Icons.download, color: scheme.primary),
             title: const Text("Import Settings"),
             onTap: () async {
-               final result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['json'],
-    );
-    if (result != null && result.files.single.path != null) {
-      final file = File(result.files.single.path!);
-      await SettingsBackup.importSettings(file);
+              final result = await FilePicker.platform.pickFiles(
+                type: FileType.custom,
+                allowedExtensions: ['json'],
+              );
+              if (result != null && result.files.single.path != null) {
+                final file = File(result.files.single.path!);
+                await SettingsBackup.importSettings(file);
 
-      setState(() {}); 
-      showSnackBar(
-                  context: context,
-                  message: "Settings imported successfully",
-                );
-    }
+                if (mounted) {
+                  setState(() {});
+                  showSnackBar(
+                    context: context,
+                    message: "Settings imported successfully",
+                  );
+                }
+              }
             },
           ),
           const Divider(),
@@ -165,8 +205,13 @@ class _SettingsPageState extends ConsumerState<SettingsPage> with WidgetsBinding
 
           // ========== CHECK UPDATE ==========
           ListTile(
-            leading:  Icon(Config.getUpdateAvailable() ? Icons.update : Icons.system_update, color: scheme.primary),
-            title: Config.getUpdateAvailable() ? Text("Update Available") : Text("Check for Updates"),
+            leading: Icon(
+              Config.getUpdateAvailable() ? Icons.update : Icons.system_update,
+              color: scheme.primary,
+            ),
+            title: Config.getUpdateAvailable()
+                ? Text("Update Available")
+                : Text("Check for Updates"),
             onTap: () {
               UpdateManager.checkForUpdates();
               if (Config.getUpdateAvailable()) {
@@ -182,8 +227,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> with WidgetsBinding
           const Divider(),
           SizedBox(height: 16),
 
-          Text("Automate Wallpaper",
-              style: Theme.of(context).textTheme.titleLarge),
+          Text(
+            "Automate Wallpaper",
+            style: Theme.of(context).textTheme.titleLarge,
+          ),
           const SizedBox(height: 12),
 
           _buildWallpaperSettings(context, scheme),
@@ -193,19 +240,26 @@ class _SettingsPageState extends ConsumerState<SettingsPage> with WidgetsBinding
           Text("History", style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),
           if (statusHistory.isEmpty)
-            Text("No history yet",
-                style: Theme.of(context)
-                    .textTheme
-                    .bodyMedium
-                    ?.copyWith(color: scheme.onSurfaceVariant))
+            Text(
+              "No history yet",
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
+            )
           else
             ...statusHistory.map((entry) {
               return Card(
-                 color: scheme.surface,
+                color: scheme.surface,
                 child: ListTile(
                   leading: Icon(Icons.wallpaper, color: scheme.primary),
-                  title: Text(entry["title"] ?? "", style: TextStyle(color: scheme.onSurface)),
-                  subtitle: Text(_formatDate(entry["date"] ?? ""), style: TextStyle(color: scheme.onSurfaceVariant)),
+                  title: Text(
+                    entry["title"] ?? "",
+                    style: TextStyle(color: scheme.onSurface),
+                  ),
+                  subtitle: Text(
+                    _formatDate(entry["date"] ?? ""),
+                    style: TextStyle(color: scheme.onSurfaceVariant),
+                  ),
                 ),
               );
             }),
@@ -239,8 +293,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> with WidgetsBinding
               label: const Text("Home"),
               selected: wallpaperLocation == WallpaperManagerFlutter.homeScreen,
               onSelected: (_) {
-                setState(() =>
-                    wallpaperLocation = WallpaperManagerFlutter.homeScreen);
+                setState(
+                  () => wallpaperLocation = WallpaperManagerFlutter.homeScreen,
+                );
                 UserSharedPrefs.saveWallpaperLocation(wallpaperLocation);
               },
               selectedColor: scheme.primary.withValues(alpha: 0.2),
@@ -250,8 +305,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> with WidgetsBinding
               label: const Text("Lock"),
               selected: wallpaperLocation == WallpaperManagerFlutter.lockScreen,
               onSelected: (_) {
-                setState(() =>
-                    wallpaperLocation = WallpaperManagerFlutter.lockScreen);
+                setState(
+                  () => wallpaperLocation = WallpaperManagerFlutter.lockScreen,
+                );
                 UserSharedPrefs.saveWallpaperLocation(wallpaperLocation);
               },
               selectedColor: scheme.primary.withValues(alpha: 0.2),
@@ -259,10 +315,12 @@ class _SettingsPageState extends ConsumerState<SettingsPage> with WidgetsBinding
             ),
             ChoiceChip(
               label: const Text("Both"),
-              selected: wallpaperLocation == WallpaperManagerFlutter.bothScreens,
+              selected:
+                  wallpaperLocation == WallpaperManagerFlutter.bothScreens,
               onSelected: (_) {
-                setState(() =>
-                    wallpaperLocation = WallpaperManagerFlutter.bothScreens);
+                setState(
+                  () => wallpaperLocation = WallpaperManagerFlutter.bothScreens,
+                );
                 UserSharedPrefs.saveWallpaperLocation(wallpaperLocation);
               },
               selectedColor: scheme.primary.withValues(alpha: 0.2),
@@ -290,7 +348,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> with WidgetsBinding
                 textAlign: TextAlign.center,
                 decoration: InputDecoration(
                   filled: true,
-                    fillColor: scheme.surfaceContainerHighest,
+                  fillColor: scheme.surfaceContainerHighest,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
@@ -317,7 +375,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> with WidgetsBinding
                 controller: _tagController,
                 decoration: InputDecoration(
                   labelText: "Enter a tag",
-                  fillColor: scheme.surfaceContainerHighest, 
+                  fillColor: scheme.surfaceContainerHighest,
                   filled: true,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
@@ -367,67 +425,67 @@ class _SettingsPageState extends ConsumerState<SettingsPage> with WidgetsBinding
             }).toList(),
           ),
         ],
-        
-            const SizedBox(height: 20),
-         FutureBuilder<DateTime?>(
-              future: UserSharedPrefs.getLastWallpaperChange(),
-              builder: (context, snapshot) {
-                final lastChange = snapshot.data;
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (lastChange != null)
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.history,
-                            size: 18,
+
+        const SizedBox(height: 20),
+        FutureBuilder<DateTime?>(
+          future: UserSharedPrefs.getLastWallpaperChange(),
+          builder: (context, snapshot) {
+            final lastChange = snapshot.data;
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (lastChange != null)
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.history,
+                        size: 18,
+                        color: scheme.onSurfaceVariant,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        "Last changed: ${DateFormat("MMM d, h:mm a").format(lastChange)}",
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  decoration: BoxDecoration(
+                    color: scheme.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.bolt,
+                        size: 18,
+                        color: scheme.onSurfaceVariant,
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          lastChange != null
+                              ? "Next change after ${DateFormat("MMM d, h:mm a").format(lastChange.add(Duration(hours: _intervalHours)))} when charging ⚡"
+                              : "Next change when device is charging ⚡",
+                          style: TextStyle(
+                            fontSize: 13,
                             color: scheme.onSurfaceVariant,
                           ),
-                          const SizedBox(width: 6),
-                          Text(
-                            "Last changed: ${DateFormat("MMM d, h:mm a").format(lastChange)}",
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: scheme.onSurfaceVariant,
-                            ),
-                          ),
-                        ],
+                        ),
                       ),
-                    const SizedBox(height: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(vertical: 10),
-                      decoration: BoxDecoration(
-                        color: scheme.surfaceContainerHighest,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.bolt,
-                            size: 18,
-                            color: scheme.onSurfaceVariant,
-                          ),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: Text(
-                              lastChange != null
-                                  ? "Next change after ${DateFormat("MMM d, h:mm a").format(lastChange.add(Duration(hours: _intervalHours)))} when charging ⚡"
-                                  : "Next change when device is charging ⚡",
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: scheme.onSurfaceVariant,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-                  ],
-                );
-              },
-            ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 24),
+              ],
+            );
+          },
+        ),
       ],
     );
   }
