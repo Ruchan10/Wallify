@@ -205,9 +205,9 @@ static Future<void> saveWallpapers(List<Wallpaper> wallpapers) async {
     await prefs.setInt(_keyInterval, minutes);
   }
 
-  static Future<int?> getInterval() async {
+  static Future<int> getInterval() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getInt(_keyInterval);
+    return prefs.getInt(_keyInterval) ?? 1;
   }
 
   /// ---- ERROR REPORTING ----
