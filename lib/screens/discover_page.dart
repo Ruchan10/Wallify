@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
@@ -36,7 +35,7 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
   String? _selectedRange;
   bool _showTopBar = true;
   double _lastOffset = 0;
-  
+
   // Memory management - limit total images in memory
   static const int maxImages = PerformanceConfig.maxImagesInMemory;
 
@@ -57,10 +56,10 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
       });
     });
   }
-  
+
   void _onScroll() {
     if (!mounted) return;
-    
+
     final offset = _scrollController.position.pixels;
 
     if (offset > _lastOffset && _showTopBar) {
@@ -70,12 +69,13 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
     }
 
     _lastOffset = offset;
-    
+
     // Load more images when near bottom
     if (_scrollController.position.pixels >=
             _scrollController.position.maxScrollExtent - 200 &&
         !_isLoading &&
-        _images.length < maxImages) { // Prevent unlimited growth
+        _images.length < maxImages) {
+      // Prevent unlimited growth
       count++;
       _fetchImages(
         query: _searchController.text.isNotEmpty
@@ -84,7 +84,7 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
       );
     }
   }
-  
+
   @override
   void dispose() {
     _scrollController.removeListener(_onScroll);
@@ -99,7 +99,7 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
       if (query != null && isSearch) _lastQuery = query;
     });
 
-final List<Wallpaper> results = [];
+    final List<Wallpaper> results = [];
     try {
       /// 🔹 Wallhaven
       final wallRes = await http.get(
@@ -122,11 +122,10 @@ final List<Wallpaper> results = [];
         ),
       );
       final wallData = jsonDecode(wallRes.body);
-      debugPrint("Wallhaven: ${wallData["data"]} ===================");
-for (var item in wallData["data"]) {
-  results.add(Wallpaper(id: item["id"], url: item["path"]));
-  // Removed precacheImage - let CachedNetworkImage handle lazy loading
-}
+      for (var item in wallData["data"]) {
+        results.add(Wallpaper(id: item["id"], url: item["path"]));
+        // Removed precacheImage - let CachedNetworkImage handle lazy loading
+      }
 
       /// 🔹 Unsplash
       final unsplashRes = await http.get(
@@ -145,15 +144,11 @@ for (var item in wallData["data"]) {
         },
       );
       final unsplashData = jsonDecode(unsplashRes.body);
-      if(query == null){
-      debugPrint("Unsplash: ${unsplashData.length} ===================");
-      }else{
-        debugPrint("Unsplash: ${unsplashData["results"].length} ===================");
+
+      for (var item in query == null ? unsplashData : unsplashData["results"]) {
+        results.add(Wallpaper(id: item["id"], url: item["urls"]["regular"]));
+        // Removed precacheImage - let CachedNetworkImage handle lazy loading
       }
-for (var item in query == null ? unsplashData : unsplashData["results"]) {
-  results.add(Wallpaper(id: item["id"], url: item["urls"]["regular"]));
-  // Removed precacheImage - let CachedNetworkImage handle lazy loading
-}
 
       /// 🔹 Pixabay
       final pixabayRes = await http.get(
@@ -169,10 +164,12 @@ for (var item in query == null ? unsplashData : unsplashData["results"]) {
         ),
       );
       final pixabayData = jsonDecode(pixabayRes.body);
-for (var item in pixabayData["hits"]) {
-  results.add(Wallpaper(id: item["id"].toString(), url: item["largeImageURL"]));
-  // Removed precacheImage - let CachedNetworkImage handle lazy loading
-}
+      for (var item in pixabayData["hits"]) {
+        results.add(
+          Wallpaper(id: item["id"].toString(), url: item["largeImageURL"]),
+        );
+        // Removed precacheImage - let CachedNetworkImage handle lazy loading
+      }
     } catch (e) {
       debugPrint("❌ Error fetching images: $e ====================");
     }
@@ -473,8 +470,10 @@ for (var item in pixabayData["hits"]) {
                       crossAxisSpacing: 4,
                       itemCount: _images.length,
                       // Performance optimizations
-                      addAutomaticKeepAlives: PerformanceConfig.addAutomaticKeepAlives,
-                      addRepaintBoundaries: PerformanceConfig.addRepaintBoundaries,
+                      addAutomaticKeepAlives:
+                          PerformanceConfig.addAutomaticKeepAlives,
+                      addRepaintBoundaries:
+                          PerformanceConfig.addRepaintBoundaries,
                       addSemanticIndexes: false, // Reduce overhead
                       cacheExtent: PerformanceConfig.gridCacheExtent.toDouble(),
                       itemBuilder: (context, index) {

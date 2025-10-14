@@ -42,6 +42,7 @@ void initializeService() async {
 
   setupServiceListeners();
 }
+
 @pragma('vm:entry-point')
 Future<void> onStart(ServiceInstance service) async {
   DartPluginRegistrant.ensureInitialized();
@@ -59,9 +60,8 @@ Future<void> onStart(ServiceInstance service) async {
   });
 }
 
-
 void setupServiceListeners() {
-   if (_listenersInitialized) return; 
+  if (_listenersInitialized) return;
   _listenersInitialized = true;
 
   final service = FlutterBackgroundService();
@@ -70,6 +70,7 @@ void setupServiceListeners() {
     debugPrint("Main isolate: changeWallpaper triggered 🚀");
 
     final wallpaperLocation = await UserSharedPrefs.getWallpaperLocation();
+    final status = await UserSharedPrefs.getStatusHistory();
 
     try {
       if (wallpaperLocation == WallpaperManagerFlutter.bothScreens) {
@@ -80,18 +81,32 @@ void setupServiceListeners() {
           wallpaperLocation: WallpaperManagerFlutter.lockScreen,
         );
         debugPrint("Wallpaper updated: $res1 & $res2");
+        status.add({
+          "title": "Wallpaper updated: $res1 & $res2",
+          "date": DateTime.now().toString(),
+        });
+        await UserSharedPrefs.saveStatusHistory(status);
       } else {
         final res = await WallpaperManager.fetchAndSetWallpaper(
           wallpaperLocation: wallpaperLocation,
         );
         debugPrint("Wallpaper updated: $res");
+        status.add({
+          "title": "Wallpaper updated: $res",
+          "date": DateTime.now().toString(),
+        });
+        await UserSharedPrefs.saveStatusHistory(status);
       }
     } catch (e) {
       debugPrint("Error setting wallpaper: $e");
+      status.add({
+        "title": "Error setting wallpaper: $e",
+        "date": DateTime.now().toString(),
+      });
+      await UserSharedPrefs.saveStatusHistory(status);
     }
   });
 }
-
 
 Future<void> ensureNotificationPermission() async {
   if (await Permission.notification.isDenied) {
@@ -100,10 +115,7 @@ Future<void> ensureNotificationPermission() async {
 }
 
 class BatteryOptimizationDialog extends StatelessWidget {
-
-  const BatteryOptimizationDialog({
-    super.key,
-  });
+  const BatteryOptimizationDialog({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -132,24 +144,29 @@ class BatteryOptimizationDialog extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             OutlinedButton(
-              onPressed: (){
+              onPressed: () {
                 Navigator.pop(context);
               },
               child: const Text("Later", style: TextStyle(fontSize: 16)),
             ),
             const SizedBox(width: 16),
             FilledButton(
-              onPressed: ()async{
-                   final status = await Permission.ignoreBatteryOptimizations.request();
-      if (status.isGranted) {
-      } else {
-        const intent = AndroidIntent(
-          action: 'android.settings.IGNORE_BATTERY_OPTIMIZATION_SETTINGS',
-        );
-        await intent.launch();
-      }
+              onPressed: () async {
+                final status = await Permission.ignoreBatteryOptimizations
+                    .request();
+                if (status.isGranted) {
+                } else {
+                  const intent = AndroidIntent(
+                    action:
+                        'android.settings.IGNORE_BATTERY_OPTIMIZATION_SETTINGS',
+                  );
+                  await intent.launch();
+                }
               },
-              child: const Text("Open Settings", style: TextStyle(fontSize: 16)),
+              child: const Text(
+                "Open Settings",
+                style: TextStyle(fontSize: 16),
+              ),
             ),
           ],
         ),
@@ -159,25 +176,26 @@ class BatteryOptimizationDialog extends StatelessWidget {
 }
 
 Future<bool> hasInternet() async {
-try {
-  final result = await InternetAddress.lookup("google.com")
-      .timeout(const Duration(seconds: 3));
-  return result.isNotEmpty && result[0].rawAddress.isNotEmpty;
-} catch (_) {
-  return false;
-}
+  try {
+    final result = await InternetAddress.lookup(
+      "google.com",
+    ).timeout(const Duration(seconds: 3));
+    return result.isNotEmpty && result[0].rawAddress.isNotEmpty;
+  } catch (_) {
+    return false;
+  }
 }
 
 Future<File?> getRandomCachedWallpaper() async {
-    final dir = await getTemporaryDirectory();
-    final files = dir
-        .listSync()
-        .where((f) => f.path.endsWith(".jpg") && f.path.contains("wallpaper_"))
-        .toList();
+  final dir = await getTemporaryDirectory();
+  final files = dir
+      .listSync()
+      .where((f) => f.path.endsWith(".jpg") && f.path.contains("wallpaper_"))
+      .toList();
 
-    if (files.isEmpty) return null;
+  if (files.isEmpty) return null;
 
-    final random = Random();
-    final file = files[random.nextInt(files.length)];
-    return File(file.path);
-  }
+  final random = Random();
+  final file = files[random.nextInt(files.length)];
+  return File(file.path);
+}
