@@ -24,24 +24,6 @@ class WallifyService : Service() {
 
         Log.e("WallifyService", "Service created")
 
-        // Setup foreground notification
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                "wallify_channel",
-                "Wallify Background Service",
-                NotificationManager.IMPORTANCE_LOW
-            )
-            val manager = getSystemService(NotificationManager::class.java)
-            manager.createNotificationChannel(channel)
-
-            val notification: Notification = NotificationCompat.Builder(this, "wallify_channel")
-                .setContentTitle("Wallify Running")
-                .setContentText("Listening for charging events")
-                .setSmallIcon(R.drawable.ic_bg_service_small) // Use custom notification icon
-                .build()
-            startForeground(1, notification)
-        }
-
         // Initialize FlutterEngine
         engine = FlutterEngine(this)
         engine.dartExecutor.executeDartEntrypoint(

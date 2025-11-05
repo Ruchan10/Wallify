@@ -132,6 +132,12 @@ static Future<void> saveWallpapers(List<Wallpaper> wallpapers) async {
     await prefs.setStringList(_imageUrlsKey, jsonList);
   }
 
+  static Future<List<Wallpaper>> getImageUrls() async {
+    final prefs = await SharedPreferences.getInstance();
+    final jsonList = prefs.getStringList(_imageUrlsKey) ?? [];
+    return jsonList.map((e) => Wallpaper.fromJson(jsonDecode(e))).toList();
+  }
+
   /// Get one random wallpaper (and remove it from the list)
   static Future<Wallpaper?> getRandomWallpaper() async {
     final prefs = await SharedPreferences.getInstance();

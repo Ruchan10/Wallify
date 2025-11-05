@@ -1,3 +1,5 @@
+- A toggle to turn on auto wallpaper, dim auto wallpaper section when not enabled
+- constraints section in auto wallpaper 
 - checkboxes (charging, human, etc)
 - in settings allow error/crash reporting
 - more info on wallpaper in preview

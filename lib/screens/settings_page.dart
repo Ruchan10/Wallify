@@ -1,6 +1,5 @@
-import 'dart:async';
 import 'dart:io';
-import 'package:battery_plus/battery_plus.dart';
+import 'dart:math';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -13,6 +12,7 @@ import 'package:wallify/functions/backup_function.dart';
 import 'package:wallify/functions/wallpaper_manager.dart';
 import 'package:wallpaper_manager_flutter/wallpaper_manager_flutter.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:workmanager/workmanager.dart';
 
 class SettingsPage extends ConsumerStatefulWidget {
   const SettingsPage({super.key});
@@ -24,25 +24,21 @@ class SettingsPage extends ConsumerStatefulWidget {
 class _SettingsPageState extends ConsumerState<SettingsPage>
     with WidgetsBindingObserver {
   final TextEditingController _tagController = TextEditingController();
-  final Battery _battery = Battery();
 
   List<String> savedTags = [];
   int wallpaperLocation = WallpaperManagerFlutter.bothScreens;
   List<Map<String, String>> statusHistory = [];
 
-  StreamSubscription<BatteryState>? _batterySubscription;
   int _intervalHours = 1;
   final TextEditingController _intervalController = TextEditingController(
     text: "1",
   );
 
-  BatteryState? _lastBatteryState;
-
   @override
   void initState() {
     super.initState();
     _initialize();
-    _checkCharging();
+    _registerWorkManagerTask();
     UpdateManager.checkForUpdates();
     WidgetsBinding.instance.addObserver(this);
   }
@@ -51,31 +47,65 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
     savedTags = await UserSharedPrefs.getTags();
     wallpaperLocation = await UserSharedPrefs.getWallpaperLocation();
     statusHistory = await UserSharedPrefs.getStatusHistory();
-    _intervalHours = await UserSharedPrefs.getInterval() ?? 1;
+    _intervalHours = (await UserSharedPrefs.getInterval());
     _intervalController.text = _intervalHours.toString();
 
     setState(() {});
   }
 
-  Future<void> _checkCharging() async {
-    _lastBatteryState = await _battery.batteryState;
-    _batterySubscription = _battery.onBatteryStateChanged.listen((state) {
-      if (_lastBatteryState != BatteryState.charging &&
-          state == BatteryState.charging) {
-        _addStatus("Device plugged in - changing wallpaper");
-        changeWallpaper();
-      }
-      _lastBatteryState = state;
-    });
+  // Register WorkManager periodic task for wallpaper changes
+  void _registerWorkManagerTask() async {
+    final hours = await UserSharedPrefs.getInterval();
+
+    // Cancel existing task first
+    await Workmanager().cancelByUniqueName("wallpaperTask");
+
+    // Get Wallpaper objects and convert to URL strings
+    final wallpaperObjects = await UserSharedPrefs.getImageUrls();
+    final imageUrls = wallpaperObjects.map((w) => w.url).toList();
+    final syncResult = await WallpaperManager.syncImageUrls(imageUrls);
+    final cachedPaths = syncResult['cachedPaths'] as List<String>? ?? [];
+    final wallpaperLocation = await UserSharedPrefs.getWallpaperLocation();
+
+    // Register new task with updated interval
+    await Workmanager().registerPeriodicTask(
+      "wallpaperTask",
+      "changeWallpaper",
+      frequency: Duration(minutes: hours),
+      constraints: Constraints(
+        networkType: NetworkType.notRequired,
+        requiresBatteryNotLow: true,
+        requiresCharging: true,
+        requiresDeviceIdle: false,
+        requiresStorageNotLow: true,
+      ),
+      inputData: {
+        'cachedFilePaths': cachedPaths,
+        'wallpaperLocation': wallpaperLocation,
+      },
+    );
+
+    debugPrint(
+      "WorkManager task registered for every $hours hours when charging ====================================",
+    );
   }
 
   Future<void> changeWallpaper({bool changeNow = false}) async {
     try {
-      final res = await WallpaperManager.fetchAndSetWallpaper(
-        wallpaperLocation: wallpaperLocation,
-        changeNow: changeNow,
-      );
-      _addStatus(res);
+      final wallpaperObjects = await UserSharedPrefs.getImageUrls();
+      if (wallpaperObjects.isNotEmpty) {
+        final randomWallpaper = wallpaperObjects[Random().nextInt(wallpaperObjects.length)];
+        final res = await WallpaperManager.fetchAndSetWallpaper(
+          imageUrl: randomWallpaper.url,
+          wallpaperLocation: wallpaperLocation,
+          changeNow: changeNow,
+        );
+UserSharedPrefs.saveLastWallpaperChange(DateTime.now());
+
+        _addStatus("$res at ${DateTime.now().toString()}");
+      } else {
+        _addStatus("No wallpapers available for change");
+      }
     } catch (e) {
       _addStatus("Error: $e");
     }
@@ -89,7 +119,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
 
   @override
   void dispose() {
-    _batterySubscription?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -130,7 +159,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
               activeThumbColor: scheme.secondary,
             ),
           ),
-          
+
           // ========== ERROR REPORTING ==========
           FutureBuilder<bool>(
             future: UserSharedPrefs.getErrorReportingEnabled(),
@@ -139,7 +168,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
               return ListTile(
                 leading: Icon(Icons.bug_report, color: scheme.primary),
                 title: const Text("Error Reporting"),
-                subtitle: const Text("Send crash reports to help improve the app"),
+                subtitle: const Text(
+                  "Send crash reports to help improve the app",
+                ),
                 trailing: Switch(
                   value: isEnabled,
                   onChanged: (val) async {
@@ -358,6 +389,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
                   if (hours != null && hours > 0) {
                     setState(() => _intervalHours = hours);
                     UserSharedPrefs.saveInterval(hours);
+                    _registerWorkManagerTask();
                   } else {
                     _intervalController.text = _intervalHours.toString();
                   }

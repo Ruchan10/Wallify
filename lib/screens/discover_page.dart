@@ -42,9 +42,9 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
   @override
   void initState() {
     super.initState();
-    if (app_config.Config.getImageUrls().isEmpty) {
+    // if (app_config.Config.getImageUrls().isEmpty) {
       _fetchImages();
-    }
+    // }
     UpdateManager.checkForUpdates();
     _scrollController.addListener(_onScroll);
 
@@ -186,6 +186,7 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
       _isLoading = false;
     });
     app_config.Config.setImageUrls(_images);
+    UserSharedPrefs.saveWallpapers(_images);
   }
 
   void _showFilters(BuildContext context) {
