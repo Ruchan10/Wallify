@@ -13,6 +13,7 @@ import androidx.work.ExistingWorkPolicy
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
+import androidx.work.workDataOf
 
 class WallpaperCacheWorker(context: Context, workerParams: WorkerParameters) : Worker(context, workerParams) {
 
@@ -52,11 +53,37 @@ class WallpaperCacheWorker(context: Context, workerParams: WorkerParameters) : W
             }
 
             Log.d("WallpaperCacheWorker", "Successfully cached ${cachedFiles.size}/${urlsToProcess.size} wallpapers")
-            Result.success()
+
+            // Return cached file paths to Flutter
+            val outputData = workDataOf(
+                "cachedFilePaths" to cachedFiles.toTypedArray() // <— pass to Flutter as array
+            )
+            // After caching successfully:
+            val prefs = applicationContext.getSharedPreferences("wallify_prefs", Context.MODE_PRIVATE)
+            prefs.edit().putStringSet("cachedFilePaths", cachedFiles.toSet()).apply()
+            saveCachedFilesToFlutterPrefs(cachedFiles)
+            Log.d("WallpaperCacheWorker", "Saved ${cachedFiles.size} cached file paths to prefs")
+
+
+            return Result.success(outputData)
+
 
         } catch (e: Exception) {
             Log.e("WallpaperCacheWorker", "Error in wallpaper cache worker", e)
             Result.failure()
+        }
+    }
+
+    private fun saveCachedFilesToFlutterPrefs(cachedFiles: List<String>) {
+        try {
+            val prefs = applicationContext.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+            val editor = prefs.edit()
+            // Use the Flutter plugin’s key format
+            editor.putString("flutter.cachedFilePaths", cachedFiles.joinToString(","))
+            editor.apply()
+            Log.d("WallpaperCacheWorker", "Saved ${cachedFiles.size} cached paths to Flutter prefs")
+        } catch (e: Exception) {
+            Log.e("WallpaperCacheWorker", "Error saving to Flutter prefs", e)
         }
     }
 

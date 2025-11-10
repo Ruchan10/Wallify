@@ -18,38 +18,6 @@ class WallpaperWorker(context: Context, workerParams: WorkerParameters) : Worker
 
     override fun doWork(): Result {
         return try {
-            Log.d("WallpaperWorker", "Starting wallpaper change work")
-
-            // Get cached wallpaper files
-            val cachedFiles = getCachedWallpaperFiles()
-            Log.d("WallpaperWorker", "Found ${cachedFiles.size} cached wallpaper files")
-
-            if (cachedFiles.isEmpty()) {
-                Log.w("WallpaperWorker", "No cached wallpaper files found")
-                return Result.success()
-            }
-
-            // Debug: List all found files
-            cachedFiles.forEach { file ->
-                Log.d("WallpaperWorker", "Found cached file: ${file.name} (${file.length()} bytes)")
-            }
-
-            // Limit to prevent processing too many files
-            val filesToProcess = cachedFiles.take(20)
-            Log.d("WallpaperWorker", "Processing ${filesToProcess.size} files (limited for performance)")
-
-            // Get wallpaper location preference
-            val wallpaperLocation = getWallpaperLocation()
-            Log.d("WallpaperWorker", "Wallpaper location: $wallpaperLocation")
-
-            when (wallpaperLocation) {
-                0 -> setRandomWallpaper(filesToProcess, WallpaperManager.FLAG_SYSTEM) // Home screen only
-                1 -> setRandomWallpaper(filesToProcess, WallpaperManager.FLAG_LOCK) // Lock screen only
-                2, 3 -> setDualWallpapers(filesToProcess) // Both screens with different wallpapers
-                else -> setRandomWallpaper(filesToProcess, WallpaperManager.FLAG_SYSTEM)
-            }
-
-            Log.d("WallpaperWorker", "Wallpaper change completed successfully")
             Result.success()
 
         } catch (e: Exception) {

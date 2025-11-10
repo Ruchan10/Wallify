@@ -124,7 +124,6 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
       final wallData = jsonDecode(wallRes.body);
       for (var item in wallData["data"]) {
         results.add(Wallpaper(id: item["id"], url: item["path"]));
-        // Removed precacheImage - let CachedNetworkImage handle lazy loading
       }
 
       /// 🔹 Unsplash
@@ -147,7 +146,6 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
 
       for (var item in query == null ? unsplashData : unsplashData["results"]) {
         results.add(Wallpaper(id: item["id"], url: item["urls"]["regular"]));
-        // Removed precacheImage - let CachedNetworkImage handle lazy loading
       }
 
       /// 🔹 Pixabay
@@ -168,7 +166,6 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
         results.add(
           Wallpaper(id: item["id"].toString(), url: item["largeImageURL"]),
         );
-        // Removed precacheImage - let CachedNetworkImage handle lazy loading
       }
     } catch (e) {
       debugPrint("❌ Error fetching images: $e ====================");
@@ -178,7 +175,6 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
         _images = results;
       } else {
         _images.addAll(results);
-        // Limit total images to prevent memory issues
         if (_images.length > maxImages) {
           _images = _images.sublist(_images.length - maxImages);
         }

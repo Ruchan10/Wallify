@@ -93,6 +93,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
   Future<void> changeWallpaper({bool changeNow = false}) async {
     try {
       final wallpaperObjects = await UserSharedPrefs.getImageUrls();
+      UserSharedPrefs.saveLastWallpaperChange(DateTime.now());
       if (wallpaperObjects.isNotEmpty) {
         final randomWallpaper = wallpaperObjects[Random().nextInt(wallpaperObjects.length)];
         final res = await WallpaperManager.fetchAndSetWallpaper(
@@ -100,7 +101,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
           wallpaperLocation: wallpaperLocation,
           changeNow: changeNow,
         );
-UserSharedPrefs.saveLastWallpaperChange(DateTime.now());
 
         _addStatus("$res at ${DateTime.now().toString()}");
       } else {
@@ -144,6 +144,9 @@ UserSharedPrefs.saveLastWallpaperChange(DateTime.now());
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          ExpansionTile(
+            title: const Text("Appearance"),
+            ),
           // ========== THEME TOGGLE ==========
           Text("Appearance", style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 8),

@@ -8,10 +8,10 @@ on:
 
 env:
   APK_NAME: "Wallify"
-  APP_VERSION: "1.2.0"
+  APP_VERSION: "1.2.1"
   CHANGES: |
+    - New Wallpaper change system
     - Minor Improvements
-    - Added support for different wallpapers for home and lock
 
 jobs:
   build:

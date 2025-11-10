@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wallify/core/app_theme.dart';
 import 'package:wallify/core/error_reporter.dart';
 import 'package:wallify/core/theme_provider.dart';
@@ -76,27 +78,16 @@ Future<void> _preloadWallpaperData() async {
 
 @pragma('vm:entry-point')
 void callbackDispatcher() {
-  Workmanager().executeTask((task, inputData) {
+  Workmanager().executeTask((task, inputData) async {
     try {
-      debugPrint("WorkManager task executed: $task ------------------------STEP 1");
+      debugPrint("WorkManager task executed: $task ------------------------V1");
+      const platform = MethodChannel('wallpaper_channel');
       
-      // Safe type conversion for cached file paths
-      final cachedFilePathsRaw = inputData?['cachedFilePaths'];
-      final cachedFilePaths = <String>[];
-      if (cachedFilePathsRaw is List) {
-        for (var item in cachedFilePathsRaw) {
-          if (item is String) {
-            cachedFilePaths.add(item);
-          }
-        }
-      }
-      
-      // Safe type conversion for wallpaperLocation
-      final wallpaperLocation = inputData?['wallpaperLocation'] as int? ?? 1;
-
-      debugPrint("Background task - Cached files: ${cachedFilePaths.length}, Location: $wallpaperLocation ================================");
-      // Wallpaper changing is now handled by native Android workers
-      // No need for Flutter background processing
+      final prefs = await SharedPreferences.getInstance();
+      final cachedString = prefs.getString('cachedFilePaths'); 
+      final cachedFiles = cachedString?.split(',') ?? [];
+      debugPrint('Retrieved cached files: $cachedFiles');
+    debugPrint("Background wallpaper change triggered");
 
       return Future.value(true);
     } catch (e) {
