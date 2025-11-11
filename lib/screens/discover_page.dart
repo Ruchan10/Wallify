@@ -182,7 +182,7 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
       _isLoading = false;
     });
     app_config.Config.setImageUrls(_images);
-    UserSharedPrefs.saveWallpapers(_images);
+    // UserSharedPrefs.saveWallpapers(_images);
   }
 
   void _showFilters(BuildContext context) {

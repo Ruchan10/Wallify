@@ -34,12 +34,23 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        scheduleBackgroundWallpaperWorker()
-        // Schedule recurring wallpaper change worker
-        scheduleWallpaperChangeWorker()
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
+                "scheduleBackgroundWallpaperWorker" -> {
+                    scheduleBackgroundWallpaperWorker()
+                    result.success("Scheduled wallpaper background worker from Flutter")
+                }
+                "changeWallpaperInBackground" -> {
+                    try {
+                        Log.d("Wallify", "Flutter requested background wallpaper change")
+                        WallpaperUtils.downloadAndSetWallpaperBackground(this)
+                        result.success("Wallpaper change triggered successfully")
+                    } catch (e: Exception) {
+                        Log.e("Wallify", "Error changing wallpaper", e)
+                        result.error("ERROR", "Failed to change wallpaper", e.toString())
+                    }
+                }
                 "downloadAndCacheWallpaper" -> {
                     val imageUrl: String? = call.argument<String>("imageUrl")
                     if (imageUrl != null) {
@@ -192,18 +203,27 @@ class MainActivity : FlutterActivity() {
 
     private fun scheduleBackgroundWallpaperWorker() {
         try {
-            Log.d("Wallify", "Scheduling background wallpaper change every 15 minutes")
+            val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+            val intervalValue = prefs.all["flutter.wallpaper_interval"]
+
+            val intervalMinutes = when (intervalValue) {
+                is Int -> intervalValue
+                is Long -> intervalValue.toInt()
+                is String -> intervalValue.toIntOrNull() ?: 60
+                else -> 60
+            }.coerceAtLeast(15) 
+
+            Log.d("Wallify", "Scheduling background wallpaper change every $intervalMinutes minutes")
 
             val wallpaperBackgroundRequest =
                 PeriodicWorkRequestBuilder<WallpaperBackgroundWorker>(
-                    15, TimeUnit.MINUTES // Minimum allowed interval for WorkManager
+                    intervalMinutes.toLong(), TimeUnit.MINUTES 
                 )
                     .setConstraints(
                         Constraints.Builder()
                             .setRequiresBatteryNotLow(true)
                             .setRequiresStorageNotLow(true)
-                            // Optional: only when charging
-                            // .setRequiresCharging(true)
+                            .setRequiresCharging(true)
                             .build()
                     )
                     .build()
@@ -213,8 +233,6 @@ class MainActivity : FlutterActivity() {
                 ExistingPeriodicWorkPolicy.UPDATE,
                 wallpaperBackgroundRequest
             )
-
-            Log.d("Wallify", "✅ Scheduled wallpaper background worker to run every 15 min")
 
         } catch (e: Exception) {
             Log.e("Wallify", "Error scheduling background wallpaper worker", e)

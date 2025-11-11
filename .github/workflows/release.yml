@@ -8,9 +8,9 @@ on:
 
 env:
   APK_NAME: "Wallify"
-  APP_VERSION: "1.2.1"
+  APP_VERSION: "1.2.2"
   CHANGES: |
-    - New Wallpaper change system
+    - New Wallpaper change system implemented
     - Minor Improvements
 
 jobs:

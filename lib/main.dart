@@ -30,7 +30,7 @@ void main() {
     Workmanager().initialize(callbackDispatcher);
 
     // Start preloading in background (don't wait for it)
-    _preloadWallpaperData();
+    // _preloadWallpaperData();
 
     runApp(const ProviderScope(child: MyApp()));
   }, (error, stack) {
@@ -64,7 +64,7 @@ Future<void> _preloadWallpaperData() async {
       debugPrint("Preloading ${limitedUrls.length} URLs in background");
 
       try {
-        await WallpaperManager.syncImageUrls(limitedUrls);
+        // await WallpaperManager.syncImageUrls(limitedUrls);
         debugPrint("Background preloading complete");
       } catch (e) {
         debugPrint("Background preloading error: $e");

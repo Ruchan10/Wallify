@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:math';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:wallify/core/config.dart';
 import 'package:wallify/core/snackbar.dart';
@@ -29,65 +30,30 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
   int wallpaperLocation = WallpaperManagerFlutter.bothScreens;
   List<Map<String, String>> statusHistory = [];
 
-  int _intervalHours = 1;
+  int _intervalMinutes = 60;
   final TextEditingController _intervalController = TextEditingController(
-    text: "1",
+    text: "60",
   );
+  static const platform = MethodChannel('wallpaper_channel');
+  bool _autoWallpaperEnabled = false;
 
   @override
   void initState() {
     super.initState();
     _initialize();
-    _registerWorkManagerTask();
     UpdateManager.checkForUpdates();
     WidgetsBinding.instance.addObserver(this);
   }
 
   void _initialize() async {
+    _autoWallpaperEnabled = await UserSharedPrefs.getAutoWallpaperEnabled();
     savedTags = await UserSharedPrefs.getTags();
     wallpaperLocation = await UserSharedPrefs.getWallpaperLocation();
-    statusHistory = await UserSharedPrefs.getStatusHistory();
-    _intervalHours = (await UserSharedPrefs.getInterval());
-    _intervalController.text = _intervalHours.toString();
+    // statusHistory = await UserSharedPrefs.getStatusHistory();
+    _intervalMinutes = await UserSharedPrefs.getInterval();
+    _intervalController.text = _intervalMinutes.toString();
 
     setState(() {});
-  }
-
-  // Register WorkManager periodic task for wallpaper changes
-  void _registerWorkManagerTask() async {
-    final hours = await UserSharedPrefs.getInterval();
-
-    // Cancel existing task first
-    await Workmanager().cancelByUniqueName("wallpaperTask");
-
-    // Get Wallpaper objects and convert to URL strings
-    final wallpaperObjects = await UserSharedPrefs.getImageUrls();
-    final imageUrls = wallpaperObjects.map((w) => w.url).toList();
-    final syncResult = await WallpaperManager.syncImageUrls(imageUrls);
-    final cachedPaths = syncResult['cachedPaths'] as List<String>? ?? [];
-    final wallpaperLocation = await UserSharedPrefs.getWallpaperLocation();
-
-    // Register new task with updated interval
-    await Workmanager().registerPeriodicTask(
-      "wallpaperTask",
-      "changeWallpaper",
-      frequency: Duration(minutes: hours),
-      constraints: Constraints(
-        networkType: NetworkType.notRequired,
-        requiresBatteryNotLow: true,
-        requiresCharging: true,
-        requiresDeviceIdle: false,
-        requiresStorageNotLow: true,
-      ),
-      inputData: {
-        'cachedFilePaths': cachedPaths,
-        'wallpaperLocation': wallpaperLocation,
-      },
-    );
-
-    debugPrint(
-      "WorkManager task registered for every $hours hours when charging ====================================",
-    );
   }
 
   Future<void> changeWallpaper({bool changeNow = false}) async {
@@ -97,7 +63,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
       if (wallpaperObjects.isNotEmpty) {
         final randomWallpaper = wallpaperObjects[Random().nextInt(wallpaperObjects.length)];
         final res = await WallpaperManager.fetchAndSetWallpaper(
-          imageUrl: randomWallpaper.url,
+          selectedWallpaper: randomWallpaper,
           wallpaperLocation: wallpaperLocation,
           changeNow: changeNow,
         );
@@ -144,9 +110,58 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          ExpansionTile(
-            title: const Text("Appearance"),
-            ),
+           SizedBox(height: 16),
+
+Row(
+  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+  children: [
+    Text(
+      "Automate Wallpaper",
+      style: Theme.of(context).textTheme.titleLarge,
+    ),
+    Switch(
+      value: _autoWallpaperEnabled,
+      onChanged: (value) async {
+        setState(() => _autoWallpaperEnabled = value);
+
+        if (value) {
+          try {
+            await platform.invokeMethod("scheduleBackgroundWallpaperWorker");
+            showSnackBar(
+              context: context,
+              message: "Auto wallpaper enabled ✅",
+            );
+          } catch (e) {
+            showSnackBar(
+              context: context,
+              message: "Failed to enable auto wallpaper: $e",
+            );
+          }
+        } else {
+          try {
+            await Workmanager().cancelAll();
+            showSnackBar(
+              context: context,
+              message: "Auto wallpaper disabled 🚫",
+            );
+          } catch (e) {
+            showSnackBar(
+              context: context,
+              message: "Failed to disable automation: $e",
+            );
+          }
+        }
+        await UserSharedPrefs.setAutoWallpaperEnabled(value);
+      },
+    ),
+  ],
+),
+
+          const SizedBox(height: 12),
+
+if (_autoWallpaperEnabled)
+  _buildWallpaperSettings(context, scheme),
+          const Divider(),
           // ========== THEME TOGGLE ==========
           Text("Appearance", style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 8),
@@ -259,15 +274,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
             },
           ),
           const Divider(),
-          SizedBox(height: 16),
-
-          Text(
-            "Automate Wallpaper",
-            style: Theme.of(context).textTheme.titleLarge,
-          ),
-          const SizedBox(height: 12),
-
-          _buildWallpaperSettings(context, scheme),
+         
 
           const SizedBox(height: 20),
 
@@ -369,7 +376,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
           children: [
             Expanded(
               child: Text(
-                "Auto Change Interval (hours):",
+                "Auto Change Interval (minutes):",
                 style: Theme.of(context).textTheme.titleMedium,
               ),
             ),
@@ -388,13 +395,12 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
                   ),
                 ),
                 onSubmitted: (value) {
-                  final hours = int.tryParse(value);
-                  if (hours != null && hours > 0) {
-                    setState(() => _intervalHours = hours);
-                    UserSharedPrefs.saveInterval(hours);
-                    _registerWorkManagerTask();
+                  final minutes = int.tryParse(value);
+                  if (minutes != null && minutes > 0) {
+                    setState(() => _intervalMinutes = minutes);
+                    UserSharedPrefs.saveInterval(minutes);
                   } else {
-                    _intervalController.text = _intervalHours.toString();
+                    _intervalController.text = _intervalMinutes.toString();
                   }
                 },
               ),
@@ -505,7 +511,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
                       Expanded(
                         child: Text(
                           lastChange != null
-                              ? "Next change after ${DateFormat("MMM d, h:mm a").format(lastChange.add(Duration(hours: _intervalHours)))} when charging ⚡"
+                              ? "Next change after ${DateFormat("MMM d, h:mm a").format(lastChange.add(Duration(minutes: _intervalMinutes)))} when charging ⚡"
                               : "Next change when device is charging ⚡",
                           style: TextStyle(
                             fontSize: 13,

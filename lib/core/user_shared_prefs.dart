@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:math';
 
+import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wallify/model/wallpaper_model.dart';
 
@@ -13,6 +14,7 @@ class UserSharedPrefs {
   static const _deviceWidthKey = "deviceWidth";
   static const _selectedSourcesKey = "selectedSources";
   static const _wallpaperHistoryKey = "wallpaperHistory";
+  static const _autoWallpaperEnabledKey = "autoWallpaperEnabled";
   static const _lastWallpaperChangeKey = "lastWallpaperChange";
   static const _keyInterval = "wallpaper_interval";
   static const _favWallpaperKey = "favWallpaper";
@@ -213,7 +215,7 @@ static Future<void> saveWallpapers(List<Wallpaper> wallpapers) async {
 
   static Future<int> getInterval() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getInt(_keyInterval) ?? 1;
+    return prefs.getInt(_keyInterval) ?? 60;
   }
 
   /// ---- ERROR REPORTING ----
@@ -225,5 +227,15 @@ static Future<void> saveWallpapers(List<Wallpaper> wallpapers) async {
   static Future<void> setErrorReportingEnabled(bool enabled) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_errorReportingKey, enabled);
+  }
+
+  static Future<bool> getAutoWallpaperEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_autoWallpaperEnabledKey) ?? false;
+  }
+
+  static Future<void> setAutoWallpaperEnabled(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_autoWallpaperEnabledKey, enabled);
   }
 }
