@@ -8,9 +8,12 @@ on:
 
 env:
   APK_NAME: "Wallify"
-  APP_VERSION: "1.2.2"
+  APP_VERSION: "1.2.3"
   CHANGES: |
-    - New Wallpaper change system implemented
+    - Enable/disable auto wallpaper feature
+    - Detect faces from images
+    - Detect objects from images
+    - Reduced app size
     - Minor Improvements
 
 jobs:

@@ -16,7 +16,6 @@ class ImageTile extends StatefulWidget {
 }
 
 class _ImageTileState extends State<ImageTile> {
-  // Removed AutomaticKeepAliveClientMixin to prevent keeping all widgets in memory
 
   @override
   Widget build(BuildContext context) {

@@ -23,6 +23,9 @@ import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.ExistingWorkPolicy
 import java.util.concurrent.TimeUnit
 import com.rk.wallify.WallpaperWorker
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 class MainActivity : FlutterActivity() {
     private val CHANNEL = "wallpaper_channel"
@@ -41,41 +44,23 @@ class MainActivity : FlutterActivity() {
                     scheduleBackgroundWallpaperWorker()
                     result.success("Scheduled wallpaper background worker from Flutter")
                 }
-                "changeWallpaperInBackground" -> {
-                    try {
-                        Log.d("Wallify", "Flutter requested background wallpaper change")
-                        WallpaperUtils.downloadAndSetWallpaperBackground(this)
-                        result.success("Wallpaper change triggered successfully")
-                    } catch (e: Exception) {
-                        Log.e("Wallify", "Error changing wallpaper", e)
-                        result.error("ERROR", "Failed to change wallpaper", e.toString())
+                "scheduleBackgroundWallpaperWorkerNow" -> {
+                    CoroutineScope(Dispatchers.IO).launch {
+                        try {
+                            WallpaperUtils.downloadAndSetWallpaperBackground(applicationContext)
+                            result.success("✅ Wallpaper changed successfully")
+                        } catch (e: Exception) {
+                            result.error("ERROR", e.message, null)
+                        }
                     }
                 }
+           
                 "downloadAndCacheWallpaper" -> {
                     val imageUrl: String? = call.argument<String>("imageUrl")
                     if (imageUrl != null) {
-                        // Use native worker for caching
-                        scheduleWallpaperCacheWorker()
                         result.success("Wallpaper caching scheduled")
                     } else {
                         result.error("INVALID_URL", "Image URL is required", null)
-                    }
-                }
-                "syncImageUrls" -> {
-                    val imageUrls: List<String>? = call.argument<List<String>>("imageUrls")
-                    if (imageUrls != null) {
-                        saveImageUrlsToPrefs(imageUrls)
-                        // Schedule immediate caching of new URLs
-                        scheduleWallpaperCacheWorker()
-                        val settings = getWallpaperSettings()
-                        val resultMap = HashMap<String, Any?>()
-                        resultMap["success"] = true
-                        resultMap["wallpaperLocation"] = settings["wallpaperLocation"] ?: 1
-                        resultMap["urlCount"] = imageUrls.size
-                        result.success(resultMap)
-                        Log.d("Wallify", "Synced ${imageUrls.size} image URLs from Flutter")
-                    } else {
-                        result.error("INVALID_DATA", "Image URLs list is required", null)
                     }
                 }
                 "downloadAndSetWallpaper" -> {
@@ -93,15 +78,6 @@ class MainActivity : FlutterActivity() {
                     resultMap["wallpaperLocation"] = settings["wallpaperLocation"] ?: 1
                     result.success(resultMap)
                 }
-                "setWallpaperFromFile" -> {
-                    val filePath: String? = call.argument<String>("filePath")
-                    val wallpaperLocation: Int = call.argument<Int>("wallpaperLocation") ?: 1
-                    if (filePath != null) {
-                        setWallpaperFromFile(filePath, wallpaperLocation, result)
-                    } else {
-                        result.error("INVALID_FILE", "File path is required", null)
-                    }
-                }
                 "setDualWallpapers" -> {
                     val homeFilePath: String? = call.argument<String>("homeFilePath")
                     val lockFilePath: String? = call.argument<String>("lockFilePath")
@@ -110,16 +86,6 @@ class MainActivity : FlutterActivity() {
                     } else {
                         result.error("INVALID_FILES", "Both home and lock file paths are required", null)
                     }
-                }
-                "triggerWallpaperChange" -> {
-                    val workRequest = OneTimeWorkRequestBuilder<WallpaperWorker>().build()
-                    WorkManager.getInstance(this).enqueue(workRequest)
-                    result.success("Wallpaper change triggered in background")
-                }
-                "startCaching" -> {
-                    // Start the wallpaper caching process
-                    scheduleWallpaperCacheWorker()
-                    result.success("Caching process started")
                 }
                 else -> {
                     result.notImplemented()
@@ -170,41 +136,14 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-
-    private fun scheduleWallpaperChangeWorker() {
-        try {
-            Log.d("Wallify", "Scheduling wallpaper change worker...")
-
-            // Run every hour (minimum period for WorkManager is 15 minutes)
-            val wallpaperWorkRequest = PeriodicWorkRequestBuilder<WallpaperWorker>(
-                1, TimeUnit.HOURS
-            )
-                .setConstraints(
-                    Constraints.Builder()
-                        .setRequiresCharging(true)
-                        .setRequiresBatteryNotLow(true)
-                        .setRequiresStorageNotLow(true)
-                        .build()
-                )
-                .build()
-
-            WorkManager.getInstance(this).enqueueUniquePeriodicWork(
-                WallpaperWorker.WORK_NAME,
-                ExistingPeriodicWorkPolicy.UPDATE,
-                wallpaperWorkRequest
-            )
-
-            Log.d("Wallify", "Scheduled wallpaper change worker successfully ✅")
-
-        } catch (e: Exception) {
-            Log.e("Wallify", "Error scheduling wallpaper worker", e)
-        }
-    }
-
     private fun scheduleBackgroundWallpaperWorker() {
         try {
             val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
             val intervalValue = prefs.all["flutter.wallpaper_interval"]
+            val requiresCharging = prefs.getBoolean("flutter.constraint_charging", true)
+            val requiresBatteryNotLow = prefs.getBoolean("flutter.constraint_battery", true)
+            val requiresStorageNotLow = prefs.getBoolean("flutter.constraint_storage", true)
+            val requireIdle = prefs.getBoolean("flutter.constraint_idle", true)
 
             val intervalMinutes = when (intervalValue) {
                 is Int -> intervalValue
@@ -219,14 +158,16 @@ class MainActivity : FlutterActivity() {
                 PeriodicWorkRequestBuilder<WallpaperBackgroundWorker>(
                     intervalMinutes.toLong(), TimeUnit.MINUTES 
                 )
-                    .setConstraints(
-                        Constraints.Builder()
-                            .setRequiresBatteryNotLow(true)
-                            .setRequiresStorageNotLow(true)
-                            .setRequiresCharging(true)
-                            .build()
-                    )
-                    .build()
+                .setInitialDelay(intervalMinutes.toLong(), TimeUnit.MINUTES) 
+                .setConstraints(
+                    Constraints.Builder()
+                        .setRequiresBatteryNotLow(false)
+                        .setRequiresStorageNotLow(false)
+                        .setRequiresCharging(true)
+                        .setRequiresDeviceIdle(false)
+                        .build()
+                )
+                .build()
 
             WorkManager.getInstance(this).enqueueUniquePeriodicWork(
                 WallpaperBackgroundWorker.WORK_NAME,
@@ -237,55 +178,6 @@ class MainActivity : FlutterActivity() {
         } catch (e: Exception) {
             Log.e("Wallify", "Error scheduling background wallpaper worker", e)
         }
-    }
-
-
-    private fun scheduleWallpaperCacheWorker() {
-        try {
-            Log.d("Wallify", "Scheduling wallpaper cache worker...")
-
-            val cacheWorkRequest = OneTimeWorkRequestBuilder<WallpaperCacheWorker>()
-                .setConstraints(
-                    Constraints.Builder()
-                        .setRequiredNetworkType(NetworkType.CONNECTED)
-                        .setRequiresCharging(true)
-                        .setRequiresBatteryNotLow(true)
-                        .build()
-                )
-                .build()
-
-            val changeWorkRequest = OneTimeWorkRequestBuilder<WallpaperWorker>()
-                .setConstraints(
-                    Constraints.Builder()
-                        .setRequiresBatteryNotLow(true)
-                        .build()
-                )
-                .build()
-
-            // Chain: cache → wallpaper change
-            WorkManager.getInstance(this)
-                .beginUniqueWork(
-                    "wallify_auto_update",
-                    ExistingWorkPolicy.REPLACE,
-                    cacheWorkRequest
-                )
-                .then(changeWorkRequest)
-                .enqueue()
-
-            Log.d("Wallify", "Scheduled wallpaper cache + change worker chain")
-        } catch (e: Exception) {
-            Log.e("Wallify", "Error scheduling cache worker", e)
-        }
-    }
-
-
-    private fun triggerWallpaperChange(result: MethodChannel.Result) {
-        val workRequest = OneTimeWorkRequestBuilder<WallpaperWorker>().build()
-        WorkManager.getInstance(this).enqueue(workRequest)
-
-        workRequest.id
-        result.success("Wallpaper change triggered")
-        Log.d("Wallify", "Triggered immediate wallpaper change")
     }
 
     private fun setWallpaperFromSingleUrl(urlString: String, wallpaperManager: WallpaperManager, flag: Int) {
@@ -314,55 +206,6 @@ class MainActivity : FlutterActivity() {
         } catch (e: Exception) {
             Log.e("Wallify", "Error setting wallpaper from $urlString", e)
         }
-    }
-
-
-    private fun setWallpaperFromFile(filePath: String, wallpaperLocation: Int, result: MethodChannel.Result) {
-        Thread {
-            try {
-                Log.d("Wallify", "Setting wallpaper from cached file: $filePath")
-
-                // Check if file exists
-                val file = File(filePath)
-                if (!file.exists()) {
-                    Log.e("Wallify", "Cached file does not exist: $filePath")
-                    runOnUiThread {
-                        result.error("FILE_NOT_FOUND", "Cached file not found: $filePath", null)
-                    }
-                    return@Thread
-                }
-
-                Log.d("Wallify", "File exists, size: ${file.length()} bytes")
-
-                // Set wallpaper using Android WallpaperManager
-                val wallpaperManager = WallpaperManager.getInstance(this)
-                val bitmap = BitmapFactory.decodeFile(file.absolutePath)
-
-                when (wallpaperLocation) {
-                    0 -> wallpaperManager.setBitmap(bitmap, null, true, WallpaperManager.FLAG_SYSTEM)
-                    1 -> wallpaperManager.setBitmap(bitmap, null, true, WallpaperManager.FLAG_LOCK)
-                    2 -> { // Both screens
-                        wallpaperManager.setBitmap(bitmap, null, true, WallpaperManager.FLAG_SYSTEM)
-                        wallpaperManager.setBitmap(bitmap, null, true, WallpaperManager.FLAG_LOCK)
-                    }
-                    3 -> { // Both screens (alternative value)
-                        wallpaperManager.setBitmap(bitmap, null, true, WallpaperManager.FLAG_SYSTEM)
-                        wallpaperManager.setBitmap(bitmap, null, true, WallpaperManager.FLAG_LOCK)
-                    }
-                }
-
-                Log.d("Wallify", "Wallpaper set successfully from cached file: $filePath")
-
-                runOnUiThread {
-                    result.success("Wallpaper set successfully from cached file")
-                }
-            } catch (e: Exception) {
-                Log.e("Wallify", "Error setting wallpaper from cached file", e)
-                runOnUiThread {
-                    result.error("SET_WALLPAPER_FAILED", e.message, null)
-                }
-            }
-        }.start()
     }
 
     private fun setDualWallpapers(homeFilePath: String, lockFilePath: String, result: MethodChannel.Result) {
@@ -453,6 +296,7 @@ class MainActivity : FlutterActivity() {
             }
         }.start()
     }
+
     private fun getImageUrlsFromPrefs(): List<String> {
         val prefs = getSharedPreferences("wallify_prefs", Context.MODE_PRIVATE)
         val jsonStrings = prefs.getStringSet("imageUrls", emptySet()) ?: emptySet()

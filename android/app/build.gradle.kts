@@ -71,6 +71,9 @@ android {
 
 dependencies {
     implementation("androidx.work:work-runtime-ktx:2.9.0")
+    implementation("com.google.mlkit:object-detection:17.0.2")
+    implementation("com.google.mlkit:object-detection-custom:17.0.2")
+    implementation("com.google.mlkit:face-detection:16.1.6")
 }
 
 flutter {

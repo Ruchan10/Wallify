@@ -6,12 +6,6 @@
 
 #import "GeneratedPluginRegistrant.h"
 
-#if __has_include(<battery_plus/FPPBatteryPlusPlugin.h>)
-#import <battery_plus/FPPBatteryPlusPlugin.h>
-#else
-@import battery_plus;
-#endif
-
 #if __has_include(<device_info_plus/FPPDeviceInfoPlusPlugin.h>)
 #import <device_info_plus/FPPDeviceInfoPlusPlugin.h>
 #else
@@ -22,30 +16,6 @@
 #import <file_picker/FilePickerPlugin.h>
 #else
 @import file_picker;
-#endif
-
-#if __has_include(<flutter_background_service_ios/FlutterBackgroundServicePlugin.h>)
-#import <flutter_background_service_ios/FlutterBackgroundServicePlugin.h>
-#else
-@import flutter_background_service_ios;
-#endif
-
-#if __has_include(<google_mlkit_commons/GoogleMlKitCommonsPlugin.h>)
-#import <google_mlkit_commons/GoogleMlKitCommonsPlugin.h>
-#else
-@import google_mlkit_commons;
-#endif
-
-#if __has_include(<google_mlkit_face_detection/GoogleMlKitFaceDetectionPlugin.h>)
-#import <google_mlkit_face_detection/GoogleMlKitFaceDetectionPlugin.h>
-#else
-@import google_mlkit_face_detection;
-#endif
-
-#if __has_include(<google_mlkit_object_detection/GoogleMlKitObjectDetectionPlugin.h>)
-#import <google_mlkit_object_detection/GoogleMlKitObjectDetectionPlugin.h>
-#else
-@import google_mlkit_object_detection;
 #endif
 
 #if __has_include(<image_cropper/FLTImageCropperPlugin.h>)
@@ -99,13 +69,8 @@
 @implementation GeneratedPluginRegistrant
 
 + (void)registerWithRegistry:(NSObject<FlutterPluginRegistry>*)registry {
-  [FPPBatteryPlusPlugin registerWithRegistrar:[registry registrarForPlugin:@"FPPBatteryPlusPlugin"]];
   [FPPDeviceInfoPlusPlugin registerWithRegistrar:[registry registrarForPlugin:@"FPPDeviceInfoPlusPlugin"]];
   [FilePickerPlugin registerWithRegistrar:[registry registrarForPlugin:@"FilePickerPlugin"]];
-  [FlutterBackgroundServicePlugin registerWithRegistrar:[registry registrarForPlugin:@"FlutterBackgroundServicePlugin"]];
-  [GoogleMlKitCommonsPlugin registerWithRegistrar:[registry registrarForPlugin:@"GoogleMlKitCommonsPlugin"]];
-  [GoogleMlKitFaceDetectionPlugin registerWithRegistrar:[registry registrarForPlugin:@"GoogleMlKitFaceDetectionPlugin"]];
-  [GoogleMlKitObjectDetectionPlugin registerWithRegistrar:[registry registrarForPlugin:@"GoogleMlKitObjectDetectionPlugin"]];
   [FLTImageCropperPlugin registerWithRegistrar:[registry registrarForPlugin:@"FLTImageCropperPlugin"]];
   [FPPPackageInfoPlusPlugin registerWithRegistrar:[registry registrarForPlugin:@"FPPPackageInfoPlusPlugin"]];
   [PathProviderPlugin registerWithRegistrar:[registry registrarForPlugin:@"PathProviderPlugin"]];

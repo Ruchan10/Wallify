@@ -28,7 +28,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
 
   List<String> savedTags = [];
   int wallpaperLocation = WallpaperManagerFlutter.bothScreens;
-  List<Map<String, String>> statusHistory = [];
 
   int _intervalMinutes = 60;
   final TextEditingController _intervalController = TextEditingController(
@@ -49,7 +48,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
     _autoWallpaperEnabled = await UserSharedPrefs.getAutoWallpaperEnabled();
     savedTags = await UserSharedPrefs.getTags();
     wallpaperLocation = await UserSharedPrefs.getWallpaperLocation();
-    // statusHistory = await UserSharedPrefs.getStatusHistory();
     _intervalMinutes = await UserSharedPrefs.getInterval();
     _intervalController.text = _intervalMinutes.toString();
 
@@ -58,29 +56,11 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
 
   Future<void> changeWallpaper({bool changeNow = false}) async {
     try {
-      final wallpaperObjects = await UserSharedPrefs.getImageUrls();
-      UserSharedPrefs.saveLastWallpaperChange(DateTime.now());
-      if (wallpaperObjects.isNotEmpty) {
-        final randomWallpaper = wallpaperObjects[Random().nextInt(wallpaperObjects.length)];
-        final res = await WallpaperManager.fetchAndSetWallpaper(
-          selectedWallpaper: randomWallpaper,
-          wallpaperLocation: wallpaperLocation,
-          changeNow: changeNow,
-        );
-
-        _addStatus("$res at ${DateTime.now().toString()}");
-      } else {
-        _addStatus("No wallpapers available for change");
-      }
+      await Workmanager().cancelAll();
+      await platform.invokeMethod("scheduleBackgroundWallpaperWorkerNow");
     } catch (e) {
-      _addStatus("Error: $e");
+      showSnackBar(context: context, color: Colors.red, message: "Error: $e");
     }
-  }
-
-  void _addStatus(String message) {
-    final entry = {"title": message, "date": DateTime.now().toString()};
-    setState(() => statusHistory.insert(0, entry));
-    UserSharedPrefs.saveStatusHistory(statusHistory);
   }
 
   @override
@@ -93,6 +73,11 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
     final date = DateTime.tryParse(dateStr);
     if (date == null) return dateStr;
     return DateFormat("MMM d, h:mm a").format(date);
+  }
+
+  void resetAutoWallpaper() async {
+    await Workmanager().cancelAll();
+    await platform.invokeMethod("scheduleBackgroundWallpaperWorker");
   }
 
   @override
@@ -110,57 +95,65 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-           SizedBox(height: 16),
+          SizedBox(height: 16),
 
-Row(
-  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-  children: [
-    Text(
-      "Automate Wallpaper",
-      style: Theme.of(context).textTheme.titleLarge,
-    ),
-    Switch(
-      value: _autoWallpaperEnabled,
-      onChanged: (value) async {
-        setState(() => _autoWallpaperEnabled = value);
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                "Automate Wallpaper",
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+              Switch(
+                value: _autoWallpaperEnabled,
+                onChanged: (value) async {
+                  final urls =
+                      await WallpaperManager.fetchImagesFromAllSources();
+                  await UserSharedPrefs.saveWallpapers(urls);
+                  setState(() => _autoWallpaperEnabled = value);
 
-        if (value) {
-          try {
-            await platform.invokeMethod("scheduleBackgroundWallpaperWorker");
-            showSnackBar(
-              context: context,
-              message: "Auto wallpaper enabled ✅",
-            );
-          } catch (e) {
-            showSnackBar(
-              context: context,
-              message: "Failed to enable auto wallpaper: $e",
-            );
-          }
-        } else {
-          try {
-            await Workmanager().cancelAll();
-            showSnackBar(
-              context: context,
-              message: "Auto wallpaper disabled 🚫",
-            );
-          } catch (e) {
-            showSnackBar(
-              context: context,
-              message: "Failed to disable automation: $e",
-            );
-          }
-        }
-        await UserSharedPrefs.setAutoWallpaperEnabled(value);
-      },
-    ),
-  ],
-),
+                  if (value) {
+                    try {
+                      await platform.invokeMethod(
+                        "scheduleBackgroundWallpaperWorker",
+                      );
+                      showSnackBar(
+                        context: context,
+                        message: "Auto wallpaper enabled ✅",
+                      );
+                    } catch (e) {
+                      showSnackBar(
+                        context: context,
+                        color: Colors.red,
+
+                        message: "Failed to enable auto wallpaper: $e",
+                      );
+                    }
+                  } else {
+                    try {
+                      await Workmanager().cancelAll();
+                      showSnackBar(
+                        color: Colors.red,
+                        context: context,
+                        message: "Auto wallpaper disabled 🚫",
+                      );
+                    } catch (e) {
+                      showSnackBar(
+                        color: Colors.red,
+                        context: context,
+                        message: "Failed to disable automation: $e",
+                      );
+                    }
+                  }
+                  await UserSharedPrefs.setAutoWallpaperEnabled(value);
+                },
+              ),
+            ],
+          ),
 
           const SizedBox(height: 12),
 
-if (_autoWallpaperEnabled)
-  _buildWallpaperSettings(context, scheme),
+          if (_autoWallpaperEnabled) _buildWallpaperSettings(context, scheme),
           const Divider(),
           // ========== THEME TOGGLE ==========
           Text("Appearance", style: Theme.of(context).textTheme.titleLarge),
@@ -273,39 +266,8 @@ if (_autoWallpaperEnabled)
               }
             },
           ),
-          const Divider(),
-         
 
           const SizedBox(height: 20),
-
-          Text("History", style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 8),
-          if (statusHistory.isEmpty)
-            Text(
-              "No history yet",
-              style: Theme.of(
-                context,
-              ).textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
-            )
-          else
-            ...statusHistory.map((entry) {
-              return Card(
-                color: scheme.surface,
-                child: ListTile(
-                  leading: Icon(Icons.wallpaper, color: scheme.primary),
-                  title: Text(
-                    entry["title"] ?? "",
-                    style: TextStyle(color: scheme.onSurface),
-                  ),
-                  subtitle: Text(
-                    _formatDate(entry["date"] ?? ""),
-                    style: TextStyle(color: scheme.onSurfaceVariant),
-                  ),
-                ),
-              );
-            }),
-
-          const SizedBox(height: 80),
         ],
       ),
       floatingActionButton: FilledButton.icon(
@@ -338,6 +300,7 @@ if (_autoWallpaperEnabled)
                   () => wallpaperLocation = WallpaperManagerFlutter.homeScreen,
                 );
                 UserSharedPrefs.saveWallpaperLocation(wallpaperLocation);
+                resetAutoWallpaper();
               },
               selectedColor: scheme.primary.withValues(alpha: 0.2),
               backgroundColor: scheme.surfaceContainerHighest,
@@ -350,6 +313,7 @@ if (_autoWallpaperEnabled)
                   () => wallpaperLocation = WallpaperManagerFlutter.lockScreen,
                 );
                 UserSharedPrefs.saveWallpaperLocation(wallpaperLocation);
+                resetAutoWallpaper();
               },
               selectedColor: scheme.primary.withValues(alpha: 0.2),
               backgroundColor: scheme.surfaceContainerHighest,
@@ -363,6 +327,7 @@ if (_autoWallpaperEnabled)
                   () => wallpaperLocation = WallpaperManagerFlutter.bothScreens,
                 );
                 UserSharedPrefs.saveWallpaperLocation(wallpaperLocation);
+                resetAutoWallpaper();
               },
               selectedColor: scheme.primary.withValues(alpha: 0.2),
               backgroundColor: scheme.surfaceContainerHighest,
@@ -394,7 +359,7 @@ if (_autoWallpaperEnabled)
                     borderRadius: BorderRadius.circular(12),
                   ),
                 ),
-                onSubmitted: (value) {
+                onChanged: (value) {
                   final minutes = int.tryParse(value);
                   if (minutes != null && minutes > 0) {
                     setState(() => _intervalMinutes = minutes);
@@ -402,6 +367,7 @@ if (_autoWallpaperEnabled)
                   } else {
                     _intervalController.text = _intervalMinutes.toString();
                   }
+                  resetAutoWallpaper();
                 },
               ),
             ),
@@ -422,12 +388,16 @@ if (_autoWallpaperEnabled)
                     borderRadius: BorderRadius.circular(12),
                   ),
                 ),
-                onSubmitted: (value) {
+                onSubmitted: (value) async {
                   if (value.isNotEmpty && !savedTags.contains(value)) {
                     setState(() => savedTags.add(value));
                     UserSharedPrefs.saveTags(savedTags);
                   }
                   _tagController.clear();
+                  final urls =
+                      await WallpaperManager.fetchImagesFromAllSources();
+                  await UserSharedPrefs.saveWallpapers(urls);
+                  resetAutoWallpaper();
                 },
               ),
             ),
@@ -437,13 +407,16 @@ if (_autoWallpaperEnabled)
                 backgroundColor: scheme.primary,
                 foregroundColor: scheme.onPrimary,
               ),
-              onPressed: () {
+              onPressed: () async {
                 if (_tagController.text.isNotEmpty &&
                     !savedTags.contains(_tagController.text)) {
                   setState(() => savedTags.add(_tagController.text));
                   UserSharedPrefs.saveTags(savedTags);
                 }
                 _tagController.clear();
+                final urls = await WallpaperManager.fetchImagesFromAllSources();
+                await UserSharedPrefs.saveWallpapers(urls);
+                resetAutoWallpaper();
               },
               child: const Text("Add"),
             ),
@@ -458,15 +431,79 @@ if (_autoWallpaperEnabled)
                 label: Text(tag),
                 deleteIcon: Icon(Icons.close, color: scheme.onSurfaceVariant),
                 backgroundColor: scheme.surfaceContainerHighest,
-                onDeleted: () {
+                onDeleted: () async {
                   setState(() => savedTags.remove(tag));
                   UserSharedPrefs.saveTags(savedTags);
+                  final urls =
+                      await WallpaperManager.fetchImagesFromAllSources();
+                  await UserSharedPrefs.saveWallpapers(urls);
+                  resetAutoWallpaper();
                 },
               );
             }).toList(),
           ),
         ],
 
+        // const SizedBox(height: 20),
+        // Text(
+        //   "Automation Constraints",
+        //   style: Theme.of(context).textTheme.titleMedium,
+        // ),
+        // const SizedBox(height: 8),
+
+        // Container(
+        //   decoration: BoxDecoration(
+        //     color: scheme.surfaceContainerHighest,
+        //     borderRadius: BorderRadius.circular(16),
+        //   ),
+        //   padding: const EdgeInsets.all(12),
+        //   child: Column(
+        //     children: [
+        //       _buildConstraintTile(
+        //         context,
+        //         icon: Icons.bolt,
+        //         title: "Only when charging",
+        //         subtitle: "Run wallpaper updates only while plugged in",
+        //         prefKey: "constraint_charging",
+        //       ),
+        //       _buildConstraintTile(
+        //         context,
+        //         icon: Icons.battery_6_bar,
+        //         title: "Battery not low",
+        //         subtitle: "Skip wallpaper change if battery is below 15%",
+        //         prefKey: "constraint_battery",
+        //       ),
+        //       _buildConstraintTile(
+        //         context,
+        //         icon: Icons.storage,
+        //         title: "Storage not low",
+        //         subtitle: "Avoid running when storage is almost full",
+        //         prefKey: "constraint_storage",
+        //       ),
+        //       _buildConstraintTile(
+        //         context,
+        //         icon: Icons.wifi,
+        //         title: "Require Wi-Fi",
+        //         subtitle: "Fetch wallpapers only on Wi-Fi connection",
+        //         prefKey: "constraint_wifi",
+        //       ),
+        //       _buildConstraintTile(
+        //         context,
+        //         icon: Icons.face_retouching_off,
+        //         title: "No human faces",
+        //         subtitle: "Skip wallpapers that include people",
+        //         prefKey: "constraint_no_faces",
+        //       ),
+        //       _buildConstraintTile(
+        //         context,
+        //         icon: Icons.nightlight,
+        //         title: "When device is idle",
+        //         subtitle: "Only update wallpaper when not actively used",
+        //         prefKey: "constraint_idle",
+        //       ),
+        //     ],
+        //   ),
+        // ),
         const SizedBox(height: 20),
         FutureBuilder<DateTime?>(
           future: UserSharedPrefs.getLastWallpaperChange(),
@@ -528,6 +565,40 @@ if (_autoWallpaperEnabled)
           },
         ),
       ],
+    );
+  }
+
+  Widget _buildConstraintTile(
+    BuildContext context, {
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required String prefKey,
+  }) {
+    final scheme = Theme.of(context).colorScheme;
+    return FutureBuilder<bool>(
+      future: UserSharedPrefs.getBool(prefKey),
+      builder: (context, snapshot) {
+        final value = snapshot.data ?? false;
+        return ListTile(
+          contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+          leading: Icon(icon, color: scheme.primary),
+          title: Text(title),
+          subtitle: Text(subtitle),
+          trailing: Switch(
+            value: value,
+            activeColor: scheme.secondary,
+            onChanged: (val) async {
+              await UserSharedPrefs.setBool(prefKey, val);
+              setState(() {});
+              showSnackBar(
+                context: context,
+                message: val ? "$title enabled" : "$title disabled",
+              );
+            },
+          ),
+        );
+      },
     );
   }
 }

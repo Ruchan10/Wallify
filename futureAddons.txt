@@ -1,6 +1,11 @@
-- A toggle to turn on auto wallpaper, dim auto wallpaper section when not enabled
-- constraints section in auto wallpaper 
-- checkboxes (charging, human, etc)
-- in settings allow error/crash reporting
-- more info on wallpaper in preview
-- how to implement orientationin wallheaven with other filters in other api as well 
+- constraints section in auto wallpaper, checkboxes (charging, human, idle, only wifi etc)
+- save only url in imageUrls saved prefs list (need to change the WallpaperUtils.kt)
+- test clicking changenow button changes the wallpaper if device is not charging?
+- allow user to select a folder in their device as source
+- test if it calls the api if imageUrls is empty
+- stack all 3 screens load one after another on start 
+- remove history thing
+- clean up 
+
+
+- to check/not check human face do it inside imageHasFace, if detectFace is false then return random image
