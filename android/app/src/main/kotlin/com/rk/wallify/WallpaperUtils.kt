@@ -322,6 +322,8 @@ object WallpaperUtils {
             val prefs = context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
             val widthValue = prefs.all["flutter.deviceWidth"]
             val heightValue = prefs.all["flutter.deviceHeight"]
+            val historyWall = prefs.all["flutter.wallpaperHistory"]
+                Log.e("Wallify", "================History: $historyWall")
 
             val deviceWidth = when (widthValue) {
                 is Int -> widthValue

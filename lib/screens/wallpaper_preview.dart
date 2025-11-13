@@ -104,17 +104,14 @@ class _WallpaperPreviewPageState extends State<WallpaperPreviewPage> {
     });
 
     try {
-      // Try to get cached image first
       final cacheManager = DefaultCacheManager();
       final fileInfo = await cacheManager.getFileFromCache(widget.wallpaper.url);
       
       File imageFile;
       
       if (fileInfo != null && fileInfo.file.existsSync()) {
-        // Use cached image
         imageFile = fileInfo.file;
       } else {
-        // Download if not cached
         final response = await http.get(Uri.parse(widget.wallpaper.url));
         final dir = await getTemporaryDirectory();
         imageFile = File("${dir.path}/wallpaper_${DateTime.now().millisecondsSinceEpoch}.jpg");
@@ -149,13 +146,10 @@ class _WallpaperPreviewPageState extends State<WallpaperPreviewPage> {
     setState(() => _isProcessing = true);
 
     try {
-      // Get the current transformation matrix
       final matrix = _transformationController.value;
       
-      // Get screen size
       final screenSize = MediaQuery.of(context).size;
       
-      // Load and decode the original image
       final imageBytes = await _downloadedImage!.readAsBytes();
       final originalImage = img.decodeImage(imageBytes);
       
@@ -166,24 +160,19 @@ class _WallpaperPreviewPageState extends State<WallpaperPreviewPage> {
       File croppedFile;
       
       if (matrix != Matrix4.identity()) {
-        // Calculate the crop area based on transformation
         final imageWidth = originalImage.width.toDouble();
         final imageHeight = originalImage.height.toDouble();
         
-        // Get scale from matrix
         final scale = matrix.getMaxScaleOnAxis();
         
-        // Get translation
         final translation = matrix.getTranslation();
         
-        // Calculate visible area in image coordinates
         final visibleWidth = screenSize.width / scale;
         final visibleHeight = screenSize.height / scale;
         
         final offsetX = (-translation.x / scale).clamp(0.0, imageWidth - visibleWidth);
         final offsetY = (-translation.y / scale).clamp(0.0, imageHeight - visibleHeight);
         
-        // Crop the image
         final croppedImage = img.copyCrop(
           originalImage,
           x: offsetX.toInt(),
@@ -192,20 +181,13 @@ class _WallpaperPreviewPageState extends State<WallpaperPreviewPage> {
           height: visibleHeight.toInt().clamp(1, originalImage.height),
         );
         
-        // Save cropped image
         final dir = await getTemporaryDirectory();
         croppedFile = File("${dir.path}/wallpaper_cropped_${DateTime.now().millisecondsSinceEpoch}.jpg");
         await croppedFile.writeAsBytes(img.encodeJpg(croppedImage, quality: 100));
       } else {
-        // No transformation, use original file
         croppedFile = _downloadedImage!;
       }
 
-      // Set the wallpaper
-      debugPrint("Setting wallpaper - Path: ${croppedFile.path}");
-      debugPrint("Setting wallpaper - Location: $_selectedLocation");
-      debugPrint("Setting wallpaper - File exists: ${await croppedFile.exists()}");
-      
       await WallpaperManagerFlutter().setWallpaper(
         croppedFile,
         _selectedLocation!,
@@ -249,7 +231,6 @@ class _WallpaperPreviewPageState extends State<WallpaperPreviewPage> {
 
 
   Future<void> _loadInfo() async {
-    debugPrint("URL:- ${widget.wallpaper.url} ===============================");
 
     Map<String, dynamic>? data;
 
@@ -262,7 +243,6 @@ class _WallpaperPreviewPageState extends State<WallpaperPreviewPage> {
     }
 
     setState(() => _info = data);
-    debugPrint(jsonEncode(_info), wrapWidth: 1024);
   }
 
 Future<Map<String, dynamic>?> fetchWallhavenInfo(String id) async {
@@ -270,7 +250,6 @@ Future<Map<String, dynamic>?> fetchWallhavenInfo(String id) async {
     final res = await http.get(Uri.parse("https://wallhaven.cc/api/v1/w/$id"));
     if (res.statusCode == 200) {
       final json = jsonDecode(res.body)["data"];
-      debugPrint(jsonEncode(json), wrapWidth: 1024);
       return {
         "source": "Wallhaven",
         "id": json["id"],
@@ -309,7 +288,6 @@ Future<Map<String, dynamic>?> fetchPixabayInfo(String id) async {
       final hits = jsonDecode(res.body)["hits"];
       if (hits.isNotEmpty) {
         final img = hits[0];
-        debugPrint(jsonEncode(img), wrapWidth: 1024);
         
         // Parse tags string into list format
         final tagsList = (img["tags"] as String)
@@ -352,9 +330,6 @@ Future<Map<String, dynamic>?> fetchUnsplashInfo(String id) async {
 
     if (res.statusCode == 200) {
       final json = jsonDecode(res.body);
-      debugPrint(jsonEncode(json), wrapWidth: 1024);
-      
-      // Format user info
       final user = json["user"];
       final uploaderInfo = {
         "username": user["username"],
@@ -367,12 +342,10 @@ Future<Map<String, dynamic>?> fetchUnsplashInfo(String id) async {
         "location": user["location"],
       };
       
-      // Format tags
       final tagsList = (json["tags"] as List?)
           ?.map((tag) => {"name": tag["title"]})
           .toList() ?? [];
       
-      // Extract color if available
       final color = json["color"];
       
       return {

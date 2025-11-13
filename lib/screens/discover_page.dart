@@ -43,7 +43,7 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
   void initState() {
     super.initState();
     // if (app_config.Config.getImageUrls().isEmpty) {
-      _fetchImages();
+    _fetchImages();
     // }
     UpdateManager.checkForUpdates();
     _scrollController.addListener(_onScroll);

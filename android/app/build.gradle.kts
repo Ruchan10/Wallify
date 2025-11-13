@@ -25,7 +25,6 @@ if (keystorePropertiesFile.exists()) {
 android {
     namespace = "com.rk.wallify"
     compileSdk = 36
-    ndkVersion = flutter.ndkVersion
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
@@ -44,6 +43,14 @@ android {
         versionName = flutterVersionName
         vectorDrawables.useSupportLibrary = true
     }
+
+    packaging {
+        jniLibs {
+            useLegacyPackaging = false
+        }
+    }
+
+    ndkVersion = flutter.ndkVersion
 
     signingConfigs {
         if (keystoreProperties.isNotEmpty()) {
