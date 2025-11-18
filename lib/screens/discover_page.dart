@@ -47,12 +47,20 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
     // }
     UpdateManager.checkForUpdates();
     _scrollController.addListener(_onScroll);
-
+    initialize();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Future.delayed(const Duration(seconds: 5), () {
         if (app_config.Config.getUpdateAvailable()) {
           UpdateManager.showUpdateDialog(context);
         }
+      });
+    });
+  }
+
+  void initialize() {
+    UserSharedPrefs.getFavWallpapers().then((value) {
+      setState(() {
+        favorites.addAll(value.map((e) => e.url));
       });
     });
   }
@@ -466,12 +474,11 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
                       mainAxisSpacing: 4,
                       crossAxisSpacing: 4,
                       itemCount: _images.length,
-                      // Performance optimizations
                       addAutomaticKeepAlives:
                           PerformanceConfig.addAutomaticKeepAlives,
                       addRepaintBoundaries:
                           PerformanceConfig.addRepaintBoundaries,
-                      addSemanticIndexes: false, // Reduce overhead
+                      addSemanticIndexes: false,
                       cacheExtent: PerformanceConfig.gridCacheExtent.toDouble(),
                       itemBuilder: (context, index) {
                         final img = _images[index];
@@ -482,6 +489,7 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
                             wallpaper: img,
                             isFav: isFav,
                             onFavToggle: () {
+                              debugPrint("Fav toggle for ${img.url}");
                               setState(() {
                                 if (isFav) {
                                   favorites.remove(img.url);

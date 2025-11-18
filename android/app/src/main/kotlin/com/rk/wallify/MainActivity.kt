@@ -153,6 +153,10 @@ class MainActivity : FlutterActivity() {
             }.coerceAtLeast(15) 
 
             Log.d("Wallify", "Scheduling background wallpaper change every $intervalMinutes minutes")
+            Log.d("Wallify", "Scheduling background wallpaper change every $requiresCharging requiresCharging")
+            Log.d("Wallify", "Scheduling background wallpaper change every $requiresBatteryNotLow requiresBatteryNotLow")
+            Log.d("Wallify", "Scheduling background wallpaper change every $requiresStorageNotLow requiresStorageNotLow")
+            Log.d("Wallify", "Scheduling background wallpaper change every $requireIdle requireIdle")
 
             val wallpaperBackgroundRequest =
                 PeriodicWorkRequestBuilder<WallpaperBackgroundWorker>(

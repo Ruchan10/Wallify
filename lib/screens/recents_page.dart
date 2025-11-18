@@ -23,8 +23,14 @@ class _FavoritesHistoryPageState extends State<FavoritesHistoryPage> {
   }
 
   void _initialize() async {
-    historyWalls = await UserSharedPrefs.getWallpaperHistory();
     favWalls = await UserSharedPrefs.getFavWallpapers();
+
+    final rawHistory = await UserSharedPrefs.getWallpaperHistory();
+
+    historyWalls = rawHistory
+        .map((item) => Wallpaper.fromJson(Map<String, dynamic>.from(item)))
+        .toList();
+
     setState(() {});
   }
 
@@ -32,8 +38,12 @@ class _FavoritesHistoryPageState extends State<FavoritesHistoryPage> {
     final colorScheme = Theme.of(context).colorScheme;
 
     if (images.isEmpty) {
-      return Center(child: Text(isHistory ? "No history found" : "No favorites found",
-      style: TextStyle(color: colorScheme.onSurface), ));
+      return Center(
+        child: Text(
+          isHistory ? "No history found" : "No favorites found",
+          style: TextStyle(color: colorScheme.onSurface),
+        ),
+      );
     }
 
     return Padding(
@@ -45,8 +55,8 @@ class _FavoritesHistoryPageState extends State<FavoritesHistoryPage> {
         itemCount: images.length,
         itemBuilder: (context, index) {
           final wallpaper = images[index];
-          final isFav = favWalls.contains(wallpaper);
-      
+          final isFav = favWalls.any((w) => w.id == wallpaper.id);
+
           return ClipRRect(
             borderRadius: BorderRadius.circular(12),
             child: Stack(
@@ -56,8 +66,10 @@ class _FavoritesHistoryPageState extends State<FavoritesHistoryPage> {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (context) =>
-                            WallpaperPreviewPage(wallpaper: wallpaper, isFavorite: isFav),
+                        builder: (context) => WallpaperPreviewPage(
+                          wallpaper: wallpaper,
+                          isFavorite: isFav,
+                        ),
                       ),
                     );
                   },
@@ -67,16 +79,17 @@ class _FavoritesHistoryPageState extends State<FavoritesHistoryPage> {
                     fit: BoxFit.cover,
                     placeholder: (context, url) => Container(
                       height: 200,
-                       color: colorScheme.surface.withValues(alpha: 0.3),
-                      child: const Center(
-                        child: CircularProgressIndicator(),
-                      ),
+                      color: colorScheme.surface.withValues(alpha: 0.3),
+                      child: const Center(child: CircularProgressIndicator()),
                     ),
                     errorWidget: (context, url, error) => Container(
                       height: 200,
-                                           color: colorScheme.surface.withValues(alpha: 0.2),
+                      color: colorScheme.surface.withValues(alpha: 0.2),
 
-                      child: Icon(Icons.broken_image,  color: colorScheme.onSurface.withValues(alpha: 0.5), ),
+                      child: Icon(
+                        Icons.broken_image,
+                        color: colorScheme.onSurface.withValues(alpha: 0.5),
+                      ),
                     ),
                   ),
                 ),
@@ -85,16 +98,20 @@ class _FavoritesHistoryPageState extends State<FavoritesHistoryPage> {
                   right: 8,
                   child: IconButton(
                     style: IconButton.styleFrom(
-                       backgroundColor: colorScheme.surface.withValues(alpha: 0.6),
+                      backgroundColor: colorScheme.surface.withValues(
+                        alpha: 0.6,
+                      ),
                     ),
                     icon: Icon(
                       isFav ? Icons.favorite : Icons.favorite_border,
-                      color: isFav ? colorScheme.secondary : colorScheme.onSurface,
+                      color: isFav
+                          ? colorScheme.secondary
+                          : colorScheme.onSurface,
                     ),
                     onPressed: () {
                       setState(() {
                         if (isFav) {
-                          favWalls.remove(wallpaper);
+                          favWalls.removeWhere((w) => w.id == wallpaper.id);
                           UserSharedPrefs.removeFavWallpaper(wallpaper);
                         } else {
                           favWalls.add(wallpaper);
@@ -118,7 +135,7 @@ class _FavoritesHistoryPageState extends State<FavoritesHistoryPage> {
 
     return DefaultTabController(
       length: 2,
-      initialIndex: 0, 
+      initialIndex: 0,
       child: Scaffold(
         appBar: AppBar(
           title: const Text("My Wallpapers"),

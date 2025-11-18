@@ -20,6 +20,7 @@ import android.graphics.Bitmap
 import com.google.android.gms.tasks.Tasks
 import com.google.mlkit.vision.face.FaceDetection
 import com.google.mlkit.vision.face.FaceDetectorOptions
+import org.json.JSONObject
 
 object WallpaperUtils {
     fun downloadAndSetWallpaperBackground(context: Context) {
@@ -72,7 +73,6 @@ object WallpaperUtils {
             val wallpaperManager = WallpaperManager.getInstance(context)
 
             when (wallpaperLocation) {
-                // 🔹 Case 1: Home screen only
                 1 -> {
                     val nonFaceUrl = getNonFaceImageUrl(context, imageUrls)
                     if (nonFaceUrl == null) {
@@ -82,7 +82,6 @@ object WallpaperUtils {
                     setWallpaper(context, wallpaperManager, nonFaceUrl, WallpaperManager.FLAG_SYSTEM)
                 }
 
-                // 🔹 Case 2: Lock screen only
                 2 -> {
                     val nonFaceUrl = getNonFaceImageUrl(context, imageUrls)
                     if (nonFaceUrl == null) {
@@ -92,7 +91,6 @@ object WallpaperUtils {
                     setWallpaper(context, wallpaperManager, nonFaceUrl, WallpaperManager.FLAG_LOCK)
                 }
 
-                // 🔹 Case 3: Both — different wallpapers for home & lock
                 3 -> {
                     if (imageUrls.size < 2) {
                         Log.w("Wallify", "Not enough wallpapers, using same image for both.")
@@ -114,7 +112,6 @@ object WallpaperUtils {
                             Log.e("Wallify", "❌ No suitable wallpapers found (all had faces).")
                             return
                         }
-                        // Ensure different images
                         while (nonFaceUrl == lockUrl && imageUrls.size > 1) {
                             lockUrl = imageUrls.random()
                         }
@@ -197,7 +194,7 @@ object WallpaperUtils {
             }
         }
 
-        return null // none found
+        return null
     }
 
     private fun fetchImagesFromAllSources(context: Context): List<String> {
@@ -210,17 +207,12 @@ object WallpaperUtils {
 
             Log.d("Wallify", "🌐 Fetching wallpapers with tag=$tag, size=${deviceWidth}x$deviceHeight")
 
-            // 1️⃣ Wallhaven
             val wallhavenUrl =
                 "https://wallhaven.cc/api/v1/search?q=$tag&categories=100&purity=100&ratios=portrait&atleast=${deviceWidth}x$deviceHeight&sorting=random"
             urls.addAll(fetchFromWallhaven(wallhavenUrl))
-
-            // 2️⃣ Unsplash
             val unsplashUrl =
                 "https://api.unsplash.com/photos/random?query=$tag&orientation=portrait&content_filter=high&count=10"
             urls.addAll(fetchFromUnsplash(unsplashUrl))
-
-            // 3️⃣ Pixabay
             val pixabayUrl =
                 "https://pixabay.com/api/?key=52028006-a7e910370a5d0158c371bb06a&q=$tag&image_type=photo&orientation=vertical&min_width=$deviceWidth&min_height=$deviceHeight&safesearch=true"
             urls.addAll(fetchFromPixabay(pixabayUrl))
@@ -228,7 +220,6 @@ object WallpaperUtils {
             if (urls.isEmpty()) {
                 Log.w("Wallify", "⚠️ No wallpapers found from any source")
             } else {
-                // Save to shared prefs
                 val jsonArray = JSONArray()
                 urls.forEach { url ->
                     val obj = org.json.JSONObject()
@@ -318,12 +309,9 @@ object WallpaperUtils {
                 return
             }
 
-            // 🔹 Read device size from SharedPreferences
             val prefs = context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
             val widthValue = prefs.all["flutter.deviceWidth"]
             val heightValue = prefs.all["flutter.deviceHeight"]
-            val historyWall = prefs.all["flutter.wallpaperHistory"]
-                Log.e("Wallify", "================History: $historyWall")
 
             val deviceWidth = when (widthValue) {
                 is Int -> widthValue
@@ -340,7 +328,6 @@ object WallpaperUtils {
 
             Log.d("Wallify", "📏 Device dimensions from prefs: $deviceWidth x $deviceHeight")
 
-            // 🔹 Detect and crop object before setting wallpaper
             bitmap = detectAndCropMainObject(context, bitmap, deviceWidth, deviceHeight)
 
             manager.setBitmap(bitmap, null, true, flag)
@@ -393,44 +380,61 @@ object WallpaperUtils {
     private fun removeUsedUrl(context: Context, usedUrl: String) {
         try {
             val prefs = context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+
             var imageJsonString = prefs.getString("flutter.imageUrls", "[]") ?: "[]"
             if (imageJsonString.contains("![")) {
                 imageJsonString = imageJsonString.substringAfter("!")
             }
+            val imageList = JSONArray(imageJsonString)
 
-            val jsonArray = JSONArray(imageJsonString)
-            Log.d("Wallify", "🧹 Removed used wallpaper (STARTING: ${jsonArray.length()})")
-            val newArray = JSONArray()
+            val historyJsonString = prefs.getString("flutter.wallpaperHistory", "[]") ?: "[]"
+            val historyList = JSONArray(historyJsonString)
 
-            for (i in 0 until jsonArray.length()) {
-                val item = org.json.JSONObject(jsonArray.getString(i))
+            Log.d("Wallify", "🧹 Removing used wallpaper URL: $usedUrl")
+
+            val newImageList = JSONArray()
+            var movedObject: JSONObject? = null
+
+            for (i in 0 until imageList.length()) {
+                val itemStr = imageList.getString(i)
+                val item = JSONObject(itemStr)
                 val url = item.optString("url", "")
-                if (url != usedUrl) {
-                    newArray.put(item)
+
+                if (url == usedUrl) {
+                    movedObject = item  
+                    Log.d("Wallify", "➡️ Moved to history: $item")
+                } else {
+                    newImageList.put(itemStr)
                 }
             }
 
-            prefs.edit().putString("flutter.imageUrls", newArray.toString()).apply()
-            Log.d("Wallify", "🧹 Removed used wallpaper URL: $usedUrl (remaining: ${newArray.length()})")
+            prefs.edit().putString("flutter.imageUrls", newImageList.toString()).apply()
+
+            if (movedObject != null) {
+                historyList.put(movedObject)
+                prefs.edit().putString("flutter.wallpaperHistory", historyList.toString()).apply()
+            }
+
+            Log.d("Wallify", "📌 History size: ${historyList.length()}")
+            Log.d("Wallify", "📌 Remaining imageUrls: ${newImageList.length()}")
 
         } catch (e: Exception) {
-            Log.e("Wallify", "Error removing used URL: ${e.message}", e)
+            Log.e("Wallify", "Error updating history: ${e.message}", e)
         }
     }
 
-
     private fun detectAndCropMainObject(
-    context: Context,
-    bitmap: Bitmap,
-    targetWidth: Int,
-    targetHeight: Int
+        context: Context,
+        bitmap: Bitmap,
+        targetWidth: Int,
+        targetHeight: Int
     ): Bitmap {
         return try {
             val image = InputImage.fromBitmap(bitmap, 0)
             val options = ObjectDetectorOptions.Builder()
                 .setDetectorMode(ObjectDetectorOptions.SINGLE_IMAGE_MODE)
                 .enableMultipleObjects()
-                .enableClassification() // optional
+                .enableClassification()
                 .build()
             val detector = ObjectDetection.getClient(options)
 
@@ -442,7 +446,6 @@ object WallpaperUtils {
                         val box: Rect = obj.boundingBox
                         Log.d("Wallify", "🎯 Detected object bounds: $box")
 
-                        // Crop within image bounds
                         val left = box.left.coerceAtLeast(0)
                         val top = box.top.coerceAtLeast(0)
                         val right = box.right.coerceAtMost(bitmap.width)
@@ -450,7 +453,6 @@ object WallpaperUtils {
 
                         val cropped = Bitmap.createBitmap(bitmap, left, top, right - left, bottom - top)
 
-                        // Scale cropped image to device screen ratio
                         resultBitmap = cropped.scale(targetWidth, targetHeight, true)
                     } else {
                         Log.d("Wallify", "⚠️ No object detected, using full image.")
@@ -462,7 +464,6 @@ object WallpaperUtils {
                     resultBitmap = bitmap.scale(targetWidth, targetHeight, true)
                 }
 
-            // Wait for ML task (blocking)
             Tasks.await(task)
             resultBitmap
         } catch (e: Exception) {

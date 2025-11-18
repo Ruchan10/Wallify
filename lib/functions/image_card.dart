@@ -9,14 +9,18 @@ class ImageTile extends StatefulWidget {
   final bool isFav;
   final VoidCallback onFavToggle;
 
-  const ImageTile({super.key, required this.wallpaper, required this.isFav, required this.onFavToggle});
+  const ImageTile({
+    super.key,
+    required this.wallpaper,
+    required this.isFav,
+    required this.onFavToggle,
+  });
 
   @override
   State<ImageTile> createState() => _ImageTileState();
 }
 
 class _ImageTileState extends State<ImageTile> {
-
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -30,8 +34,10 @@ class _ImageTileState extends State<ImageTile> {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (context) =>
-                      WallpaperPreviewPage(wallpaper: widget.wallpaper, isFavorite: widget.isFav),
+                  builder: (context) => WallpaperPreviewPage(
+                    wallpaper: widget.wallpaper,
+                    isFavorite: widget.isFav,
+                  ),
                 ),
               );
             },
@@ -44,12 +50,17 @@ class _ImageTileState extends State<ImageTile> {
               placeholder: (context, url) => Container(
                 height: 200,
                 color: colorScheme.surface.withValues(alpha: 0.3),
-                child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                child: const Center(
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
               ),
               errorWidget: (context, url, error) => Container(
                 height: 100,
                 color: colorScheme.surface.withValues(alpha: 0.2),
-                child: Icon(Icons.broken_image, color: colorScheme.onSurface.withValues(alpha: 0.5)),
+                child: Icon(
+                  Icons.broken_image,
+                  color: colorScheme.onSurface.withValues(alpha: 0.5),
+                ),
               ),
             ),
           ),
@@ -62,9 +73,14 @@ class _ImageTileState extends State<ImageTile> {
               ),
               icon: Icon(
                 widget.isFav ? Icons.favorite : Icons.favorite_border,
-                color: widget.isFav ? colorScheme.secondary : colorScheme.onSurface,
+                color: widget.isFav
+                    ? colorScheme.secondary
+                    : colorScheme.onSurface,
               ),
-              onPressed: widget.onFavToggle,
+              onPressed: () {
+                setState(() {});
+                widget.onFavToggle();
+              },
             ),
           ),
         ],

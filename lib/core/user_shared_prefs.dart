@@ -95,30 +95,27 @@ class UserSharedPrefs {
         ["wallhaven", "unsplash", "pixabay"];
   }
 
-  static Future<void> saveWallpaperHistory(Wallpaper wallpaper) async {
+static Future<void> saveWallpaperHistory(Wallpaper wallpaper) async {
     final prefs = await SharedPreferences.getInstance();
-    final history = prefs.getStringList(_wallpaperHistoryKey) ?? [];
+    final raw = prefs.getString(_wallpaperHistoryKey) ?? "[]";
 
-    final entry = jsonEncode(wallpaper.toJson());
+    final List<dynamic> history = jsonDecode(raw);
 
-    // Avoid duplicates by checking `id`
-    final exists = history.any((item) {
-      final decoded = jsonDecode(item);
-      return decoded["id"] == wallpaper.id;
-    });
+    final exists = history.any((item) => item["id"] == wallpaper.id);
 
     if (!exists) {
-      history.add(entry);
-      await prefs.setStringList(_wallpaperHistoryKey, history);
+      history.add(wallpaper.toJson());
+      await prefs.setString(_wallpaperHistoryKey, jsonEncode(history));
     }
   }
 
-  /// Get full wallpaper history
-  static Future<List<Wallpaper>> getWallpaperHistory() async {
+static Future<List<Map<String, dynamic>>> getWallpaperHistory() async {
     final prefs = await SharedPreferences.getInstance();
-    final history = prefs.getStringList(_wallpaperHistoryKey) ?? [];
+    final raw = prefs.getString(_wallpaperHistoryKey) ?? "[]";
 
-    return history.map((e) => Wallpaper.fromJson(jsonDecode(e))).toList();
+    final List<dynamic> list = jsonDecode(raw);
+
+    return list.map((e) => Map<String, dynamic>.from(e)).toList();
   }
 
   static Future<void> saveWallpapers(List<Wallpaper> wallpapers) async {
