@@ -141,9 +141,9 @@ class MainActivity : FlutterActivity() {
             val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
             val intervalValue = prefs.all["flutter.wallpaper_interval"]
             val requiresCharging = prefs.getBoolean("flutter.constraint_charging", true)
-            val requiresBatteryNotLow = prefs.getBoolean("flutter.constraint_battery", true)
-            val requiresStorageNotLow = prefs.getBoolean("flutter.constraint_storage", true)
-            val requireIdle = prefs.getBoolean("flutter.constraint_idle", true)
+            val requiresBatteryNotLow = prefs.getBoolean("flutter.constraint_battery", false)
+            val requiresStorageNotLow = prefs.getBoolean("flutter.constraint_storage", false)
+            val requireIdle = prefs.getBoolean("flutter.constraint_idle", false)
 
             val intervalMinutes = when (intervalValue) {
                 is Int -> intervalValue
@@ -162,12 +162,11 @@ class MainActivity : FlutterActivity() {
                 PeriodicWorkRequestBuilder<WallpaperBackgroundWorker>(
                     intervalMinutes.toLong(), TimeUnit.MINUTES 
                 )
-                .setInitialDelay(intervalMinutes.toLong(), TimeUnit.MINUTES) 
                 .setConstraints(
                     Constraints.Builder()
+                        .setRequiredNetworkType(NetworkType.CONNECTED)
                         .setRequiresBatteryNotLow(false)
                         .setRequiresStorageNotLow(false)
-                        .setRequiresCharging(true)
                         .setRequiresDeviceIdle(false)
                         .build()
                 )

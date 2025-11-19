@@ -18,6 +18,10 @@ class UserSharedPrefs {
   static const _favWallpaperKey = "favWallpaper";
   static const _imageUrlsKey = "imageUrls";
   static const _errorReportingKey = "errorReportingEnabled";
+static const _constraintChargingKey = "constraint_charging";
+static const _constraintBatteryNotLowKey = "constraint_battery_not_low";
+static const _constraintStorageNotLowKey = "constraint_storage_not_low";
+static const _constraintIdleKey = "constraint_idle";
 
   /// ---- TAGS ----
   static Future<List<String>> getTags() async {
@@ -237,4 +241,46 @@ static Future<List<Map<String, dynamic>>> getWallpaperHistory() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getBool(key) ?? false;
   }
+
+  static Future<void> setConstraintCharging(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_constraintChargingKey, enabled);
+  }
+
+  static Future<bool> getConstraintCharging() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_constraintChargingKey) ?? true;
+  }
+
+  static Future<void> setConstraintBatteryNotLow(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_constraintBatteryNotLowKey, enabled);
+  }
+
+  static Future<bool> getConstraintBatteryNotLow() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_constraintBatteryNotLowKey) ?? false;
+  }
+
+  static Future<void> setConstraintStorageNotLow(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_constraintStorageNotLowKey, enabled);
+  }
+
+  static Future<bool> getConstraintStorageNotLow() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_constraintStorageNotLowKey) ?? false;
+  }
+
+  static Future<void> setConstraintIdle(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_constraintIdleKey, enabled);
+  }
+
+  static Future<bool> getConstraintIdle() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_constraintIdleKey) ?? false;
+  }
+
+
 }

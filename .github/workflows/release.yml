@@ -8,9 +8,9 @@ on:
 
 env:
   APK_NAME: "Wallify"
-  APP_VERSION: "1.2.5"
+  APP_VERSION: "1.2.6"
   CHANGES: |
-    - Minor improvements & bug fixes
+    - Fixing the auto wallpaper change
 
 jobs:
   build:

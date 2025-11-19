@@ -95,6 +95,131 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+         
+          Text("Apply To", style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            children: [
+              ChoiceChip(
+                label: const Text("Home"),
+                selected:
+                    wallpaperLocation == WallpaperManagerFlutter.homeScreen,
+                onSelected: (_) {
+                  setState(
+                    () =>
+                        wallpaperLocation = WallpaperManagerFlutter.homeScreen,
+                  );
+                  UserSharedPrefs.saveWallpaperLocation(wallpaperLocation);
+                  resetAutoWallpaper();
+                },
+                selectedColor: scheme.primary.withValues(alpha: 0.2),
+                backgroundColor: scheme.surfaceContainerHighest,
+              ),
+              ChoiceChip(
+                label: const Text("Lock"),
+                selected:
+                    wallpaperLocation == WallpaperManagerFlutter.lockScreen,
+                onSelected: (_) {
+                  setState(
+                    () =>
+                        wallpaperLocation = WallpaperManagerFlutter.lockScreen,
+                  );
+                  UserSharedPrefs.saveWallpaperLocation(wallpaperLocation);
+                  resetAutoWallpaper();
+                },
+                selectedColor: scheme.primary.withValues(alpha: 0.2),
+                backgroundColor: scheme.surfaceContainerHighest,
+              ),
+              ChoiceChip(
+                label: const Text("Both"),
+                selected:
+                    wallpaperLocation == WallpaperManagerFlutter.bothScreens,
+                onSelected: (_) {
+                  setState(
+                    () =>
+                        wallpaperLocation = WallpaperManagerFlutter.bothScreens,
+                  );
+                  UserSharedPrefs.saveWallpaperLocation(wallpaperLocation);
+                  resetAutoWallpaper();
+                },
+                selectedColor: scheme.primary.withValues(alpha: 0.2),
+                backgroundColor: scheme.surfaceContainerHighest,
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _tagController,
+                  decoration: InputDecoration(
+                    labelText: "Enter a tag",
+                    fillColor: scheme.surfaceContainerHighest,
+                    filled: true,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  onSubmitted: (value) async {
+                    if (value.isNotEmpty && !savedTags.contains(value)) {
+                      setState(() => savedTags.add(value));
+                      UserSharedPrefs.saveTags(savedTags);
+                    }
+                    _tagController.clear();
+                    final urls =
+                        await WallpaperManager.fetchImagesFromAllSources();
+                    await UserSharedPrefs.saveWallpapers(urls);
+                    resetAutoWallpaper();
+                  },
+                ),
+              ),
+              const SizedBox(width: 8),
+              FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: scheme.primary,
+                  foregroundColor: scheme.onPrimary,
+                ),
+                onPressed: () async {
+                  if (_tagController.text.isNotEmpty &&
+                      !savedTags.contains(_tagController.text)) {
+                    setState(() => savedTags.add(_tagController.text));
+                    UserSharedPrefs.saveTags(savedTags);
+                  }
+                  _tagController.clear();
+                  final urls =
+                      await WallpaperManager.fetchImagesFromAllSources();
+                  await UserSharedPrefs.saveWallpapers(urls);
+                  resetAutoWallpaper();
+                },
+                child: const Text("Add"),
+              ),
+            ],
+          ),
+          if (savedTags.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 6,
+              children: savedTags.map((tag) {
+                return Chip(
+                  label: Text(tag),
+                  deleteIcon: Icon(Icons.close, color: scheme.onSurfaceVariant),
+                  backgroundColor: scheme.surfaceContainerHighest,
+                  onDeleted: () async {
+                    setState(() => savedTags.remove(tag));
+                    UserSharedPrefs.saveTags(savedTags);
+                    final urls =
+                        await WallpaperManager.fetchImagesFromAllSources();
+                    await UserSharedPrefs.saveWallpapers(urls);
+                    resetAutoWallpaper();
+                  },
+                );
+              }).toList(),
+            ),
+          ],
+          const Divider(),
+
           SizedBox(height: 16),
 
           Row(
@@ -152,7 +277,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
           ),
 
           const SizedBox(height: 12),
-
           if (_autoWallpaperEnabled) _buildWallpaperSettings(context, scheme),
           const Divider(),
           // ========== THEME TOGGLE ==========
@@ -287,55 +411,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text("Apply To", style: Theme.of(context).textTheme.titleMedium),
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 8,
-          children: [
-            ChoiceChip(
-              label: const Text("Home"),
-              selected: wallpaperLocation == WallpaperManagerFlutter.homeScreen,
-              onSelected: (_) {
-                setState(
-                  () => wallpaperLocation = WallpaperManagerFlutter.homeScreen,
-                );
-                UserSharedPrefs.saveWallpaperLocation(wallpaperLocation);
-                resetAutoWallpaper();
-              },
-              selectedColor: scheme.primary.withValues(alpha: 0.2),
-              backgroundColor: scheme.surfaceContainerHighest,
-            ),
-            ChoiceChip(
-              label: const Text("Lock"),
-              selected: wallpaperLocation == WallpaperManagerFlutter.lockScreen,
-              onSelected: (_) {
-                setState(
-                  () => wallpaperLocation = WallpaperManagerFlutter.lockScreen,
-                );
-                UserSharedPrefs.saveWallpaperLocation(wallpaperLocation);
-                resetAutoWallpaper();
-              },
-              selectedColor: scheme.primary.withValues(alpha: 0.2),
-              backgroundColor: scheme.surfaceContainerHighest,
-            ),
-            ChoiceChip(
-              label: const Text("Both"),
-              selected:
-                  wallpaperLocation == WallpaperManagerFlutter.bothScreens,
-              onSelected: (_) {
-                setState(
-                  () => wallpaperLocation = WallpaperManagerFlutter.bothScreens,
-                );
-                UserSharedPrefs.saveWallpaperLocation(wallpaperLocation);
-                resetAutoWallpaper();
-              },
-              selectedColor: scheme.primary.withValues(alpha: 0.2),
-              backgroundColor: scheme.surfaceContainerHighest,
-            ),
-          ],
-        ),
-        const SizedBox(height: 20),
-
         Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
@@ -373,76 +448,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
             ),
           ],
         ),
-        const SizedBox(height: 20),
-
-        Row(
-          children: [
-            Expanded(
-              child: TextField(
-                controller: _tagController,
-                decoration: InputDecoration(
-                  labelText: "Enter a tag",
-                  fillColor: scheme.surfaceContainerHighest,
-                  filled: true,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                onSubmitted: (value) async {
-                  if (value.isNotEmpty && !savedTags.contains(value)) {
-                    setState(() => savedTags.add(value));
-                    UserSharedPrefs.saveTags(savedTags);
-                  }
-                  _tagController.clear();
-                  final urls =
-                      await WallpaperManager.fetchImagesFromAllSources();
-                  await UserSharedPrefs.saveWallpapers(urls);
-                  resetAutoWallpaper();
-                },
-              ),
-            ),
-            const SizedBox(width: 8),
-            FilledButton(
-              style: FilledButton.styleFrom(
-                backgroundColor: scheme.primary,
-                foregroundColor: scheme.onPrimary,
-              ),
-              onPressed: () async {
-                if (_tagController.text.isNotEmpty &&
-                    !savedTags.contains(_tagController.text)) {
-                  setState(() => savedTags.add(_tagController.text));
-                  UserSharedPrefs.saveTags(savedTags);
-                }
-                _tagController.clear();
-                final urls = await WallpaperManager.fetchImagesFromAllSources();
-                await UserSharedPrefs.saveWallpapers(urls);
-                resetAutoWallpaper();
-              },
-              child: const Text("Add"),
-            ),
-          ],
-        ),
-        if (savedTags.isNotEmpty) ...[
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 6,
-            children: savedTags.map((tag) {
-              return Chip(
-                label: Text(tag),
-                deleteIcon: Icon(Icons.close, color: scheme.onSurfaceVariant),
-                backgroundColor: scheme.surfaceContainerHighest,
-                onDeleted: () async {
-                  setState(() => savedTags.remove(tag));
-                  UserSharedPrefs.saveTags(savedTags);
-                  final urls =
-                      await WallpaperManager.fetchImagesFromAllSources();
-                  await UserSharedPrefs.saveWallpapers(urls);
-                  resetAutoWallpaper();
-                },
-              );
-            }).toList(),
-          ),
-        ],
+        const SizedBox(height: 8),
 
         // const SizedBox(height: 20),
         // Text(
