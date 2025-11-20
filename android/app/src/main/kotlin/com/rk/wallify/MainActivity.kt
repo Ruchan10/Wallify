@@ -168,13 +168,14 @@ class MainActivity : FlutterActivity() {
                         .setRequiresBatteryNotLow(false)
                         .setRequiresStorageNotLow(false)
                         .setRequiresDeviceIdle(false)
+                        .setRequiresCharging(true)
                         .build()
                 )
                 .build()
 
             WorkManager.getInstance(this).enqueueUniquePeriodicWork(
                 WallpaperBackgroundWorker.WORK_NAME,
-                ExistingPeriodicWorkPolicy.UPDATE,
+                ExistingPeriodicWorkPolicy.CANCEL_AND_REENQUEUE,
                 wallpaperBackgroundRequest
             )
 

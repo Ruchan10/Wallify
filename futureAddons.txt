@@ -1,9 +1,6 @@
-- add imageUrl to history list before removing 
 - constraints section in auto wallpaper, checkboxes (charging, human, idle, only wifi etc)
 - allow user to select a folder in their device as source
-- test if it calls the api if imageUrls is empty
 - stack all 3 screens load one after another on start 
-- remove history thing
 - clean up 
 - initial theme should match device theme
 
