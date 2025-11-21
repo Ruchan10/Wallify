@@ -8,9 +8,12 @@ on:
 
 env:
   APK_NAME: "Wallify"
-  APP_VERSION: "1.2.7"
+  APP_VERSION: "1.2.8"
   CHANGES: |
-    - Background auto wallpaper change working
+    - Background auto wallpaper change working well
+    - Constraints section
+    - Code cleanup
+    - Minor changes
 
 jobs:
   build:

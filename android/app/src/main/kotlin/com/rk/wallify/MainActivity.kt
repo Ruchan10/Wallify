@@ -22,7 +22,6 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.ExistingWorkPolicy
 import java.util.concurrent.TimeUnit
-import com.rk.wallify.WallpaperWorker
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -55,14 +54,6 @@ class MainActivity : FlutterActivity() {
                     }
                 }
            
-                "downloadAndCacheWallpaper" -> {
-                    val imageUrl: String? = call.argument<String>("imageUrl")
-                    if (imageUrl != null) {
-                        result.success("Wallpaper caching scheduled")
-                    } else {
-                        result.error("INVALID_URL", "Image URL is required", null)
-                    }
-                }
                 "downloadAndSetWallpaper" -> {
                     val imageUrl: String? = call.argument<String>("imageUrl")
                     val wallpaperLocation: Int = call.argument<Int>("wallpaperLocation") ?: 1
@@ -71,12 +62,6 @@ class MainActivity : FlutterActivity() {
                     } else {
                         result.error("INVALID_URL", "Image URL is required", null)
                     }
-                }
-                "getWallpaperLocation" -> {
-                    val settings = getWallpaperSettings()
-                    val resultMap = HashMap<String, Any?>()
-                    resultMap["wallpaperLocation"] = settings["wallpaperLocation"] ?: 1
-                    result.success(resultMap)
                 }
                 "setDualWallpapers" -> {
                     val homeFilePath: String? = call.argument<String>("homeFilePath")
@@ -143,7 +128,8 @@ class MainActivity : FlutterActivity() {
             val requiresCharging = prefs.getBoolean("flutter.constraint_charging", true)
             val requiresBatteryNotLow = prefs.getBoolean("flutter.constraint_battery", false)
             val requiresStorageNotLow = prefs.getBoolean("flutter.constraint_storage", false)
-            val requireIdle = prefs.getBoolean("flutter.constraint_idle", false)
+            val requiresNoFaces = prefs.getBoolean("flutter.constraint_no_faces", false)
+            val requiresWifi = prefs.getBoolean("flutter.constraint_wifi", false)
 
             val intervalMinutes = when (intervalValue) {
                 is Int -> intervalValue
@@ -152,28 +138,30 @@ class MainActivity : FlutterActivity() {
                 else -> 60
             }.coerceAtLeast(15) 
 
-            Log.d("Wallify", "Scheduling background wallpaper change every $intervalMinutes minutes")
-            Log.d("Wallify", "Scheduling background wallpaper change every $requiresCharging requiresCharging")
-            Log.d("Wallify", "Scheduling background wallpaper change every $requiresBatteryNotLow requiresBatteryNotLow")
-            Log.d("Wallify", "Scheduling background wallpaper change every $requiresStorageNotLow requiresStorageNotLow")
-            Log.d("Wallify", "Scheduling background wallpaper change every $requireIdle requireIdle")
+            val constraintsBuilder = Constraints.Builder()
+                .setRequiresBatteryNotLow(requiresBatteryNotLow)
+                .setRequiresStorageNotLow(requiresStorageNotLow)
+                .setRequiresCharging(requiresCharging)
+
+            if (requiresWifi) {
+                constraintsBuilder.setRequiredNetworkType(NetworkType.UNMETERED)
+            } else {
+                constraintsBuilder.setRequiredNetworkType(NetworkType.CONNECTED)
+            }
+
 
             val wallpaperBackgroundRequest =
                 PeriodicWorkRequestBuilder<WallpaperBackgroundWorker>(
                     intervalMinutes.toLong(), TimeUnit.MINUTES 
                 )
+                .setInitialDelay(intervalMinutes.toLong(), TimeUnit.MINUTES) 
                 .setConstraints(
-                    Constraints.Builder()
-                        .setRequiredNetworkType(NetworkType.CONNECTED)
-                        .setRequiresBatteryNotLow(false)
-                        .setRequiresStorageNotLow(false)
-                        .setRequiresDeviceIdle(false)
-                        .setRequiresCharging(true)
-                        .build()
+                    constraintsBuilder.build()
                 )
                 .build()
 
-            WorkManager.getInstance(this).enqueueUniquePeriodicWork(
+            WorkManager.
+            getInstance(this).enqueueUniquePeriodicWork(
                 WallpaperBackgroundWorker.WORK_NAME,
                 ExistingPeriodicWorkPolicy.CANCEL_AND_REENQUEUE,
                 wallpaperBackgroundRequest
@@ -265,41 +253,6 @@ class MainActivity : FlutterActivity() {
         }.start()
     }
 
-    private fun downloadAndCacheWallpaper(imageUrl: String, result: MethodChannel.Result) {
-        Thread {
-            try {
-                Log.d("Wallify", "Caching wallpaper: $imageUrl")
-                
-                // Download image
-                val url = URL(imageUrl)
-                val connection = url.openConnection() as HttpURLConnection
-                connection.requestMethod = "GET"
-                connection.connectTimeout = 15000
-                connection.readTimeout = 15000
-                
-                val inputStream = connection.inputStream
-                val bytes = inputStream.readBytes()
-                inputStream.close()
-                
-                // Save to app's cache directory with unique name
-                val cacheDir = cacheDir
-                val fileName = "wallpaper_cache_${System.currentTimeMillis()}.jpg"
-                val cachedFile = File(cacheDir, fileName)
-                cachedFile.writeBytes(bytes)
-                
-                Log.d("Wallify", "Cached wallpaper to: ${cachedFile.absolutePath}")
-                
-                runOnUiThread {
-                    result.success(cachedFile.absolutePath)
-                }
-            } catch (e: Exception) {
-                Log.e("Wallify", "Error caching wallpaper", e)
-                runOnUiThread {
-                    result.error("CACHE_FAILED", e.message, null)
-                }
-            }
-        }.start()
-    }
 
     private fun getImageUrlsFromPrefs(): List<String> {
         val prefs = getSharedPreferences("wallify_prefs", Context.MODE_PRIVATE)
@@ -319,18 +272,6 @@ class MainActivity : FlutterActivity() {
         
         Log.d("Wallify", "Retrieved ${urls.size} image URLs from preferences (parsed from ${jsonStrings.size} JSON objects)")
         return urls
-    }
-
-    private fun saveImageUrlsToPrefs(urls: List<String>) {
-        val prefs = getSharedPreferences("wallify_prefs", Context.MODE_PRIVATE)
-        prefs.edit().putStringSet("imageUrls", urls.toSet()).apply()
-    }
-
-    private fun getWallpaperSettings(): Map<String, Any?> {
-        val prefs = getSharedPreferences("wallify_prefs", Context.MODE_PRIVATE)
-        return mapOf(
-            "wallpaperLocation" to prefs.getInt("wallpaperLocation", 1)
-        )
     }
 
 

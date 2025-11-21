@@ -1,4 +1,3 @@
-- constraints section in auto wallpaper, checkboxes (charging, human, idle, only wifi etc)
 - allow user to select a folder in their device as source
 - stack all 3 screens load one after another on start 
 - clean up 

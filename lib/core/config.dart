@@ -3,9 +3,8 @@ import 'package:wallify/model/wallpaper_model.dart';
 class Config {
   static bool _updateAvaliable = false;
   static bool _isUpdateDialogOpen = false;
-  static String _appVersion = '1.2.7';
+  static String _appVersion = '1.2.8';
   static String _appName = 'Wallify';
-  static bool _hasInternet = false;
   static Map<String, dynamic> _versionData = {};
   static String _cachedLatestVersion = '';
   static String _cachedReleaseNotes = '';
@@ -41,14 +40,6 @@ class Config {
 
   static bool getIsUpdateDialogopen() {
     return _isUpdateDialogOpen;
-  }
-
-  static void setHasInternet(bool hasInternet) {
-    _hasInternet = hasInternet;
-  }
-
-  static bool getHasInternet() {
-    return _hasInternet;
   }
 
   static void setCachedVersionData(Map<String, dynamic> versionData) {

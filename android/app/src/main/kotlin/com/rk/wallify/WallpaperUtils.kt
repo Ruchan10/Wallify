@@ -166,6 +166,10 @@ object WallpaperUtils {
     }
 
     private fun getNonFaceImageUrl(context: Context, imageUrls: MutableList<String>): String? {
+        val prefs = context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+        val requiresNoFaces = prefs.getBoolean("flutter.constraint_no_faces", true)
+        Log.d("Wallify", "Scheduling background wallpaper change every $requiresNoFaces requiresNoFaces")
+
         val iterator = imageUrls.iterator()
         while (iterator.hasNext()) {
             val url = iterator.next()
@@ -182,6 +186,10 @@ object WallpaperUtils {
             if (bitmap == null) {
                 iterator.remove()
                 continue
+            }
+
+            if(!requiresNoFaces){
+                return url
             }
 
             if (!imageHasFace(context, bitmap)) {
@@ -411,7 +419,7 @@ object WallpaperUtils {
             prefs.edit().putString("flutter.imageUrls", newImageList.toString()).apply()
 
             if (movedObject != null) {
-                historyList.put(movedObject)
+                historyList.put(0, movedObject)
                 prefs.edit().putString("flutter.wallpaperHistory", historyList.toString()).apply()
             }
 

@@ -8,54 +8,56 @@ class SettingsBackup {
     final prefs = await SharedPreferences.getInstance();
 
     final data = {
-      "tags": prefs.getStringList("_tagsKey") ?? [],
-      "wallpaperLocation": prefs.getInt("_wallpaperLocationKey") ?? 3,
-      "favWallpapers": prefs.getStringList("_favWallpaperKey") ?? [],
-      "interval": prefs.getInt("_keyInterval") ?? 1,
+      "tags": prefs.getStringList("tags") ?? [],
+      "wallpaperLocation": prefs.getInt("wallpaperLocation") ?? 3,
+      "deviceWidth": prefs.getInt("deviceWidth") ?? 360,
+      "deviceHeight": prefs.getInt("deviceHeight") ?? 800,
+      "wallpaperHistory": prefs.getString("wallpaperHistory") ?? "[]",
+      "autoWallpaperEnabled": prefs.getBool("autoWallpaperEnabled") ?? false,
+      "lastWallpaperChange": prefs.getString("lastWallpaperChange"),
+      "interval": prefs.getInt("wallpaper_interval") ?? 60,
+      "favWallpapers": prefs.getStringList("favWallpaper") ?? [],
+      "imageUrls": prefs.getStringList("imageUrls") ?? [],
+      "errorReportingEnabled": prefs.getBool("errorReportingEnabled") ?? true,
+
+      // Constraints
+      "constraint_charging": prefs.getBool("constraint_charging") ?? true,
+      "constraint_battery_not_low":
+          prefs.getBool("constraint_battery_not_low") ?? false,
+      "constraint_storage_not_low":
+          prefs.getBool("constraint_storage_not_low") ?? false,
+      "constraint_no_faces": prefs.getBool("constraint_no_faces") ?? true,
+      "constraint_wifi": prefs.getBool("constraint_wifi") ?? true,
     };
 
     final jsonString = const JsonEncoder.withIndent('  ').convert(data);
 
-    Directory? downloadsDir;
-
-    if (Platform.isAndroid) {
-      downloadsDir = Directory('/storage/emulated/0/Download');
-      if (!await downloadsDir.exists()) {
-        downloadsDir = await getApplicationDocumentsDirectory();
-      }
-    } else if (Platform.isIOS) {
-      downloadsDir = await getApplicationDocumentsDirectory();
-    } else {
-      downloadsDir = await getDownloadsDirectory() ?? await getApplicationDocumentsDirectory();
-    }
-
-    final filePath = "${downloadsDir.path}/wallify_settings_backup.json";
-    final file = File(filePath);
-
+    final dir = Directory('/storage/emulated/0/Download');
+    final file = File("${dir.path}/wallify_settings_backup.json");
     await file.writeAsString(jsonString, flush: true);
 
     return file;
   }
-
 
   static Future<void> importSettings(File file) async {
     final prefs = await SharedPreferences.getInstance();
     final content = await file.readAsString();
     final data = jsonDecode(content);
 
-    if (data is Map<String, dynamic>) {
-      if (data.containsKey("tags")) {
-        await prefs.setStringList("_tagsKey", List<String>.from(data["tags"]));
-      }
-      if (data.containsKey("wallpaperLocation")) {
-        await prefs.setInt("_wallpaperLocationKey", data["wallpaperLocation"]);
-      }
-      if (data.containsKey("favWallpapers")) {
-        await prefs.setStringList(
-            "_favWallpaperKey", List<String>.from(data["favWallpapers"]));
-      }
-      if (data.containsKey("interval")) {
-        await prefs.setInt("_keyInterval", data["interval"]);
+    if (data is! Map<String, dynamic>) return;
+
+    for (final entry in data.entries) {
+      final key = entry.key;
+      final value = entry.value;
+
+      if (value is String) {
+        await prefs.setString(key, value);
+      } else if (value is int) {
+        await prefs.setInt(key, value);
+      } else if (value is bool) {
+        await prefs.setBool(key, value);
+      } else if (value is List) {
+        await prefs.setStringList(key, value.cast<String>());
       }
     }
   }

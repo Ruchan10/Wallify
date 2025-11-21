@@ -7,10 +7,8 @@ import 'package:wallify/model/wallpaper_model.dart';
 class UserSharedPrefs {
   static const _tagsKey = "tags";
   static const _wallpaperLocationKey = "wallpaperLocation";
-  static const _pendingActionKey = "pendingAction";
   static const _deviceHeightKey = "deviceHeight";
   static const _deviceWidthKey = "deviceWidth";
-  static const _selectedSourcesKey = "selectedSources";
   static const _wallpaperHistoryKey = "wallpaperHistory";
   static const _autoWallpaperEnabledKey = "autoWallpaperEnabled";
   static const _lastWallpaperChangeKey = "lastWallpaperChange";
@@ -18,10 +16,11 @@ class UserSharedPrefs {
   static const _favWallpaperKey = "favWallpaper";
   static const _imageUrlsKey = "imageUrls";
   static const _errorReportingKey = "errorReportingEnabled";
-static const _constraintChargingKey = "constraint_charging";
-static const _constraintBatteryNotLowKey = "constraint_battery_not_low";
-static const _constraintStorageNotLowKey = "constraint_storage_not_low";
-static const _constraintIdleKey = "constraint_idle";
+  static const _constraintChargingKey = "constraint_charging";
+  static const _constraintBatteryNotLowKey = "constraint_battery_not_low";
+  static const _constraintStorageNotLowKey = "constraint_storage_not_low";
+  static const _constraintNoFacesKey = "constraint_no_faces";
+  static const _constraintWifiKey = "constraint_wifi";
 
   /// ---- TAGS ----
   static Future<List<String>> getTags() async {
@@ -55,17 +54,6 @@ static const _constraintIdleKey = "constraint_idle";
     await prefs.setInt(_wallpaperLocationKey, location);
   }
 
-  /// ---- PENDING ACTION ----
-  static Future<bool> getPendingAction() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(_pendingActionKey) ?? false;
-  }
-
-  static Future<void> savePendingAction(bool pending) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_pendingActionKey, pending);
-  }
-
   static Future<void> saveDeviceHeight(int height) async {
     if (height <= 0) return;
     final prefs = await SharedPreferences.getInstance();
@@ -88,18 +76,7 @@ static const _constraintIdleKey = "constraint_idle";
     return prefs.getInt(_deviceWidthKey) ?? 360;
   }
 
-  static Future<void> saveSelectedSources(List<String> sources) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setStringList(_selectedSourcesKey, sources);
-  }
-
-  static Future<List<String>> getSelectedSources() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getStringList(_selectedSourcesKey) ??
-        ["wallhaven", "unsplash", "pixabay"];
-  }
-
-static Future<void> saveWallpaperHistory(Wallpaper wallpaper) async {
+  static Future<void> saveWallpaperHistory(Wallpaper wallpaper) async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_wallpaperHistoryKey) ?? "[]";
 
@@ -113,7 +90,7 @@ static Future<void> saveWallpaperHistory(Wallpaper wallpaper) async {
     }
   }
 
-static Future<List<Map<String, dynamic>>> getWallpaperHistory() async {
+  static Future<List<Map<String, dynamic>>> getWallpaperHistory() async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_wallpaperHistoryKey) ?? "[]";
 
@@ -121,7 +98,7 @@ static Future<List<Map<String, dynamic>>> getWallpaperHistory() async {
 
     return list.map((e) => Map<String, dynamic>.from(e)).toList();
   }
-
+// ---- WALLPAPERS for background change ----
   static Future<void> saveWallpapers(List<Wallpaper> wallpapers) async {
     final prefs = await SharedPreferences.getInstance();
     final jsonList = wallpapers.map((w) => jsonEncode(w.toJson())).toList();
@@ -132,30 +109,6 @@ static Future<List<Map<String, dynamic>>> getWallpaperHistory() async {
     final prefs = await SharedPreferences.getInstance();
     final jsonList = prefs.getStringList(_imageUrlsKey) ?? [];
     return jsonList.map((e) => Wallpaper.fromJson(jsonDecode(e))).toList();
-  }
-
-  static Future<Wallpaper?> getRandomWallpaper() async {
-    final prefs = await SharedPreferences.getInstance();
-    final jsonList = prefs.getStringList(_imageUrlsKey) ?? [];
-
-    if (jsonList.isEmpty) return null;
-
-    final wallpapers = jsonList
-        .map((e) => Wallpaper.fromJson(jsonDecode(e)))
-        .toList();
-
-    final random = Random();
-    final index = random.nextInt(wallpapers.length);
-    final selected = wallpapers[index];
-
-    wallpapers.removeAt(index);
-
-    final updatedJsonList = wallpapers
-        .map((w) => jsonEncode(w.toJson()))
-        .toList();
-    await prefs.setStringList(_imageUrlsKey, updatedJsonList);
-
-    return selected;
   }
 
   static Future<void> saveFavWallpaper(Wallpaper wallpaper) async {
@@ -272,15 +225,23 @@ static Future<List<Map<String, dynamic>>> getWallpaperHistory() async {
     return prefs.getBool(_constraintStorageNotLowKey) ?? false;
   }
 
-  static Future<void> setConstraintIdle(bool enabled) async {
+  static Future<void> setConstraintNoFaces(bool enabled) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_constraintIdleKey, enabled);
+    await prefs.setBool(_constraintNoFacesKey, enabled);
   }
 
-  static Future<bool> getConstraintIdle() async {
+  static Future<bool> getConstraintNoFaces() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(_constraintIdleKey) ?? false;
+    return prefs.getBool(_constraintNoFacesKey) ?? true;
   }
 
+  static Future<void> setConstraintWifi(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_constraintWifiKey, enabled);
+  }
 
+  static Future<bool> getConstraintWifi() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_constraintWifiKey) ?? true;
+  }
 }

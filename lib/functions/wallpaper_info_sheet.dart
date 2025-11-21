@@ -42,7 +42,6 @@ class WallpaperInfoSheet extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     
-    // Normalize uploader
     final uploaderData = info["uploader"];
     String uploaderName = "Unknown";
     String uploaderAvatar =
@@ -85,7 +84,6 @@ class WallpaperInfoSheet extends StatelessWidget {
           child: ListView(
             controller: scrollController,
             children: [
-              // Drag handle
               Center(
                 child: Container(
                   height: 4,
@@ -98,7 +96,6 @@ class WallpaperInfoSheet extends StatelessWidget {
                 ),
               ),
 
-              // 🔹 Source Badge
               if (info["source"] != null)
                 Align(
                   alignment: Alignment.centerLeft,
@@ -116,7 +113,6 @@ class WallpaperInfoSheet extends StatelessWidget {
 
               const SizedBox(height: 12),
 
-              // 🔹 Uploader Section
               Row(
                 children: [
                   CircleAvatar(

@@ -13,7 +13,6 @@ import 'package:wallify/functions/backup_function.dart';
 import 'package:wallify/functions/wallpaper_manager.dart';
 import 'package:wallpaper_manager_flutter/wallpaper_manager_flutter.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:workmanager/workmanager.dart';
 
 class SettingsPage extends ConsumerStatefulWidget {
   const SettingsPage({super.key});
@@ -59,7 +58,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
 
   Future<void> changeWallpaper({bool changeNow = false}) async {
     try {
-      await Workmanager().cancelAll();
       await platform.invokeMethod("scheduleBackgroundWallpaperWorkerNow");
     } catch (e) {
       showSnackBar(context: context, color: Colors.red, message: "Error: $e");
@@ -72,14 +70,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
     super.dispose();
   }
 
-  String _formatDate(String dateStr) {
-    final date = DateTime.tryParse(dateStr);
-    if (date == null) return dateStr;
-    return DateFormat("MMM d, h:mm a").format(date);
-  }
-
   void resetAutoWallpaper() async {
-    await Workmanager().cancelAll();
     await platform.invokeMethod("scheduleBackgroundWallpaperWorker");
   }
 
@@ -258,7 +249,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
                     }
                   } else {
                     try {
-                      await Workmanager().cancelAll();
                       showSnackBar(
                         color: Colors.red,
                         context: context,
@@ -451,67 +441,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
           ],
         ),
         const SizedBox(height: 8),
-
-        // const SizedBox(height: 20),
-        // Text(
-        //   "Automation Constraints",
-        //   style: Theme.of(context).textTheme.titleMedium,
-        // ),
-        // const SizedBox(height: 8),
-
-        // Container(
-        //   decoration: BoxDecoration(
-        //     color: scheme.surfaceContainerHighest,
-        //     borderRadius: BorderRadius.circular(16),
-        //   ),
-        //   padding: const EdgeInsets.all(12),
-        //   child: Column(
-        //     children: [
-        //       _buildConstraintTile(
-        //         context,
-        //         icon: Icons.bolt,
-        //         title: "Only when charging",
-        //         subtitle: "Run wallpaper updates only while plugged in",
-        //         prefKey: "constraint_charging",
-        //       ),
-        //       _buildConstraintTile(
-        //         context,
-        //         icon: Icons.battery_6_bar,
-        //         title: "Battery not low",
-        //         subtitle: "Skip wallpaper change if battery is below 15%",
-        //         prefKey: "constraint_battery",
-        //       ),
-        //       _buildConstraintTile(
-        //         context,
-        //         icon: Icons.storage,
-        //         title: "Storage not low",
-        //         subtitle: "Avoid running when storage is almost full",
-        //         prefKey: "constraint_storage",
-        //       ),
-        //       _buildConstraintTile(
-        //         context,
-        //         icon: Icons.wifi,
-        //         title: "Require Wi-Fi",
-        //         subtitle: "Fetch wallpapers only on Wi-Fi connection",
-        //         prefKey: "constraint_wifi",
-        //       ),
-        //       _buildConstraintTile(
-        //         context,
-        //         icon: Icons.face_retouching_off,
-        //         title: "No human faces",
-        //         subtitle: "Skip wallpapers that include people",
-        //         prefKey: "constraint_no_faces",
-        //       ),
-        //       _buildConstraintTile(
-        //         context,
-        //         icon: Icons.nightlight,
-        //         title: "When device is idle",
-        //         subtitle: "Only update wallpaper when not actively used",
-        //         prefKey: "constraint_idle",
-        //       ),
-        //     ],
-        //   ),
-        // ),
+        _buildConstraintsChipSection(context),
         const SizedBox(height: 20),
         FutureBuilder<DateTime?>(
           future: UserSharedPrefs.getLastWallpaperChange(),
@@ -556,8 +486,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
                       Expanded(
                         child: Text(
                           lastChange != null
-                              ? "Next change after ${DateFormat("MMM d, h:mm a").format(lastChange.add(Duration(minutes: _intervalMinutes)))} when charging ⚡"
-                              : "Next change when device is charging ⚡",
+                              ? "Next change approx. after ${DateFormat("MMM d, h:mm a").format(lastChange.add(Duration(minutes: _intervalMinutes)))} when device meets constraints"
+                              : "Next change when device meets constraints",
                           style: TextStyle(
                             fontSize: 13,
                             color: scheme.onSurfaceVariant,
@@ -576,35 +506,86 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
     );
   }
 
-  Widget _buildConstraintTile(
-    BuildContext context, {
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required String prefKey,
-  }) {
+  Future<Map<String, bool>> _loadAllConstraintValues(
+    List<Map<String, String>> constraints,
+  ) async {
+    final map = <String, bool>{};
+    for (final c in constraints) {
+      map[c["key"]!] = await UserSharedPrefs.getBool(c["key"]!);
+    }
+    return map;
+  }
+
+  Widget _buildConstraintsChipSection(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return FutureBuilder<bool>(
-      future: UserSharedPrefs.getBool(prefKey),
+
+    final constraints = [
+      {"key": "constraint_charging", "label": "Charging"},
+      {"key": "constraint_battery", "label": "Battery Not Low"},
+      {"key": "constraint_storage", "label": "Storage Not Low"},
+      {"key": "constraint_wifi", "label": "Wi-Fi Only"},
+      {"key": "constraint_no_faces", "label": "No Faces"},
+    ];
+
+    return FutureBuilder<Map<String, bool>>(
+      future: _loadAllConstraintValues(constraints),
       builder: (context, snapshot) {
-        final value = snapshot.data ?? false;
-        return ListTile(
-          contentPadding: const EdgeInsets.symmetric(horizontal: 8),
-          leading: Icon(icon, color: scheme.primary),
-          title: Text(title),
-          subtitle: Text(subtitle),
-          trailing: Switch(
-            value: value,
-            activeColor: scheme.secondary,
-            onChanged: (val) async {
-              await UserSharedPrefs.setBool(prefKey, val);
-              setState(() {});
-              showSnackBar(
-                context: context,
-                message: val ? "$title enabled" : "$title disabled",
-              );
-            },
-          ),
+        if (!snapshot.hasData) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        final values = snapshot.data!;
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 20),
+            Text(
+              "Automation Constraints",
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+
+            const SizedBox(height: 12),
+
+            Wrap(
+              spacing: 8,
+              children: constraints.map((c) {
+                final key = c["key"]!;
+                final label = c["label"]!;
+                final isSelected = values[key] ?? false;
+
+                return ChoiceChip(
+                  label: Text(
+                    label,
+                    style: TextStyle(
+                      color: isSelected
+                          ? scheme.onPrimary
+                          : scheme.onSurfaceVariant,
+                    ),
+                  ),
+                  selected: isSelected,
+                  selectedColor: scheme.primary,
+                  backgroundColor: scheme.surfaceContainerHighest,
+                  onSelected: (selected) async {
+                    await UserSharedPrefs.setBool(key, selected);
+                    resetAutoWallpaper();
+                    setState(() {});
+                  },
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 8,
+                  ),
+                  shape: StadiumBorder(
+                    side: BorderSide(
+                      color: isSelected
+                          ? Colors.transparent
+                          : scheme.outlineVariant,
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ],
         );
       },
     );

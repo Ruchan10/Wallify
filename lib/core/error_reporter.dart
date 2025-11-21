@@ -6,20 +6,19 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:wallify/core/user_shared_prefs.dart';
 
 class ErrorReporter {
-  static const String developerEmail = "ruchan0@protonmail.com"; 
-  
-  /// Collect device information
+  static const String developerEmail = "ruchan0@protonmail.com";
+
   static Future<Map<String, dynamic>> collectDeviceInfo() async {
     final deviceInfo = DeviceInfoPlugin();
     final packageInfo = await PackageInfo.fromPlatform();
-    
+
     Map<String, dynamic> info = {
       'app_name': packageInfo.appName,
       'app_version': packageInfo.version,
       'build_number': packageInfo.buildNumber,
       'package_name': packageInfo.packageName,
     };
-    
+
     try {
       if (Platform.isAndroid) {
         final androidInfo = await deviceInfo.androidInfo;
@@ -46,11 +45,10 @@ class ErrorReporter {
     } catch (e) {
       debugPrint('Error collecting device info: $e');
     }
-    
+
     return info;
   }
-  
-  /// Format error report
+
   static String formatErrorReport({
     required Map<String, dynamic> deviceInfo,
     required String errorMessage,
@@ -58,78 +56,79 @@ class ErrorReporter {
     String? additionalContext,
   }) {
     final buffer = StringBuffer();
-    
+
     buffer.writeln('=== WALLIFY ERROR REPORT ===\n');
-    
-    // App Info
+
     buffer.writeln('APP INFORMATION:');
     buffer.writeln('App: ${deviceInfo['app_name']}');
-    buffer.writeln('Version: ${deviceInfo['app_version']} (${deviceInfo['build_number']})');
+    buffer.writeln(
+      'Version: ${deviceInfo['app_version']} (${deviceInfo['build_number']})',
+    );
     buffer.writeln('Package: ${deviceInfo['package_name']}\n');
-    
-    // Device Info
+
     buffer.writeln('DEVICE INFORMATION:');
     buffer.writeln('Platform: ${deviceInfo['platform']}');
     buffer.writeln('Model: ${deviceInfo['device_model'] ?? 'Unknown'}');
-    buffer.writeln('Brand: ${deviceInfo['device_brand'] ?? deviceInfo['device_manufacturer'] ?? 'Unknown'}');
+    buffer.writeln(
+      'Brand: ${deviceInfo['device_brand'] ?? deviceInfo['device_manufacturer'] ?? 'Unknown'}',
+    );
     if (deviceInfo['platform'] == 'Android') {
-      buffer.writeln('Android Version: ${deviceInfo['android_version']} (SDK ${deviceInfo['sdk_int']})');
+      buffer.writeln(
+        'Android Version: ${deviceInfo['android_version']} (SDK ${deviceInfo['sdk_int']})',
+      );
     } else if (deviceInfo['platform'] == 'iOS') {
       buffer.writeln('iOS Version: ${deviceInfo['system_version']}');
     }
     buffer.writeln('Physical Device: ${deviceInfo['is_physical_device']}\n');
-    
-    // Error Details
+
     buffer.writeln('ERROR DETAILS:');
     buffer.writeln('Timestamp: ${DateTime.now().toIso8601String()}');
     buffer.writeln('Error Message: $errorMessage\n');
-    
+
     if (additionalContext != null && additionalContext.isNotEmpty) {
       buffer.writeln('ADDITIONAL CONTEXT:');
       buffer.writeln('$additionalContext\n');
     }
-    
+
     if (stackTrace != null) {
       buffer.writeln('STACK TRACE:');
       buffer.writeln(stackTrace.toString());
     }
-    
+
     buffer.writeln('\n=== END OF REPORT ===');
-    
+
     return buffer.toString();
   }
-  
-  /// Send error report via email
+
   static Future<bool> sendErrorReport({
     required String errorMessage,
     required StackTrace? stackTrace,
     String? additionalContext,
   }) async {
     try {
-      // Check if error reporting is enabled
       final isEnabled = await UserSharedPrefs.getErrorReportingEnabled();
       if (!isEnabled) {
         debugPrint('Error reporting is disabled');
         return false;
       }
-      
-      // Collect device info
+
       final deviceInfo = await collectDeviceInfo();
-      
-      // Format report
+
       final report = formatErrorReport(
         deviceInfo: deviceInfo,
         errorMessage: errorMessage,
         stackTrace: stackTrace,
         additionalContext: additionalContext,
       );
-      
-      // Create email
-      final subject = Uri.encodeComponent('Wallify Error Report - ${deviceInfo['app_version']}');
+
+      final subject = Uri.encodeComponent(
+        'Wallify Error Report - ${deviceInfo['app_version']}',
+      );
       final body = Uri.encodeComponent(report);
-      final emailUri = Uri.parse('mailto:$developerEmail?subject=$subject&body=$body');
-      
-      // Try to launch email client
+      final emailUri = Uri.parse(
+        'mailto:$developerEmail?subject=$subject&body=$body',
+      );
+
       if (await canLaunchUrl(emailUri)) {
         await launchUrl(emailUri);
         return true;
@@ -142,8 +141,7 @@ class ErrorReporter {
       return false;
     }
   }
-  
-  /// Show error dialog with option to report
+
   static Future<void> showErrorDialog({
     required BuildContext context,
     required String errorMessage,
@@ -151,9 +149,9 @@ class ErrorReporter {
     String? additionalContext,
   }) async {
     final isEnabled = await UserSharedPrefs.getErrorReportingEnabled();
-    
+
     if (!context.mounted) return;
-    
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -203,8 +201,7 @@ class ErrorReporter {
       ),
     );
   }
-  
-  /// Log error without showing dialog
+
   static Future<void> logError({
     required String errorMessage,
     StackTrace? stackTrace,
@@ -215,7 +212,7 @@ class ErrorReporter {
     if (stackTrace != null) {
       debugPrint('STACK TRACE: $stackTrace');
     }
-    
+
     if (autoSend) {
       await sendErrorReport(
         errorMessage: errorMessage,

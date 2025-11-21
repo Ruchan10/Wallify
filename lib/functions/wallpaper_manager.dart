@@ -1,25 +1,8 @@
 import 'dart:convert';
-import 'dart:io';
-import 'dart:math';
-import 'dart:ui' as ui show Rect;
-
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'package:path_provider/path_provider.dart';
 import 'package:wallify/core/user_shared_prefs.dart';
 import 'package:wallify/model/wallpaper_model.dart';
-// import 'package:wallpaper_manager_flutter/wallpaper_manager_flutter.dart';
-
-Future<bool> internetAvailable() async {
-  try {
-    final result = await InternetAddress.lookup(
-      "google.com",
-    ).timeout(const Duration(seconds: 3));
-    return result.isNotEmpty && result[0].rawAddress.isNotEmpty;
-  } catch (_) {
-    return false;
-  }
-}
 
 class WallpaperManager {
   static int? interval = 1;

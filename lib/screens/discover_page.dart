@@ -21,7 +21,7 @@ class DiscoverPage extends ConsumerStatefulWidget {
 class _DiscoverPageState extends ConsumerState<DiscoverPage> {
   final TextEditingController _searchController = TextEditingController();
   // List<String> _images = Config.getImageUrls();
-  List<Wallpaper> _images = [];
+  List<Wallpaper> _images = app_config.Config.getImageUrls();
   bool _isLoading = false;
   int count = 1;
   final ScrollController _scrollController = ScrollController();
@@ -42,9 +42,9 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
   @override
   void initState() {
     super.initState();
-    // if (app_config.Config.getImageUrls().isEmpty) {
+    if (app_config.Config.getImageUrls().isEmpty) {
     _fetchImages();
-    // }
+    }
     UpdateManager.checkForUpdates();
     _scrollController.addListener(_onScroll);
     initialize();
@@ -58,6 +58,7 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
   }
 
   void initialize() {
+    // app_config.Config.getImageUrls();
     UserSharedPrefs.getFavWallpapers().then((value) {
       setState(() {
         favorites.addAll(value.map((e) => e.url));
@@ -78,12 +79,10 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
 
     _lastOffset = offset;
 
-    // Load more images when near bottom
     if (_scrollController.position.pixels >=
             _scrollController.position.maxScrollExtent - 200 &&
         !_isLoading &&
         _images.length < maxImages) {
-      // Prevent unlimited growth
       count++;
       _fetchImages(
         query: _searchController.text.isNotEmpty
@@ -190,7 +189,6 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
       _isLoading = false;
     });
     app_config.Config.setImageUrls(_images);
-    // UserSharedPrefs.saveWallpapers(_images);
   }
 
   void _showFilters(BuildContext context) {
