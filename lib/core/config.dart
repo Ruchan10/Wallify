@@ -3,7 +3,7 @@ import 'package:wallify/model/wallpaper_model.dart';
 class Config {
   static bool _updateAvaliable = false;
   static bool _isUpdateDialogOpen = false;
-  static String _appVersion = '1.2.8';
+  static String _appVersion = '1.2.9';
   static String _appName = 'Wallify';
   static Map<String, dynamic> _versionData = {};
   static String _cachedLatestVersion = '';

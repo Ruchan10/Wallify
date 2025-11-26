@@ -32,7 +32,7 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
   String? _selectedPurity;
   String? _selectedOrientation;
   String? _selectedCategory;
-  String? _selectedRange;
+  String _selectedRange = "1M";
   bool _showTopBar = true;
   double _lastOffset = 0;
 
@@ -113,6 +113,7 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
         Uri.parse(
           "https://wallhaven.cc/api/v1/search?"
           "page=$count"
+          "${"&topRange=$_selectedRange"}"
           "${_selectedCategory == null ? "" : "&categories=${_selectedCategory == "general"
                     ? "100"
                     : _selectedCategory == "anime"
@@ -123,9 +124,9 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
                     : _selectedPurity == "Sketchy"
                     ? "110"
                     : "111"}"}"
-          "${_selectedSorting == null ? "" : "&sorting=${_selectedRange == null ? _selectedSorting : "toplist"}"}"
-          "${_selectedRange == null ? "" : "&topRange=$_selectedRange"}"
-          "${query == null ? "" : "&q=$query"}",
+          "&sorting=${_selectedSorting == null ? "toplist" : "${_selectedRange == "1M" ? _selectedSorting : "toplist"}"}"
+          "${query == null ? "" : "&q=$query"}"
+          "&order=asc",
         ),
       );
       final wallData = jsonDecode(wallRes.body);
@@ -137,9 +138,9 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
       final unsplashRes = await http.get(
         Uri.parse(
           "${query == null ? "https://api.unsplash.com/photos" : "https://api.unsplash.com/search/photos"}"
-          "?order_by=relevant"
+          
           "${query == null ? "" : "&query=$query"}"
-          "${_selectedSorting == null ? "" : "&order_by=${_selectedSorting == "dater_added" ? "latest" : "relevant"}"}"
+          "${query == null ?  "?order_by=popular" : _selectedSorting == null ? "" : "&order_by=${_selectedSorting == "dater_added" ? "latest" : "relevant"}"}"
           "${_selectedPurity == null ? "" : "&content_filter=${_selectedPurity == "NSFW" ? "high" : "low"}"}"
           "${_selectedOrientation == null ? "" : "&orientation=$_selectedOrientation"}"
           "&page=$count",
@@ -163,7 +164,7 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
           "${query == null ? "" : "&q=$query"}"
           "&image_type=photo"
           "${_selectedPurity == null ? "" : "&safesearch=${_selectedPurity == "NSFW" ? "false" : "true"}"}"
-          "${_selectedSorting == null ? "" : "&order=${_selectedSorting == "dater_added" ? "latest" : "popular"}"}"
+          "${_selectedSorting == null ? "&order=popular" : "&order=${_selectedSorting == "dater_added" ? "latest" : "popular"}"}"
           "${_selectedOrientation == null ? "" : "&orientation=$_selectedOrientation"}"
           "&page=$count",
         ),
@@ -346,7 +347,7 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
                             _selectedPurity = null;
                             _selectedOrientation = null;
                             _selectedCategory = null;
-                            _selectedRange = null;
+                            _selectedRange = "1M";
                           });
                           Navigator.pop(context);
                           _fetchImages(isSearch: true);

@@ -8,11 +8,10 @@ on:
 
 env:
   APK_NAME: "Wallify"
-  APP_VERSION: "1.2.8"
+  APP_VERSION: "1.2.9"
   CHANGES: |
-    - Background auto wallpaper change working well
-    - Constraints section
-    - Code cleanup
+    - Check mark removed from settings page
+    - Better constraints section
     - Minor changes
 
 jobs:

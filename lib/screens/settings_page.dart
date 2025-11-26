@@ -485,9 +485,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
                       const SizedBox(width: 6),
                       Expanded(
                         child: Text(
-                          lastChange != null
-                              ? "Next change approx. after ${DateFormat("MMM d, h:mm a").format(lastChange.add(Duration(minutes: _intervalMinutes)))} when device meets constraints"
-                              : "Next change when device meets constraints",
+                          "Next change approx. after ${DateFormat("MMM d, h:mm a").format(lastChange ?? DateTime.now().add(Duration(minutes: _intervalMinutes)))} when device meets constraints",
                           style: TextStyle(
                             fontSize: 13,
                             color: scheme.onSurfaceVariant,
@@ -575,6 +573,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
                     horizontal: 14,
                     vertical: 8,
                   ),
+                  showCheckmark: false,
                   shape: StadiumBorder(
                     side: BorderSide(
                       color: isSelected
