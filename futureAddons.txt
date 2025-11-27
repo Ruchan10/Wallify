@@ -3,3 +3,4 @@
 - initial theme should match device theme
 - better search
 - option to only display wallpapers from tags saved in discover page
+- add splash screen and move the update check to splash screen
