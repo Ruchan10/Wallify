@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:wallify/core/app_theme.dart';
 import 'package:wallify/core/error_reporter.dart';
+import 'package:wallify/core/routes.dart';
 import 'package:wallify/core/theme_provider.dart';
 import 'package:wallify/screens/nav_bar.dart';
 
@@ -46,7 +47,8 @@ class MyApp extends ConsumerWidget {
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
       themeMode: themeMode,
-      home: const MainScaffold(),
+      initialRoute: AppRoute.splashRoute,
+      routes: AppRoute.getAppRoutes(),
     );
   }
 }

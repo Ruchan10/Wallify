@@ -45,7 +45,7 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
     if (app_config.Config.getImageUrls().isEmpty) {
     _fetchImages();
     }
-    UpdateManager.checkForUpdates();
+    // UpdateManager.checkForUpdates();
     _scrollController.addListener(_onScroll);
     initialize();
     WidgetsBinding.instance.addPostFrameCallback((_) {

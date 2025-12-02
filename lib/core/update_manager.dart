@@ -52,7 +52,6 @@ class UpdateManager {
     }
   }
 
-
   static Future<void> showUpdateDialog(BuildContext context) async {
     if (!Config.getUpdateAvailable() || Config.getIsUpdateDialogopen()) {
       return;

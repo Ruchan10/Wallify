@@ -1,5 +1,4 @@
 - allow user to select a folder in their device as source
-- clean up 
 - initial theme should match device theme
 - better search
 - option to only display wallpapers from tags saved in discover page

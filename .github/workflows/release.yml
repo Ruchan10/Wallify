@@ -8,9 +8,9 @@ on:
 
 env:
   APK_NAME: "Wallify"
-  APP_VERSION: "1.3.0"
+  APP_VERSION: "1.3.1"
   CHANGES: |
-    - Update check fixed
+    - Splash Page added
 
 jobs:
   build:
