@@ -29,7 +29,7 @@ class WallpaperManager {
           "&categories=100&purity=100"
           "&ratios=portrait"
           "&atleast=${deviceWidth}x$deviceHeight"
-          "&sorting=random",
+          "&sorting=relevance",
         ),
       );
       final wallData = jsonDecode(wallRes.body);
@@ -40,8 +40,8 @@ class WallpaperManager {
       // 🔹 Unsplash
       final unsplashRes = await http.get(
         Uri.parse(
-          "https://api.unsplash.com/photos/random"
-          "?query=$tag&orientation=portrait&content_filter=high&count=10",
+          "https://api.unsplash.com/search/photos?page=1"
+          "?query=$tag&orientation=portrait&content_filter=high",
         ),
         headers: {
           "Authorization":

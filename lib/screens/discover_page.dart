@@ -43,7 +43,7 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
   void initState() {
     super.initState();
     if (app_config.Config.getImageUrls().isEmpty) {
-    _fetchImages();
+      _fetchImages();
     }
     // UpdateManager.checkForUpdates();
     _scrollController.addListener(_onScroll);
@@ -108,6 +108,7 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
 
     final List<Wallpaper> results = [];
     try {
+
       /// 🔹 Wallhaven
       final wallRes = await http.get(
         Uri.parse(
@@ -138,9 +139,12 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
       final unsplashRes = await http.get(
         Uri.parse(
           "${query == null ? "https://api.unsplash.com/photos" : "https://api.unsplash.com/search/photos"}"
-          
           "${query == null ? "" : "&query=$query"}"
-          "${query == null ?  "?order_by=popular" : _selectedSorting == null ? "" : "&order_by=${_selectedSorting == "dater_added" ? "latest" : "relevant"}"}"
+          "${query == null
+              ? "?order_by=popular"
+              : _selectedSorting == null
+              ? ""
+              : "&order_by=${_selectedSorting == "dater_added" ? "latest" : "relevant"}"}"
           "${_selectedPurity == null ? "" : "&content_filter=${_selectedPurity == "NSFW" ? "high" : "low"}"}"
           "${_selectedOrientation == null ? "" : "&orientation=$_selectedOrientation"}"
           "&page=$count",

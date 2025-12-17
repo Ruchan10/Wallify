@@ -1,5 +1,4 @@
 - allow user to select a folder in their device as source
 - initial theme should match device theme
+- wallpapers for you button in discover page when clicked should filter through the tags(if available) with other user and device preferences
 - better search
-- option to only display wallpapers from tags saved in discover page
-- add splash screen and move the update check to splash screen
