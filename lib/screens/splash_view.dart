@@ -13,9 +13,13 @@ class SplashView extends StatefulWidget {
   State<SplashView> createState() => _SplashViewState();
 }
 
-class _SplashViewState extends State<SplashView> {
+class _SplashViewState extends State<SplashView>
+    with SingleTickerProviderStateMixin {
   bool _initialized = false;
   final Completer<void> _navigationCompleter = Completer<void>();
+  late AnimationController _animController;
+  late Animation<double> _fadeAnim;
+  late Animation<double> _scaleAnim;
 
   Future<void> _initializeApp() async {
     if (_navigationCompleter.isCompleted) return;
@@ -28,6 +32,24 @@ class _SplashViewState extends State<SplashView> {
   @override
   void initState() {
     super.initState();
+    _animController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
+    );
+    _fadeAnim = CurvedAnimation(
+      parent: _animController,
+      curve: Curves.easeIn,
+    );
+    _scaleAnim = Tween<double>(begin: 0.8, end: 1.0).animate(
+      CurvedAnimation(parent: _animController, curve: Curves.easeOutBack),
+    );
+    _animController.forward();
+  }
+
+  @override
+  void dispose() {
+    _animController.dispose();
+    super.dispose();
   }
 
   @override
@@ -35,52 +57,78 @@ class _SplashViewState extends State<SplashView> {
     super.didChangeDependencies();
     if (!_initialized) {
       _initializeApp();
-
       _initialized = true;
     }
-
     precacheImage(const AssetImage('assets/images/logo.png'), context);
   }
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Scaffold(
       body: SafeArea(
         child: Stack(
           children: [
             Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  SizedBox(
-                    height: 100,
-                    child: Image.asset('assets/images/logo.png'),
+              child: FadeTransition(
+                opacity: _fadeAnim,
+                child: ScaleTransition(
+                  scale: _scaleAnim,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          color: colorScheme.primaryContainer
+                              .withValues(alpha: 0.3),
+                          shape: BoxShape.circle,
+                        ),
+                        child: SizedBox(
+                          height: 80,
+                          child: Image.asset('assets/images/logo.png'),
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      Text(
+                        Config.getAppName(),
+                        style: TextStyle(
+                          fontSize: 28,
+                          fontWeight: FontWeight.bold,
+                          color: colorScheme.primary,
+                        ),
+                      ),
+                    ],
                   ),
-                  SizedBox(height: 50),
-                  TickerMode(
-                    enabled: ModalRoute.of(context)?.isCurrent ?? true,
-                    child: const CircularProgressIndicator(),
-                  ),
-                ],
+                ),
               ),
             ),
             Positioned(
               bottom: 50,
               left: 0,
               right: 0,
-              child: Center(
-                child: Text(
-                  'Version: ${Config.getAppVersion()}',
-                  style: TextStyle(fontSize: 20),
-                ),
-              ),
-            ),
-            const Positioned(
-              bottom: 20,
-              left: 0,
-              right: 0,
-              child: Center(
-                child: Text('Developed by: RK', style: TextStyle(fontSize: 18)),
+              child: Column(
+                children: [
+                  const CircularProgressIndicator(),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Version: ${Config.getAppVersion()}',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Developed by: RK',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: colorScheme.onSurfaceVariant
+                          .withValues(alpha: 0.7),
+                    ),
+                  ),
+                ],
               ),
             ),
           ],

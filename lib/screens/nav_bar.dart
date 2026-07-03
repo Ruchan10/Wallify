@@ -10,8 +10,11 @@ class MainScaffold extends StatefulWidget {
   State<MainScaffold> createState() => _MainScaffoldState();
 }
 
-class _MainScaffoldState extends State<MainScaffold> {
+class _MainScaffoldState extends State<MainScaffold>
+    with SingleTickerProviderStateMixin {
   int _selectedIndex = 0;
+  late AnimationController _animController;
+  late Animation<Offset> _slideAnimation;
 
   final List<Widget> _pages = [
     const DiscoverPage(),
@@ -20,19 +23,69 @@ class _MainScaffoldState extends State<MainScaffold> {
   ];
 
   @override
+  void initState() {
+    super.initState();
+    _animController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 250),
+    );
+    _slideAnimation = Tween<Offset>(
+      begin: const Offset(0.15, 0),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(
+      parent: _animController,
+      curve: Curves.easeOutCubic,
+    ));
+    _animController.forward();
+  }
+
+  @override
+  void dispose() {
+    _animController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
-      body: _pages[_selectedIndex],
-
+      body: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 250),
+        switchInCurve: Curves.easeOutCubic,
+        switchOutCurve: Curves.easeInCubic,
+        transitionBuilder: (child, animation) {
+          return FadeTransition(
+            opacity: animation,
+            child: SlideTransition(
+              position: Tween<Offset>(
+                begin: const Offset(0.08, 0),
+                end: Offset.zero,
+              ).animate(CurvedAnimation(
+                parent: animation,
+                curve: Curves.easeOutCubic,
+              )),
+              child: child,
+            ),
+          );
+        },
+        child: KeyedSubtree(
+          key: ValueKey(_selectedIndex),
+          child: _pages[_selectedIndex],
+        ),
+      ),
       bottomNavigationBar: NavigationBar(
         elevation: 4,
         selectedIndex: _selectedIndex,
         backgroundColor: colorScheme.surface,
         indicatorColor: colorScheme.primary.withValues(alpha: 0.2),
-        onDestinationSelected: (index) async {
-          setState(() => _selectedIndex = index);
+        animationDuration: const Duration(milliseconds: 300),
+        onDestinationSelected: (index) {
+          setState(() {
+            _selectedIndex = index;
+            _animController.reset();
+            _animController.forward();
+          });
         },
         destinations: [
           NavigationDestination(
@@ -45,7 +98,6 @@ class _MainScaffoldState extends State<MainScaffold> {
             selectedIcon: Icon(Icons.history, color: colorScheme.primary),
             label: "Recents",
           ),
-
           NavigationDestination(
             icon: Icon(Icons.settings_outlined, color: colorScheme.onSurface),
             selectedIcon: Icon(Icons.settings, color: colorScheme.primary),

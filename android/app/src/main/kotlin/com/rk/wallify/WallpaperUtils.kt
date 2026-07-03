@@ -216,13 +216,13 @@ object WallpaperUtils {
             Log.d("Wallify", "🌐 Fetching wallpapers with tag=$tag, size=${deviceWidth}x$deviceHeight")
 
             val wallhavenUrl =
-                "https://wallhaven.cc/api/v1/search?q=$tag&categories=100&purity=100&ratios=portrait&atleast=${deviceWidth}x$deviceHeight&sorting=random"
+                "https://wallhaven.cc/api/v1/search?q=$tag&categories=100&purity=100&ratios=portrait&sorting=random"
             urls.addAll(fetchFromWallhaven(wallhavenUrl))
             val unsplashUrl =
-                "https://api.unsplash.com/photos/random?query=$tag&orientation=portrait&content_filter=high&count=10"
+                "https://api.unsplash.com/photos/random?query=$tag&orientation=portrait&content_filter=high&count=15"
             urls.addAll(fetchFromUnsplash(unsplashUrl))
             val pixabayUrl =
-                "https://pixabay.com/api/?key=52028006-a7e910370a5d0158c371bb06a&q=$tag&image_type=photo&orientation=vertical&min_width=$deviceWidth&min_height=$deviceHeight&safesearch=true"
+                "https://pixabay.com/api/?key=52028006-a7e910370a5d0158c371bb06a&q=$tag&image_type=photo&orientation=vertical&safesearch=true"
             urls.addAll(fetchFromPixabay(pixabayUrl))
 
             if (urls.isEmpty()) {
@@ -431,7 +431,7 @@ object WallpaperUtils {
         }
     }
 
-    private fun detectAndCropMainObject(
+    internal fun detectAndCropMainObject(
         context: Context,
         bitmap: Bitmap,
         targetWidth: Int,
@@ -454,30 +454,88 @@ object WallpaperUtils {
                         val box: Rect = obj.boundingBox
                         Log.d("Wallify", "🎯 Detected object bounds: $box")
 
-                        val left = box.left.coerceAtLeast(0)
-                        val top = box.top.coerceAtLeast(0)
-                        val right = box.right.coerceAtMost(bitmap.width)
-                        val bottom = box.bottom.coerceAtMost(bitmap.height)
+                        // Center the crop viewport on the detected object
+                        // while maintaining the target device aspect ratio
+                        val targetAspect = targetWidth.toDouble() / targetHeight.toDouble()
+                        val imgW = bitmap.width
+                        val imgH = bitmap.height
 
-                        val cropped = Bitmap.createBitmap(bitmap, left, top, right - left, bottom - top)
+                        // Object center point
+                        val objCenterX = (box.left + box.right) / 2.0
+                        val objCenterY = (box.top + box.bottom) / 2.0
 
+                        // Determine crop dimensions that maintain device aspect ratio
+                        // Start with the full image dimension and compute the other
+                        var cropW: Int
+                        var cropH: Int
+                        val imgAspect = imgW.toDouble() / imgH.toDouble()
+
+                        if (imgAspect > targetAspect) {
+                            // Image is wider than target — use full height, compute width
+                            cropH = imgH
+                            cropW = (imgH * targetAspect).toInt()
+                        } else {
+                            // Image is taller than target — use full width, compute height
+                            cropW = imgW
+                            cropH = (imgW / targetAspect).toInt()
+                        }
+
+                        // Ensure crop doesn't exceed image bounds
+                        cropW = cropW.coerceAtMost(imgW)
+                        cropH = cropH.coerceAtMost(imgH)
+
+                        // Position the crop rect centered on the detected object
+                        var cropLeft = (objCenterX - cropW / 2.0).toInt()
+                        var cropTop = (objCenterY - cropH / 2.0).toInt()
+
+                        // Clamp to image boundaries
+                        cropLeft = cropLeft.coerceIn(0, imgW - cropW)
+                        cropTop = cropTop.coerceIn(0, imgH - cropH)
+
+                        Log.d("Wallify", "📐 Smart crop: ${cropW}x${cropH} at ($cropLeft, $cropTop), object center: ($objCenterX, $objCenterY)")
+
+                        val cropped = Bitmap.createBitmap(bitmap, cropLeft, cropTop, cropW, cropH)
                         resultBitmap = cropped.scale(targetWidth, targetHeight, true)
                     } else {
-                        Log.d("Wallify", "⚠️ No object detected, using full image.")
-                        resultBitmap = bitmap.scale(targetWidth, targetHeight, true)
+                        Log.d("Wallify", "⚠️ No object detected, center-cropping full image.")
+                        resultBitmap = centerCropToAspect(bitmap, targetWidth, targetHeight)
                     }
                 }
                 .addOnFailureListener { e ->
                     Log.e("Wallify", "❌ Object detection failed: $e")
-                    resultBitmap = bitmap.scale(targetWidth, targetHeight, true)
+                    resultBitmap = centerCropToAspect(bitmap, targetWidth, targetHeight)
                 }
 
             Tasks.await(task)
             resultBitmap
         } catch (e: Exception) {
             Log.e("Wallify", "Error during object detection: $e")
-            bitmap.scale(targetWidth, targetHeight, true)
+            centerCropToAspect(bitmap, targetWidth, targetHeight)
         }
+    }
+
+    /** Simple center-crop fallback that maintains target aspect ratio */
+    private fun centerCropToAspect(bitmap: Bitmap, targetWidth: Int, targetHeight: Int): Bitmap {
+        val targetAspect = targetWidth.toDouble() / targetHeight.toDouble()
+        val imgW = bitmap.width
+        val imgH = bitmap.height
+        val imgAspect = imgW.toDouble() / imgH.toDouble()
+
+        val cropW: Int
+        val cropH: Int
+        if (imgAspect > targetAspect) {
+            cropH = imgH
+            cropW = (imgH * targetAspect).toInt().coerceAtMost(imgW)
+        } else {
+            cropW = imgW
+            cropH = (imgW / targetAspect).toInt().coerceAtMost(imgH)
+        }
+
+        val cropLeft = (imgW - cropW) / 2
+        val cropTop = (imgH - cropH) / 2
+
+        val cropped = Bitmap.createBitmap(bitmap, cropLeft, cropTop, cropW, cropH)
+        return cropped.scale(targetWidth, targetHeight, true)
     }
 
 }

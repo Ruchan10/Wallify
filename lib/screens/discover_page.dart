@@ -9,6 +9,7 @@ import 'package:wallify/core/performance_config.dart';
 import 'package:wallify/core/update_manager.dart';
 import 'package:wallify/core/user_shared_prefs.dart';
 import 'package:wallify/functions/image_card.dart';
+import 'package:wallify/functions/shimmer_widget.dart';
 import 'package:wallify/model/wallpaper_model.dart';
 
 class DiscoverPage extends ConsumerStatefulWidget {
@@ -20,7 +21,7 @@ class DiscoverPage extends ConsumerStatefulWidget {
 
 class _DiscoverPageState extends ConsumerState<DiscoverPage> {
   final TextEditingController _searchController = TextEditingController();
-  // List<String> _images = Config.getImageUrls();
+  final FocusNode _searchFocus = FocusNode();
   List<Wallpaper> _images = app_config.Config.getImageUrls();
   bool _isLoading = false;
   int count = 1;
@@ -36,7 +37,6 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
   bool _showTopBar = true;
   double _lastOffset = 0;
 
-  // Memory management - limit total images in memory
   static const int maxImages = PerformanceConfig.maxImagesInMemory;
 
   @override
@@ -45,7 +45,6 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
     if (app_config.Config.getImageUrls().isEmpty) {
       _fetchImages();
     }
-    // UpdateManager.checkForUpdates();
     _scrollController.addListener(_onScroll);
     initialize();
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -58,7 +57,6 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
   }
 
   void initialize() {
-    // app_config.Config.getImageUrls();
     UserSharedPrefs.getFavWallpapers().then((value) {
       setState(() {
         favorites.addAll(value.map((e) => e.url));
@@ -71,8 +69,9 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
 
     final offset = _scrollController.position.pixels;
 
-    if (offset > _lastOffset && _showTopBar) {
+    if (offset > _lastOffset && _showTopBar && offset > 50) {
       setState(() => _showTopBar = false);
+      _searchFocus.unfocus();
     } else if (offset < _lastOffset && !_showTopBar) {
       setState(() => _showTopBar = true);
     }
@@ -80,7 +79,7 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
     _lastOffset = offset;
 
     if (_scrollController.position.pixels >=
-            _scrollController.position.maxScrollExtent - 200 &&
+            _scrollController.position.maxScrollExtent - 300 &&
         !_isLoading &&
         _images.length < maxImages) {
       count++;
@@ -97,6 +96,7 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
     _searchController.dispose();
+    _searchFocus.dispose();
     super.dispose();
   }
 
@@ -108,8 +108,6 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
 
     final List<Wallpaper> results = [];
     try {
-
-      /// 🔹 Wallhaven
       final wallRes = await http.get(
         Uri.parse(
           "https://wallhaven.cc/api/v1/search?"
@@ -121,10 +119,10 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
                     ? "101"
                     : "110"}"}"
           "${_selectedPurity == null ? "" : "&purity=${_selectedPurity == "SFW"
-                    ? "100"
-                    : _selectedPurity == "Sketchy"
-                    ? "110"
-                    : "111"}"}"
+                      ? "100"
+                      : _selectedPurity == "Sketchy"
+                      ? "110"
+                      : "111"}"}"
           "&sorting=${_selectedSorting == null ? "toplist" : "${_selectedRange == "1M" ? _selectedSorting : "toplist"}"}"
           "${query == null ? "" : "&q=$query"}"
           "&order=asc",
@@ -135,16 +133,15 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
         results.add(Wallpaper(id: item["id"], url: item["path"]));
       }
 
-      /// 🔹 Unsplash
       final unsplashRes = await http.get(
         Uri.parse(
           "${query == null ? "https://api.unsplash.com/photos" : "https://api.unsplash.com/search/photos"}"
           "${query == null ? "" : "&query=$query"}"
           "${query == null
-              ? "?order_by=popular"
-              : _selectedSorting == null
-              ? ""
-              : "&order_by=${_selectedSorting == "dater_added" ? "latest" : "relevant"}"}"
+                ? "?order_by=popular"
+                : _selectedSorting == null
+                ? ""
+                : "&order_by=${_selectedSorting == "dater_added" ? "latest" : "relevant"}"}"
           "${_selectedPurity == null ? "" : "&content_filter=${_selectedPurity == "NSFW" ? "high" : "low"}"}"
           "${_selectedOrientation == null ? "" : "&orientation=$_selectedOrientation"}"
           "&page=$count",
@@ -156,11 +153,11 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
       );
       final unsplashData = jsonDecode(unsplashRes.body);
 
-      for (var item in query == null ? unsplashData : unsplashData["results"]) {
+      for (var item
+          in query == null ? unsplashData : unsplashData["results"]) {
         results.add(Wallpaper(id: item["id"], url: item["urls"]["regular"]));
       }
 
-      /// 🔹 Pixabay
       final pixabayRes = await http.get(
         Uri.parse(
           "https://pixabay.com/api/"
@@ -180,7 +177,7 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
         );
       }
     } catch (e) {
-      debugPrint("❌ Error fetching images: $e ====================");
+      debugPrint("Error fetching images: $e ====================");
     }
     setState(() {
       if (isSearch) {
@@ -201,7 +198,7 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (context) {
         return StatefulBuilder(
@@ -223,127 +220,17 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
                       ),
                     ),
                   ),
-                  const Text(
-                    "Filters",
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  // 🔹 Sorting
-                  const Text(
-                    "Sorting",
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  Wrap(
-                    spacing: 8,
-                    children:
-                        [
-                          "date_added",
-                          "relevance",
-                          "random",
-                          "views",
-                          "favorites",
-                          "toplist",
-                        ].map((e) {
-                          return ChoiceChip(
-                            label: Text(e),
-                            selected: _selectedSorting == e,
-                            onSelected: (_) {
-                              setModalState(() => _selectedSorting = e);
-                            },
-                          );
-                        }).toList(),
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  // 🔹 Purity
-                  const Text(
-                    "Purity",
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  Wrap(
-                    spacing: 8,
-                    children: ["SFW", "Sketchy", "NSFW"].map((e) {
-                      return ChoiceChip(
-                        label: Text(e),
-                        selected: _selectedPurity == e,
-                        onSelected: (_) {
-                          setModalState(() => _selectedPurity = e);
-                        },
-                      );
-                    }).toList(),
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  // 🔹 Orientation
-                  const Text(
-                    "Orientation",
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  Wrap(
-                    spacing: 8,
-                    children: ["landscape", "portrait", "squarish"].map((e) {
-                      return ChoiceChip(
-                        label: Text(e),
-                        selected: _selectedOrientation == e,
-                        onSelected: (_) {
-                          setModalState(() => _selectedOrientation = e);
-                        },
-                      );
-                    }).toList(),
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  // 🔹 Category
-                  const Text(
-                    "Category",
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  Wrap(
-                    spacing: 8,
-                    children: ["general", "anime", "people"].map((e) {
-                      return ChoiceChip(
-                        label: Text(e),
-                        selected: _selectedCategory == e,
-                        onSelected: (_) {
-                          setModalState(() => _selectedCategory = e);
-                        },
-                      );
-                    }).toList(),
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  // 🔹 Range
-                  const Text(
-                    "Range",
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  Wrap(
-                    spacing: 8,
-                    children: ["1D", "3D", "1W", "1M", "3M", "6M", "1Y"].map((
-                      e,
-                    ) {
-                      return ChoiceChip(
-                        label: Text(e),
-                        selected: _selectedRange == e,
-                        onSelected: (_) {
-                          setModalState(() => _selectedRange = e);
-                        },
-                      );
-                    }).toList(),
-                  ),
-
-                  const SizedBox(height: 24),
-
-                  // 🔹 Buttons aligned bottom-right
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
+                      Text(
+                        "Filters",
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: Theme.of(context).colorScheme.onSurface,
+                        ),
+                      ),
                       TextButton(
                         onPressed: () {
                           setState(() {
@@ -356,22 +243,67 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
                           Navigator.pop(context);
                           _fetchImages(isSearch: true);
                         },
-                        child: const Text("Clear"),
-                      ),
-                      const SizedBox(width: 12),
-                      ElevatedButton(
-                        onPressed: () {
-                          Navigator.pop(context);
-                          _fetchImages(
-                            query: _searchController.text.isNotEmpty
-                                ? _searchController.text
-                                : null,
-                            isSearch: true,
-                          );
-                        },
-                        child: const Text("Apply"),
+                        child: const Text("Reset"),
                       ),
                     ],
+                  ),
+                  const SizedBox(height: 16),
+                  _buildFilterSection(
+                    "Sorting",
+                    [
+                      "date_added",
+                      "relevance",
+                      "random",
+                      "views",
+                      "favorites",
+                      "toplist",
+                    ],
+                    _selectedSorting,
+                    (val) => setModalState(() => _selectedSorting = val),
+                  ),
+                  const SizedBox(height: 16),
+                  _buildFilterSection(
+                    "Purity",
+                    ["SFW", "Sketchy", "NSFW"],
+                    _selectedPurity,
+                    (val) => setModalState(() => _selectedPurity = val),
+                  ),
+                  const SizedBox(height: 16),
+                  _buildFilterSection(
+                    "Orientation",
+                    ["landscape", "portrait", "squarish"],
+                    _selectedOrientation,
+                    (val) => setModalState(() => _selectedOrientation = val),
+                  ),
+                  const SizedBox(height: 16),
+                  _buildFilterSection(
+                    "Category",
+                    ["general", "anime", "people"],
+                    _selectedCategory,
+                    (val) => setModalState(() => _selectedCategory = val),
+                  ),
+                  const SizedBox(height: 16),
+                  _buildFilterSection(
+                    "Range",
+                    ["1D", "3D", "1W", "1M", "3M", "6M", "1Y"],
+                    _selectedRange,
+                    (val) => setModalState(() => _selectedRange = val),
+                  ),
+                  const SizedBox(height: 24),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton(
+                      onPressed: () {
+                        Navigator.pop(context);
+                        _fetchImages(
+                          query: _searchController.text.isNotEmpty
+                              ? _searchController.text
+                              : null,
+                          isSearch: true,
+                        );
+                      },
+                      child: const Text("Apply Filters"),
+                    ),
                   ),
                 ],
               ),
@@ -379,6 +311,54 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
           },
         );
       },
+    );
+  }
+
+  Widget _buildFilterSection(
+    String title,
+    List<String> options,
+    String? selected,
+    ValueChanged<String> onSelected,
+  ) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: TextStyle(
+            fontWeight: FontWeight.w600,
+            color: colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          children: options.map((e) {
+            final isSelected = selected == e;
+            return ChoiceChip(
+              label: Text(e),
+              selected: isSelected,
+              backgroundColor: colorScheme.surfaceContainerHighest,
+              selectedColor: colorScheme.primary.withValues(alpha: 0.2),
+              labelStyle: TextStyle(
+                color: isSelected
+                    ? colorScheme.primary
+                    : colorScheme.onSurfaceVariant,
+                fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+              ),
+              onSelected: (_) => onSelected(e),
+              shape: StadiumBorder(
+                side: BorderSide(
+                  color: isSelected
+                      ? colorScheme.primary
+                      : colorScheme.outlineVariant,
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+      ],
     );
   }
 
@@ -398,47 +378,66 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
         padding: const EdgeInsets.all(16.0),
         child: Column(
           children: [
-            SizedBox(height: 8),
             AnimatedContainer(
-              duration: const Duration(milliseconds: 300),
+              duration: const Duration(milliseconds: 350),
               curve: Curves.easeInOut,
               height: _showTopBar ? 120 : 0,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               child: _showTopBar
                   ? Column(
                       children: [
-                        TextField(
-                          controller: _searchController,
-                          decoration: InputDecoration(
-                            hintText: "Search...",
-                            suffixIcon: _searchController.text.isNotEmpty
-                                ? IconButton(
-                                    icon: const Icon(Icons.clear),
-                                    onPressed: () {
-                                      setState(() {
-                                        _searchController.clear();
-                                        _lastQuery = null;
-                                        _images.clear();
-                                      });
-                                      _fetchImages();
-                                    },
-                                  )
-                                : null,
+                        SizedBox(
+                          height: 48,
+                          child: TextField(
+                            controller: _searchController,
+                            focusNode: _searchFocus,
+                            decoration: InputDecoration(
+                              hintText: "Search wallpapers...",
+                              prefixIcon: const Icon(Icons.search),
+                              suffixIcon: _searchController.text.isNotEmpty
+                                  ? IconButton(
+                                      icon: const Icon(Icons.clear),
+                                      onPressed: () {
+                                        setState(() {
+                                          _searchController.clear();
+                                          _lastQuery = null;
+                                          _images.clear();
+                                        });
+                                        _fetchImages();
+                                      },
+                                    )
+                                  : null,
+                              filled: true,
+                              fillColor: colorScheme.surfaceContainerHighest
+                                  .withValues(alpha: 0.5),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(16),
+                                borderSide: BorderSide.none,
+                              ),
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                              ),
+                            ),
+                            onSubmitted: (value) {
+                              if (value.isNotEmpty) {
+                                _fetchImages(
+                                  query: value.trim(),
+                                  isSearch: true,
+                                );
+                              }
+                            },
+                            onChanged: (_) => setState(() {}),
                           ),
-                          onSubmitted: (value) {
-                            if (value.isNotEmpty) {
-                              _fetchImages(query: value.trim(), isSearch: true);
-                            }
-                          },
-                          onChanged: (_) => setState(() {}),
                         ),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.end,
                           children: [
-                            TextButton.icon(
-                              icon: const Icon(Icons.filter_list),
-                              label: const Text("Filters"),
-                              onPressed: () => _showFilters(context),
+                            Padding(
+                              padding: const EdgeInsets.only(top: 8),
+                              child: TextButton.icon(
+                                icon: const Icon(Icons.filter_list, size: 20),
+                                label: const Text("Filters"),
+                                onPressed: () => _showFilters(context),
+                              ),
                             ),
                           ],
                         ),
@@ -448,23 +447,30 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
             ),
 
             if (_lastQuery != null)
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  "Showing results for \"$_lastQuery\"",
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: colorScheme.onSurfaceVariant,
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    "Showing results for \"$_lastQuery\"",
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
                   ),
                 ),
               ),
 
             Expanded(
               child: _images.isEmpty
-                  ? Center(
-                      child: Text(
-                        _isLoading ? "Loading..." : "No wallpapers",
-                        style: TextStyle(color: colorScheme.onSurface),
+                  ? MasonryGridView.count(
+                      crossAxisCount: 2,
+                      mainAxisSpacing: 8,
+                      crossAxisSpacing: 8,
+                      itemCount: 6,
+                      itemBuilder: (context, index) => ShimmerLoading(
+                        height: 150 + (index % 3) * 50,
+                        borderRadius: 12,
                       ),
                     )
                   : MasonryGridView.builder(
@@ -472,11 +478,11 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
                       controller: _scrollController,
                       gridDelegate:
                           SliverSimpleGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 2,
-                          ),
-                      mainAxisSpacing: 4,
-                      crossAxisSpacing: 4,
-                      itemCount: _images.length,
+                        crossAxisCount: 2,
+                      ),
+                      mainAxisSpacing: 8,
+                      crossAxisSpacing: 8,
+                      itemCount: _images.length + (_isLoading ? 4 : 0),
                       addAutomaticKeepAlives:
                           PerformanceConfig.addAutomaticKeepAlives,
                       addRepaintBoundaries:
@@ -484,6 +490,13 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
                       addSemanticIndexes: false,
                       cacheExtent: PerformanceConfig.gridCacheExtent.toDouble(),
                       itemBuilder: (context, index) {
+                        if (index >= _images.length) {
+                          return ShimmerLoading(
+                            height: 150 + (index % 3) * 50,
+                            borderRadius: 12,
+                          );
+                        }
+
                         final img = _images[index];
                         final isFav = favorites.contains(img);
 
@@ -492,7 +505,6 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
                             wallpaper: img,
                             isFav: isFav,
                             onFavToggle: () {
-                              debugPrint("Fav toggle for ${img.url}");
                               setState(() {
                                 if (isFav) {
                                   favorites.remove(img.url);

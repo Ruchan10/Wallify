@@ -89,7 +89,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          Text("Apply To", style: Theme.of(context).textTheme.titleMedium),
+          Text("Apply To",
+            style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),
           Wrap(
             spacing: 8,

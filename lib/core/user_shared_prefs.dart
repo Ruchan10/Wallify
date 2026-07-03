@@ -82,21 +82,17 @@ class UserSharedPrefs {
 
     final List<dynamic> history = jsonDecode(raw);
 
-    final exists = history.any((item) => item["id"] == wallpaper.id);
-
-    if (!exists) {
-      history.add(wallpaper.toJson());
-      await prefs.setString(_wallpaperHistoryKey, jsonEncode(history));
-    }
+    history.add(wallpaper.toJson());
+    await prefs.setString(_wallpaperHistoryKey, jsonEncode(history));
   }
 
-  static Future<List<Map<String, dynamic>>> getWallpaperHistory() async {
+  static Future<List<Wallpaper>> getWallpaperHistory() async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_wallpaperHistoryKey) ?? "[]";
 
     final List<dynamic> list = jsonDecode(raw);
 
-    return list.map((e) => Map<String, dynamic>.from(e)).toList();
+    return list.map((e) => Wallpaper.fromJson(Map<String, dynamic>.from(e))).toList();
   }
 // ---- WALLPAPERS for background change ----
   static Future<void> saveWallpapers(List<Wallpaper> wallpapers) async {

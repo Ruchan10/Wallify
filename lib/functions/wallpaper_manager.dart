@@ -28,7 +28,6 @@ class WallpaperManager {
           "https://wallhaven.cc/api/v1/search?q=$tag"
           "&categories=100&purity=100"
           "&ratios=portrait"
-          "&atleast=${deviceWidth}x$deviceHeight"
           "&sorting=relevance",
         ),
       );
@@ -63,7 +62,6 @@ class WallpaperManager {
           "&q=$tag"
           "&image_type=photo"
           "&orientation=vertical"
-          "&min_width=$deviceWidth&min_height=$deviceHeight"
           "&safesearch=true",
         ),
       );
