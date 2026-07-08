@@ -130,7 +130,7 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
       );
       final wallData = jsonDecode(wallRes.body);
       for (var item in wallData["data"]) {
-        results.add(Wallpaper(id: item["id"], url: item["path"]));
+        results.add(Wallpaper(id: item["id"], url: item["path"], timestamp: DateTime.now()));
       }
 
       final unsplashRes = await http.get(
@@ -155,7 +155,7 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
 
       for (var item
           in query == null ? unsplashData : unsplashData["results"]) {
-        results.add(Wallpaper(id: item["id"], url: item["urls"]["regular"]));
+        results.add(Wallpaper(id: item["id"], url: item["urls"]["regular"], timestamp: DateTime.now()));
       }
 
       final pixabayRes = await http.get(
@@ -173,7 +173,7 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
       final pixabayData = jsonDecode(pixabayRes.body);
       for (var item in pixabayData["hits"]) {
         results.add(
-          Wallpaper(id: item["id"].toString(), url: item["largeImageURL"]),
+          Wallpaper(id: item["id"].toString(), url: item["largeImageURL"], timestamp: DateTime.now()),
         );
       }
     } catch (e) {
@@ -378,73 +378,73 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
         padding: const EdgeInsets.all(16.0),
         child: Column(
           children: [
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 350),
-              curve: Curves.easeInOut,
-              height: _showTopBar ? 120 : 0,
-              child: _showTopBar
-                  ? Column(
-                      children: [
-                        SizedBox(
-                          height: 48,
-                          child: TextField(
-                            controller: _searchController,
-                            focusNode: _searchFocus,
-                            decoration: InputDecoration(
-                              hintText: "Search wallpapers...",
-                              prefixIcon: const Icon(Icons.search),
-                              suffixIcon: _searchController.text.isNotEmpty
-                                  ? IconButton(
-                                      icon: const Icon(Icons.clear),
-                                      onPressed: () {
-                                        setState(() {
-                                          _searchController.clear();
-                                          _lastQuery = null;
-                                          _images.clear();
-                                        });
-                                        _fetchImages();
-                                      },
-                                    )
-                                  : null,
-                              filled: true,
-                              fillColor: colorScheme.surfaceContainerHighest
-                                  .withValues(alpha: 0.5),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(16),
-                                borderSide: BorderSide.none,
-                              ),
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                              ),
+            ClipRect(
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 350),
+                curve: Curves.easeInOutCubic,
+                height: _showTopBar ? 120 : 0,
+                child: Column(
+                    children: [
+                      SizedBox(
+                        height: 48,
+                        child: TextField(
+                          controller: _searchController,
+                          focusNode: _searchFocus,
+                          decoration: InputDecoration(
+                            hintText: "Search wallpapers...",
+                            prefixIcon: const Icon(Icons.search),
+                            suffixIcon: _searchController.text.isNotEmpty
+                                ? IconButton(
+                                    icon: const Icon(Icons.clear),
+                                    onPressed: () {
+                                      setState(() {
+                                        _searchController.clear();
+                                        _lastQuery = null;
+                                        _images.clear();
+                                      });
+                                      _fetchImages();
+                                    },
+                                  )
+                                : null,
+                            filled: true,
+                            fillColor: colorScheme.surfaceContainerHighest
+                                .withValues(alpha: 0.5),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(16),
+                              borderSide: BorderSide.none,
                             ),
-                            onSubmitted: (value) {
-                              if (value.isNotEmpty) {
-                                _fetchImages(
-                                  query: value.trim(),
-                                  isSearch: true,
-                                );
-                              }
-                            },
-                            onChanged: (_) => setState(() {}),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                            ),
                           ),
+                          onSubmitted: (value) {
+                            if (value.isNotEmpty) {
+                              _fetchImages(
+                                query: value.trim(),
+                                isSearch: true,
+                              );
+                            }
+                          },
+                          onChanged: (_) => setState(() {}),
                         ),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.end,
-                          children: [
-                            Padding(
-                              padding: const EdgeInsets.only(top: 8),
-                              child: TextButton.icon(
-                                icon: const Icon(Icons.filter_list, size: 20),
-                                label: const Text("Filters"),
-                                onPressed: () => _showFilters(context),
-                              ),
+                      ),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.only(top: 8),
+                            child: TextButton.icon(
+                              icon: const Icon(Icons.filter_list, size: 20),
+                              label: const Text("Filters"),
+                              onPressed: () => _showFilters(context),
                             ),
-                          ],
-                        ),
-                      ],
-                    )
-                  : null,
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
             ),
+          ),
 
             if (_lastQuery != null)
               Padding(
@@ -504,6 +504,8 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
                           child: ImageTile(
                             wallpaper: img,
                             isFav: isFav,
+                            allWallpapers: _images,
+                            index: index,
                             onFavToggle: () {
                               setState(() {
                                 if (isFav) {

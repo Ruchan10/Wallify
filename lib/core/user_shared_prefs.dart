@@ -21,6 +21,9 @@ class UserSharedPrefs {
   static const _constraintStorageNotLowKey = "constraint_storage_not_low";
   static const _constraintNoFacesKey = "constraint_no_faces";
   static const _constraintWifiKey = "constraint_wifi";
+  static const _wallpaperSourceKey = "wallpaperSource";
+  static const _folderPathKey = "folderPath";
+  static const _cachedWallpaperPathsKey = "cachedWallpaperPaths";
 
   /// ---- TAGS ----
   static Future<List<String>> getTags() async {
@@ -76,13 +79,36 @@ class UserSharedPrefs {
     return prefs.getInt(_deviceWidthKey) ?? 360;
   }
 
+  static const _maxHistory = 100;
+
   static Future<void> saveWallpaperHistory(Wallpaper wallpaper) async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_wallpaperHistoryKey) ?? "[]";
 
     final List<dynamic> history = jsonDecode(raw);
 
-    history.add(wallpaper.toJson());
+    // Drop any previous entry for the same wallpaper so re-setting it
+    // moves it to the top instead of leaving a duplicate.
+    history.removeWhere((e) => e is Map && e["id"] == wallpaper.id);
+
+    // Newest entries first.
+    history.insert(0, wallpaper.toJson());
+
+    // Keep history from growing without bound.
+    if (history.length > _maxHistory) {
+      history.removeRange(_maxHistory, history.length);
+    }
+
+    await prefs.setString(_wallpaperHistoryKey, jsonEncode(history));
+  }
+
+  static Future<void> removeWallpaperHistory(Wallpaper wallpaper) async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_wallpaperHistoryKey) ?? "[]";
+
+    final List<dynamic> history = jsonDecode(raw);
+    history.removeWhere((e) => e is Map && e["id"] == wallpaper.id);
+
     await prefs.setString(_wallpaperHistoryKey, jsonEncode(history));
   }
 
@@ -103,13 +129,48 @@ class UserSharedPrefs {
 
   static Future<List<Wallpaper>> getImageUrls() async {
     final prefs = await SharedPreferences.getInstance();
-    final jsonList = prefs.getStringList(_imageUrlsKey) ?? [];
-    return jsonList.map((e) => Wallpaper.fromJson(jsonDecode(e))).toList();
+
+    List<String> jsonList;
+    try {
+      jsonList = prefs.getStringList(_imageUrlsKey) ?? [];
+    } catch (_) {
+      jsonList = [];
+    }
+
+    if (jsonList.isEmpty) {
+      final raw = prefs.getString(_imageUrlsKey);
+      if (raw != null) {
+        try {
+          final decoded = jsonDecode(raw);
+          if (decoded is List) {
+            jsonList = decoded.map((e) {
+              if (e is String) return e;
+              if (e is Map) return jsonEncode(e);
+              return null;
+            }).whereType<String>().toList();
+          }
+        } catch (_) {}
+      }
+    }
+
+    return jsonList.map((e) {
+      try {
+        return Wallpaper.fromJson(jsonDecode(e));
+      } catch (_) {
+        return Wallpaper(id: e.hashCode.toString(), url: e, timestamp: DateTime.now());
+      }
+    }).toList();
   }
 
   static Future<void> saveFavWallpaper(Wallpaper wallpaper) async {
     final prefs = await SharedPreferences.getInstance();
-    final history = prefs.getStringList(_favWallpaperKey) ?? [];
+
+    List<String> history;
+    try {
+      history = prefs.getStringList(_favWallpaperKey) ?? [];
+    } catch (_) {
+      history = [];
+    }
 
     final entry = jsonEncode(wallpaper.toJson());
 
@@ -121,11 +182,21 @@ class UserSharedPrefs {
 
   static Future<void> removeFavWallpaper(Wallpaper wallpaper) async {
     final prefs = await SharedPreferences.getInstance();
-    final history = prefs.getStringList(_favWallpaperKey) ?? [];
+
+    List<String> history;
+    try {
+      history = prefs.getStringList(_favWallpaperKey) ?? [];
+    } catch (_) {
+      history = [];
+    }
 
     history.removeWhere((item) {
-      final decoded = jsonDecode(item);
-      return decoded["id"] == wallpaper.id;
+      try {
+        final decoded = jsonDecode(item);
+        return decoded["id"] == wallpaper.id;
+      } catch (_) {
+        return false;
+      }
     });
 
     await prefs.setStringList(_favWallpaperKey, history);
@@ -133,9 +204,37 @@ class UserSharedPrefs {
 
   static Future<List<Wallpaper>> getFavWallpapers() async {
     final prefs = await SharedPreferences.getInstance();
-    final history = prefs.getStringList(_favWallpaperKey) ?? [];
 
-    return history.map((e) => Wallpaper.fromJson(jsonDecode(e))).toList();
+    List<String> history;
+    try {
+      history = prefs.getStringList(_favWallpaperKey) ?? [];
+    } catch (_) {
+      history = [];
+    }
+
+    if (history.isEmpty) {
+      final raw = prefs.getString(_favWallpaperKey);
+      if (raw != null) {
+        try {
+          final decoded = jsonDecode(raw);
+          if (decoded is List) {
+            history = decoded.map((e) {
+              if (e is String) return e;
+              if (e is Map) return jsonEncode(e);
+              return null;
+            }).whereType<String>().toList();
+          }
+        } catch (_) {}
+      }
+    }
+
+    return history.map((e) {
+      try {
+        return Wallpaper.fromJson(jsonDecode(e));
+      } catch (_) {
+        return Wallpaper(id: e.hashCode.toString(), url: e, timestamp: DateTime.now());
+      }
+    }).toList();
   }
 
   static Future<void> saveLastWallpaperChange(DateTime date) async {
@@ -239,5 +338,49 @@ class UserSharedPrefs {
   static Future<bool> getConstraintWifi() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getBool(_constraintWifiKey) ?? true;
+  }
+
+  /// ---- WALLPAPER SOURCE ----
+  static Future<String> getWallpaperSource() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_wallpaperSourceKey) ?? "internet";
+  }
+
+  static Future<void> setWallpaperSource(String source) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_wallpaperSourceKey, source);
+  }
+
+  /// ---- FOLDER PATH ----
+  static Future<String?> getFolderPath() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_folderPathKey);
+  }
+
+  static Future<void> setFolderPath(String path) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_folderPathKey, path);
+  }
+
+  /// ---- CACHED WALLPAPER PATHS ----
+  static Future<void> saveCachedWallpaperPaths(List<String> paths) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_cachedWallpaperPathsKey, jsonEncode(paths));
+  }
+
+  static Future<List<String>> getCachedWallpaperPaths() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_cachedWallpaperPathsKey);
+    if (raw == null) return [];
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is List) return decoded.cast<String>();
+    } catch (_) {}
+    return [];
+  }
+
+  static Future<void> clearCachedWallpaperPaths() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_cachedWallpaperPathsKey);
   }
 }

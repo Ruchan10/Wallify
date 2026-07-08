@@ -21,31 +21,77 @@ import com.google.android.gms.tasks.Tasks
 import com.google.mlkit.vision.face.FaceDetection
 import com.google.mlkit.vision.face.FaceDetectorOptions
 import org.json.JSONObject
+import androidx.palette.graphics.Palette
 
 object WallpaperUtils {
+    private val imageExtensions = setOf("jpg", "jpeg", "png", "webp", "bmp", "gif")
+
     fun downloadAndSetWallpaperBackground(context: Context) {
         try {
             Log.d("Wallify", "Starting background wallpaper change (no Activity)")
 
             val prefs = context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
-            var imageJsonString = prefs.getString("flutter.imageUrls", "[]") ?: "[]"
+            val wallpaperSource = prefs.getString("flutter.wallpaperSource", "internet") ?: "internet"
 
-            if (imageJsonString.contains("![")) {
-                imageJsonString = imageJsonString.substringAfter("!")
-            }
+            val imageSources = mutableListOf<String>()
 
-            val imageUrls = try {
-                val jsonArray = org.json.JSONArray(imageJsonString)
-                val urls = mutableListOf<String>()
-                for (i in 0 until jsonArray.length()) {
-                    val wallpaperObj = org.json.JSONObject(jsonArray.getString(i))
-                    val url = wallpaperObj.optString("url", "")
-                    if (url.isNotEmpty()) urls.add(url)
+            if (wallpaperSource == "folder") {
+                val folderPath = prefs.getString("flutter.folderPath", null)
+                if (folderPath.isNullOrEmpty()) {
+                    Log.e("Wallify", "Folder source selected but no folder path set")
+                    return
                 }
-                urls.toMutableList() 
-            } catch (e: Exception) {
-                Log.e("Wallify", "Error parsing flutter.imageUrls JSON", e)
-                mutableListOf() 
+                val folder = File(folderPath)
+                if (!folder.exists() || !folder.isDirectory()) {
+                    Log.e("Wallify", "Folder does not exist: $folderPath")
+                    return
+                }
+                folder.listFiles { f -> f.isFile && f.extension.lowercase() in imageExtensions }
+                    ?.forEach { imageSources.add(it.absolutePath) }
+                if (imageSources.isEmpty()) {
+                    Log.e("Wallify", "No image files found in folder: $folderPath")
+                    return
+                }
+                Log.d("Wallify", "📁 Found ${imageSources.size} images in folder: $folderPath")
+            } else {
+                // Try cached local paths first (offline cache downloaded by Flutter)
+                val cachedPaths = getCachedLocalPaths(context)
+                if (cachedPaths.isNotEmpty()) {
+                    Log.d("Wallify", "Using ${cachedPaths.size} locally cached wallpapers")
+                    imageSources.addAll(cachedPaths)
+                } else {
+                    // Fall back to URL-based fetching
+                    var imageJsonString = prefs.getString("flutter.imageUrls", "[]") ?: "[]"
+                    if (imageJsonString.contains("![")) {
+                        imageJsonString = imageJsonString.substringAfter("!")
+                    }
+                    val imageUrls = try {
+                        val jsonArray = org.json.JSONArray(imageJsonString)
+                        val urls = mutableListOf<String>()
+                        for (i in 0 until jsonArray.length()) {
+                            val wallpaperObj = org.json.JSONObject(jsonArray.getString(i))
+                            val url = wallpaperObj.optString("url", "")
+                            if (url.isNotEmpty()) urls.add(url)
+                        }
+                        urls.toMutableList()
+                    } catch (e: Exception) {
+                        Log.e("Wallify", "Error parsing flutter.imageUrls JSON", e)
+                        mutableListOf()
+                    }
+
+                    if (imageUrls.isEmpty()) {
+                        Log.w("Wallify", "No image URLs found, fetching new ones from APIs...")
+                        val fetched = fetchImagesFromAllSources(context)
+                        if (fetched.isEmpty()) {
+                            Log.e("Wallify", "Could not fetch any wallpapers, aborting.")
+                            return
+                        } else {
+                            imageUrls.addAll(fetched)
+                            Log.d("Wallify", "Added ${fetched.size} new wallpapers from API")
+                        }
+                    }
+                    imageSources.addAll(imageUrls)
+                }
             }
 
             val wallpaperLocationValue = prefs.all["flutter.wallpaperLocation"]
@@ -57,82 +103,69 @@ object WallpaperUtils {
             }
             Log.e("Wallify", wallpaperLocation.toString())
 
-            if (imageUrls.isEmpty()) {
-                Log.w("Wallify", "⚠️ No image URLs found, fetching new ones from APIs...")
-                val fetched = fetchImagesFromAllSources(context)
-                if (fetched.isEmpty()) {
-                    Log.e("Wallify", "❌ Could not fetch any wallpapers, aborting.")
-                    return
-                } else {
-                    imageUrls.addAll(fetched)
-                    Log.d("Wallify", "🌄 Added ${fetched.size} new wallpapers from API")
-                }
-            }
-
-
             val wallpaperManager = WallpaperManager.getInstance(context)
+            val isFolderMode = wallpaperSource == "folder"
 
             when (wallpaperLocation) {
                 1 -> {
-                    val nonFaceUrl = getNonFaceImageUrl(context, imageUrls)
-                    if (nonFaceUrl == null) {
-                        Log.e("Wallify", "❌ No suitable wallpapers found (all had faces).")
+                    val nonFacePath = getNonFaceImagePath(context, imageSources, isFolderMode)
+                    if (nonFacePath == null) {
+                        Log.e("Wallify", "No suitable wallpapers found (all had faces).")
                         return
                     }
-                    setWallpaper(context, wallpaperManager, nonFaceUrl, WallpaperManager.FLAG_SYSTEM)
+                    setWallpaper(context, wallpaperManager, nonFacePath, WallpaperManager.FLAG_SYSTEM, isFolderMode)
                 }
 
                 2 -> {
-                    val nonFaceUrl = getNonFaceImageUrl(context, imageUrls)
-                    if (nonFaceUrl == null) {
-                        Log.e("Wallify", "❌ No suitable wallpapers found (all had faces).")
+                    val nonFacePath = getNonFaceImagePath(context, imageSources, isFolderMode)
+                    if (nonFacePath == null) {
+                        Log.e("Wallify", "No suitable wallpapers found (all had faces).")
                         return
                     }
-                    setWallpaper(context, wallpaperManager, nonFaceUrl, WallpaperManager.FLAG_LOCK)
+                    setWallpaper(context, wallpaperManager, nonFacePath, WallpaperManager.FLAG_LOCK, isFolderMode)
                 }
 
                 3 -> {
-                    if (imageUrls.size < 2) {
+                    if (imageSources.size < 2) {
                         Log.w("Wallify", "Not enough wallpapers, using same image for both.")
-                        val nonFaceUrl = getNonFaceImageUrl(context, imageUrls)
-                        if (nonFaceUrl == null) {
-                            Log.e("Wallify", "❌ No suitable wallpapers found (all had faces).")
+                        val nonFacePath = getNonFaceImagePath(context, imageSources, isFolderMode)
+                        if (nonFacePath == null) {
+                            Log.e("Wallify", "No suitable wallpapers found (all had faces).")
                             return
                         }
-                        setWallpaper(context, wallpaperManager, nonFaceUrl, WallpaperManager.FLAG_SYSTEM)
-                        setWallpaper(context, wallpaperManager, nonFaceUrl, WallpaperManager.FLAG_LOCK)
+                        setWallpaper(context, wallpaperManager, nonFacePath, WallpaperManager.FLAG_SYSTEM, isFolderMode)
+                        setWallpaper(context, wallpaperManager, nonFacePath, WallpaperManager.FLAG_LOCK, isFolderMode)
                     } else {
-                        val nonFaceUrl = getNonFaceImageUrl(context, imageUrls)
-                        if (nonFaceUrl == null) {
-                            Log.e("Wallify", "❌ No suitable wallpapers found (all had faces).")
+                        val nonFacePath = getNonFaceImagePath(context, imageSources, isFolderMode)
+                        if (nonFacePath == null) {
+                            Log.e("Wallify", "No suitable wallpapers found (all had faces).")
                             return
                         }
-                        var lockUrl = getNonFaceImageUrl(context, imageUrls)
-                        if (lockUrl == null) {
-                            Log.e("Wallify", "❌ No suitable wallpapers found (all had faces).")
+                        var lockPath = getNonFaceImagePath(context, imageSources, isFolderMode)
+                        if (lockPath == null) {
+                            Log.e("Wallify", "No suitable wallpapers found (all had faces).")
                             return
                         }
-                        while (nonFaceUrl == lockUrl && imageUrls.size > 1) {
-                            lockUrl = imageUrls.random()
+                        while (nonFacePath == lockPath && imageSources.size > 1) {
+                            lockPath = imageSources.random()
                         }
-
-                        setWallpaper(context, wallpaperManager, nonFaceUrl, WallpaperManager.FLAG_SYSTEM)
-                        setWallpaper(context, wallpaperManager, lockUrl, WallpaperManager.FLAG_LOCK)
+                        setWallpaper(context, wallpaperManager, nonFacePath, WallpaperManager.FLAG_SYSTEM, isFolderMode)
+                        setWallpaper(context, wallpaperManager, lockPath, WallpaperManager.FLAG_LOCK, isFolderMode)
                     }
                 }
 
                 else -> {
-                    val nonFaceUrl = getNonFaceImageUrl(context, imageUrls)
-                    if (nonFaceUrl == null) {
-                        Log.e("Wallify", "❌ No suitable wallpapers found (all had faces).")
+                    val nonFacePath = getNonFaceImagePath(context, imageSources, isFolderMode)
+                    if (nonFacePath == null) {
+                        Log.e("Wallify", "No suitable wallpapers found (all had faces).")
                         return
                     }
-                    Log.d("Wallify", "Setting default (home) wallpaper: $nonFaceUrl")
-                    setWallpaper(context, wallpaperManager, nonFaceUrl, WallpaperManager.FLAG_SYSTEM)
+                    Log.d("Wallify", "Setting default (home) wallpaper: $nonFacePath")
+                    setWallpaper(context, wallpaperManager, nonFacePath, WallpaperManager.FLAG_SYSTEM, isFolderMode)
                 }
             }
 
-            Log.d("Wallify", "✅ Wallpaper change completed (mode=$wallpaperLocation)")
+            Log.d("Wallify", "Wallpaper change completed (mode=$wallpaperLocation, source=$wallpaperSource)")
         } catch (e: Exception) {
             Log.e("Wallify", "Error setting wallpaper in background", e)
         }
@@ -165,40 +198,34 @@ object WallpaperUtils {
         }
     }
 
-    private fun getNonFaceImageUrl(context: Context, imageUrls: MutableList<String>): String? {
+    private fun getNonFaceImagePath(context: Context, paths: MutableList<String>, isFolderMode: Boolean): String? {
         val prefs = context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
         val requiresNoFaces = prefs.getBoolean("flutter.constraint_no_faces", true)
-        Log.d("Wallify", "Scheduling background wallpaper change every $requiresNoFaces requiresNoFaces")
+        Log.d("Wallify", "getNonFaceImagePath: requiresNoFaces=$requiresNoFaces, isFolderMode=$isFolderMode")
 
-        val iterator = imageUrls.iterator()
+        val iterator = paths.iterator()
         while (iterator.hasNext()) {
-            val url = iterator.next()
-            val tempFile = downloadImage(context, url)
-            if (tempFile == null) {
-                Log.w("Wallify", "⚠️ Skipping invalid image: $url")
-                iterator.remove()
-                continue
-            }
-
-            val bitmap = BitmapFactory.decodeFile(tempFile.absolutePath)
-            tempFile.delete()
-
+            val path = iterator.next()
+            val bitmap = loadBitmapFromSource(context, path)
             if (bitmap == null) {
+                Log.w("Wallify", "Skipping invalid image: $path")
                 iterator.remove()
                 continue
             }
 
-            if(!requiresNoFaces){
-                return url
+            if (!requiresNoFaces) {
+                return path
             }
 
             if (!imageHasFace(context, bitmap)) {
-                Log.d("Wallify", "✅ Selected wallpaper without faces: $url")
-                return url
+                Log.d("Wallify", "Selected wallpaper without faces: $path")
+                return path
             } else {
-                Log.d("Wallify", "🚫 Discarded face image: $url")
+                Log.d("Wallify", "Discarded face image: $path")
                 iterator.remove()
-                removeUsedUrl(context, url)
+                if (!isFolderMode) {
+                    removeUsedUrl(context, path)
+                }
             }
         }
 
@@ -303,20 +330,14 @@ object WallpaperUtils {
         return urls
     }
 
-    private fun setWallpaper(context: Context, manager: WallpaperManager, imageUrl: String, flag: Int) {
-        val tempFile = downloadImage(context, imageUrl)
-        if (tempFile == null) {
-            Log.e("Wallify", "Failed to download image: $imageUrl")
+    private fun setWallpaper(context: Context, manager: WallpaperManager, imagePath: String, flag: Int, isFolderMode: Boolean = false) {
+        val bitmap = loadBitmapFromSource(context, imagePath)
+        if (bitmap == null) {
+            Log.e("Wallify", "Failed to load image: $imagePath")
             return
         }
 
         try {
-            var bitmap = BitmapFactory.decodeFile(tempFile.absolutePath)
-            if (bitmap == null) {
-                Log.e("Wallify", "Bitmap decode failed: $imageUrl")
-                return
-            }
-
             val prefs = context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
             val widthValue = prefs.all["flutter.deviceWidth"]
             val heightValue = prefs.all["flutter.deviceHeight"]
@@ -334,19 +355,33 @@ object WallpaperUtils {
                 else -> bitmap.height
             }
 
-            Log.d("Wallify", "📏 Device dimensions from prefs: $deviceWidth x $deviceHeight")
+            Log.d("Wallify", "Device dimensions from prefs: $deviceWidth x $deviceHeight")
 
-            bitmap = detectAndCropMainObject(context, bitmap, deviceWidth, deviceHeight)
+            var resultBitmap = detectAndCropMainObject(context, bitmap, deviceWidth, deviceHeight)
 
-            manager.setBitmap(bitmap, null, true, flag)
-            Log.d("Wallify", "✅ Wallpaper set successfully for flag=$flag")
+            manager.setBitmap(resultBitmap, null, true, flag)
+            Log.d("Wallify", "Wallpaper set successfully for flag=$flag")
+            extractAndSaveWallpaperColors(context, resultBitmap)
             updateLastChangeTime(context)
-            removeUsedUrl(context, imageUrl)
+            if (!isFolderMode) {
+                removeUsedUrl(context, imagePath)
+                removeUsedCachedPath(context, imagePath)
+            }
 
         } catch (e: Exception) {
-            Log.e("Wallify", "Error setting wallpaper from $imageUrl", e)
-        } finally {
+            Log.e("Wallify", "Error setting wallpaper from $imagePath", e)
+        }
+    }
+
+    private fun loadBitmapFromSource(context: Context, path: String): Bitmap? {
+        return if (path.startsWith("http://") || path.startsWith("https://")) {
+            val tempFile = downloadImage(context, path)
+            if (tempFile == null) return null
+            val bitmap = BitmapFactory.decodeFile(tempFile.absolutePath)
             tempFile.delete()
+            bitmap
+        } else {
+            BitmapFactory.decodeFile(path)
         }
     }
 
@@ -370,6 +405,54 @@ object WallpaperUtils {
             Log.e("Wallify", "Failed to download image: $e")
             null
         }
+    }
+
+    private fun getCachedLocalPaths(context: Context): MutableList<String> {
+        val prefs = context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+        val cachedRaw = prefs.getString("cachedWallpaperPaths", null) ?: return mutableListOf()
+        return try {
+            val arr = org.json.JSONArray(cachedRaw)
+            val paths = (0 until arr.length()).map { arr.getString(it) }.toMutableList()
+            paths.removeAll { path -> !File(path).exists() }
+            paths
+        } catch (e: Exception) {
+            Log.e("Wallify", "Error parsing cachedWallpaperPaths JSON", e)
+            mutableListOf()
+        }
+    }
+
+    fun extractAndSaveWallpaperColors(context: Context, bitmap: Bitmap) {
+        try {
+            val palette = Palette.from(bitmap).generate()
+            val dominantColor = palette?.dominantSwatch?.rgb
+            val lightVibrant = palette?.lightVibrantSwatch?.rgb
+            val darkVibrant = palette?.darkVibrantSwatch?.rgb
+
+            if (dominantColor != null) {
+                val prefs = context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+                val editor = prefs.edit()
+                editor.putInt("wallpaperSeedColor", dominantColor)
+                if (lightVibrant != null) editor.putInt("wallpaperLightVibrant", lightVibrant)
+                if (darkVibrant != null) editor.putInt("wallpaperDarkVibrant", darkVibrant)
+                editor.apply()
+                Log.d("Wallify", "Wallpaper dominant color: #${dominantColor.toString(16)}")
+            }
+        } catch (e: Exception) {
+            Log.e("Wallify", "Failed to extract wallpaper colors: ${e.message}")
+        }
+    }
+
+    fun extractColorsFromFile(context: Context, filePath: String): Map<String, Int> {
+        val bitmap = BitmapFactory.decodeFile(filePath) ?: return emptyMap()
+        extractAndSaveWallpaperColors(context, bitmap)
+        val palette = Palette.from(bitmap).generate()
+        val result = mutableMapOf<String, Int>()
+        palette?.dominantSwatch?.rgb?.let { result["dominant"] = it }
+        palette?.lightVibrantSwatch?.rgb?.let { result["lightVibrant"] = it }
+        palette?.darkVibrantSwatch?.rgb?.let { result["darkVibrant"] = it }
+        palette?.lightMutedSwatch?.rgb?.let { result["lightMuted"] = it }
+        palette?.darkMutedSwatch?.rgb?.let { result["darkMuted"] = it }
+        return result
     }
 
     private fun updateLastChangeTime(context: Context) {
@@ -400,6 +483,8 @@ object WallpaperUtils {
 
             Log.d("Wallify", "🧹 Removing used wallpaper URL: $usedUrl")
 
+            // Pull the used wallpaper out of the pending imageUrls list and
+            // keep a reference to it so it can be moved into history.
             val newImageList = JSONArray()
             var movedObject: JSONObject? = null
 
@@ -408,8 +493,8 @@ object WallpaperUtils {
                 val item = JSONObject(itemStr)
                 val url = item.optString("url", "")
 
-                if (url == usedUrl) {
-                    movedObject = item  
+                if (url == usedUrl && movedObject == null) {
+                    movedObject = item
                     Log.d("Wallify", "➡️ Moved to history: $item")
                 } else {
                     newImageList.put(itemStr)
@@ -418,16 +503,58 @@ object WallpaperUtils {
 
             prefs.edit().putString("flutter.imageUrls", newImageList.toString()).apply()
 
-            if (movedObject != null) {
-                historyList.put(0, movedObject)
-                prefs.edit().putString("flutter.wallpaperHistory", historyList.toString()).apply()
+            // The used wallpaper may not be in imageUrls anymore (e.g. it was
+            // already consumed by a previous set in the same run). Still record
+            // it in history using at least its url.
+            val movedEntry = movedObject ?: JSONObject().put("url", usedUrl)
+            val movedUrl = movedEntry.optString("url", usedUrl)
+
+            // Rebuild history newest-first, dropping any previous entry for the
+            // same wallpaper so it moves to the top instead of duplicating.
+            val newHistory = JSONArray()
+            newHistory.put(movedEntry)
+            for (i in 0 until historyList.length()) {
+                val existing = historyList.optJSONObject(i) ?: continue
+                if (existing.optString("url", "") == movedUrl) continue
+                newHistory.put(existing)
             }
 
-            Log.d("Wallify", "📌 History size: ${historyList.length()}")
+            // Keep history from growing without bound.
+            val maxHistory = 100
+            val cappedHistory = if (newHistory.length() > maxHistory) {
+                JSONArray().apply {
+                    for (i in 0 until maxHistory) put(newHistory.get(i))
+                }
+            } else {
+                newHistory
+            }
+
+            prefs.edit().putString("flutter.wallpaperHistory", cappedHistory.toString()).apply()
+
+            Log.d("Wallify", "📌 History size: ${cappedHistory.length()}")
             Log.d("Wallify", "📌 Remaining imageUrls: ${newImageList.length()}")
 
         } catch (e: Exception) {
             Log.e("Wallify", "Error updating history: ${e.message}", e)
+        }
+    }
+
+    private fun removeUsedCachedPath(context: Context, usedPath: String) {
+        try {
+            val prefs = context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+            val cachedRaw = prefs.getString("cachedWallpaperPaths", null) ?: return
+            val arr = org.json.JSONArray(cachedRaw)
+            val newArr = org.json.JSONArray()
+            for (i in 0 until arr.length()) {
+                val path = arr.optString(i, "")
+                if (path != usedPath) newArr.put(path)
+            }
+            if (newArr.length() < arr.length()) {
+                prefs.edit().putString("cachedWallpaperPaths", newArr.toString()).apply()
+                Log.d("Wallify", "Removed used cached path, ${newArr.length()} remaining")
+            }
+        } catch (e: Exception) {
+            Log.e("Wallify", "Error removing used cached path: ${e.message}", e)
         }
     }
 

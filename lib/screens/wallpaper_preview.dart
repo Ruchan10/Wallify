@@ -3,33 +3,42 @@ import 'dart:io';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 import 'package:image/image.dart' as img;
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wallify/core/snackbar.dart';
 import 'package:wallify/core/user_shared_prefs.dart';
 import 'package:wallify/functions/wallpaper_info_sheet.dart';
 import 'package:wallify/model/wallpaper_model.dart';
+import 'package:wallify/core/wallpaper_theme_provider.dart';
 import 'package:wallpaper_manager_flutter/wallpaper_manager_flutter.dart';
 
-class WallpaperPreviewPage extends StatefulWidget {
-  final Wallpaper wallpaper;
+class WallpaperPreviewPage extends ConsumerStatefulWidget {
+  final List<Wallpaper> wallpapers;
+  final int initialIndex;
   final bool isFavorite;
 
   const WallpaperPreviewPage({
     super.key,
-    required this.wallpaper,
+    required this.wallpapers,
+    required this.initialIndex,
     this.isFavorite = false,
   });
 
   @override
-  State<WallpaperPreviewPage> createState() => _WallpaperPreviewPageState();
+  ConsumerState<WallpaperPreviewPage> createState() => _WallpaperPreviewPageState();
 }
 
-class _WallpaperPreviewPageState extends State<WallpaperPreviewPage>
+class _WallpaperPreviewPageState extends ConsumerState<WallpaperPreviewPage>
     with SingleTickerProviderStateMixin {
-  late bool _isFavorite;
+  late PageController _pageController;
+  late int _currentIndex;
+  late Set<String> _favoritedIds;
+  final Map<int, Map<String, dynamic>?> _infoCache = {};
   bool _isCropMode = false;
   bool _isProcessing = false;
   int? _selectedLocation;
@@ -40,11 +49,18 @@ class _WallpaperPreviewPageState extends State<WallpaperPreviewPage>
   late AnimationController _fabAnimController;
   late Animation<double> _fabAnim;
 
+  Wallpaper get _currentWallpaper => widget.wallpapers[_currentIndex];
+
   @override
   void initState() {
     super.initState();
-    _isFavorite = widget.isFavorite;
-    _loadInfo();
+    _currentIndex = widget.initialIndex;
+    _pageController = PageController(initialPage: _currentIndex);
+    _favoritedIds = {};
+    if (widget.isFavorite) {
+      _favoritedIds.add(_currentWallpaper.id);
+    }
+    _loadInfoForIndex(_currentIndex);
     _fabAnimController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 400),
@@ -58,12 +74,22 @@ class _WallpaperPreviewPageState extends State<WallpaperPreviewPage>
 
   @override
   void dispose() {
+    _pageController.dispose();
     _transformationController.dispose();
     _fabAnimController.dispose();
     super.dispose();
   }
 
-  Map<String, dynamic>? _info;
+  bool _isFav(String id) => _favoritedIds.contains(id);
+
+  void _onPageChanged(int index) {
+    setState(() => _currentIndex = index);
+    if (!_infoCache.containsKey(index)) {
+      _loadInfoForIndex(index);
+    }
+  }
+
+  Map<String, dynamic>? get _info => _infoCache[_currentIndex];
 
   void _showSetWallpaperOptions(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -155,14 +181,14 @@ class _WallpaperPreviewPageState extends State<WallpaperPreviewPage>
     try {
       final cacheManager = DefaultCacheManager();
       final fileInfo =
-          await cacheManager.getFileFromCache(widget.wallpaper.url);
+          await cacheManager.getFileFromCache(_currentWallpaper.url);
 
       File imageFile;
 
       if (fileInfo != null && fileInfo.file.existsSync()) {
         imageFile = fileInfo.file;
       } else {
-        final response = await http.get(Uri.parse(widget.wallpaper.url));
+        final response = await http.get(Uri.parse(_currentWallpaper.url));
         final dir = await getTemporaryDirectory();
         imageFile = File(
           "${dir.path}/wallpaper_${DateTime.now().millisecondsSinceEpoch}.jpg",
@@ -249,7 +275,22 @@ class _WallpaperPreviewPageState extends State<WallpaperPreviewPage>
         _selectedLocation!,
       );
 
-      await UserSharedPrefs.saveWallpaperHistory(widget.wallpaper);
+      await UserSharedPrefs.saveWallpaperHistory(_currentWallpaper);
+
+      try {
+        const channel = MethodChannel('wallpaper_channel');
+        final colors = await channel.invokeMethod<Map<dynamic, dynamic>>(
+          'extractWallpaperColors',
+          {'filePath': croppedFile.path},
+        );
+        if (colors != null && colors['dominant'] != null) {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setInt('wallpaperSeedColor', colors['dominant'] as int);
+          ref.invalidate(wallpaperThemeProvider);
+        }
+      } catch (e) {
+        debugPrint("Failed to extract wallpaper colors: $e");
+      }
 
       if (mounted) {
         showSnackBar(
@@ -287,18 +328,21 @@ class _WallpaperPreviewPageState extends State<WallpaperPreviewPage>
     }
   }
 
-  Future<void> _loadInfo() async {
+  Future<void> _loadInfoForIndex(int index) async {
+    final wallpaper = widget.wallpapers[index];
     Map<String, dynamic>? data;
 
-    if (widget.wallpaper.url.contains("wallhaven")) {
-      data = await fetchWallhavenInfo(widget.wallpaper.id);
-    } else if (widget.wallpaper.url.contains("pixabay.com")) {
-      data = await fetchPixabayInfo(widget.wallpaper.id);
-    } else if (widget.wallpaper.url.contains("unsplash.com")) {
-      data = await fetchUnsplashInfo(widget.wallpaper.id);
+    if (wallpaper.url.contains("wallhaven")) {
+      data = await fetchWallhavenInfo(wallpaper.id);
+    } else if (wallpaper.url.contains("pixabay.com")) {
+      data = await fetchPixabayInfo(wallpaper.id);
+    } else if (wallpaper.url.contains("unsplash.com")) {
+      data = await fetchUnsplashInfo(wallpaper.id);
     }
 
-    setState(() => _info = data);
+    if (mounted) {
+      setState(() => _infoCache[index] = data);
+    }
   }
 
   Future<Map<String, dynamic>?> fetchWallhavenInfo(String id) async {
@@ -488,34 +532,45 @@ class _WallpaperPreviewPageState extends State<WallpaperPreviewPage>
       extendBodyBehindAppBar: true,
       body: Stack(
         children: [
-          Positioned.fill(
-            child: _isCropMode && _downloadedImage != null
-                ? InteractiveViewer(
-                    key: _imageKey,
-                    transformationController: _transformationController,
-                    minScale: 1.0,
-                    maxScale: 4.0,
-                    boundaryMargin: EdgeInsets.zero,
-                    constrained: false,
-                    child: Image.file(
-                      _downloadedImage!,
-                      fit: BoxFit.cover,
-                      width: MediaQuery.of(context).size.width,
-                      height: MediaQuery.of(context).size.height,
-                      cacheWidth:
-                          MediaQuery.of(context).size.width.toInt() * 2,
-                      cacheHeight:
-                          MediaQuery.of(context).size.height.toInt() * 2,
-                      filterQuality: FilterQuality.medium,
-                    ),
-                  )
-                : Hero(
-                    tag: 'wallpaper_${widget.wallpaper.url}',
+          if (_isCropMode && _downloadedImage != null)
+            Positioned.fill(
+              child: InteractiveViewer(
+                key: _imageKey,
+                transformationController: _transformationController,
+                minScale: 1.0,
+                maxScale: 4.0,
+                boundaryMargin: EdgeInsets.zero,
+                constrained: false,
+                child: Image.file(
+                  _downloadedImage!,
+                  fit: BoxFit.cover,
+                  width: MediaQuery.of(context).size.width,
+                  height: MediaQuery.of(context).size.height,
+                  cacheWidth:
+                      MediaQuery.of(context).size.width.toInt() * 2,
+                  cacheHeight:
+                      MediaQuery.of(context).size.height.toInt() * 2,
+                  filterQuality: FilterQuality.medium,
+                ),
+              ),
+            )
+          else
+            Positioned.fill(
+              child: PageView(
+                controller: _pageController,
+                onPageChanged: _onPageChanged,
+                physics: _isCropMode
+                    ? const NeverScrollableScrollPhysics()
+                    : null,
+                children: widget.wallpapers.asMap().entries.map((entry) {
+                  final wallpaper = entry.value;
+                  return Hero(
+                    tag: 'wallpaper_${wallpaper.url}',
                     child: InteractiveViewer(
                       minScale: 0.5,
                       maxScale: 4.0,
                       child: CachedNetworkImage(
-                        imageUrl: widget.wallpaper.url,
+                        imageUrl: wallpaper.url,
                         fit: BoxFit.contain,
                         memCacheWidth: 1080,
                         memCacheHeight: 1920,
@@ -530,8 +585,10 @@ class _WallpaperPreviewPageState extends State<WallpaperPreviewPage>
                         ),
                       ),
                     ),
-                  ),
-          ),
+                  );
+                }).toList(),
+              ),
+            ),
 
           if (_isProcessing && !_isCropMode)
             const Positioned.fill(
@@ -595,21 +652,27 @@ class _WallpaperPreviewPageState extends State<WallpaperPreviewPage>
                           .withValues(alpha: 0.8),
                       foregroundColor: colorScheme.onSurface,
                       onPressed: () {
-                        setState(() => _isFavorite = !_isFavorite);
-                        if (_isFavorite) {
-                          UserSharedPrefs.removeFavWallpaper(widget.wallpaper);
-                        } else {
-                          UserSharedPrefs.saveFavWallpaper(widget.wallpaper);
-                        }
+                        final id = _currentWallpaper.id;
+                        setState(() {
+                          if (_isFav(id)) {
+                            _favoritedIds.remove(id);
+                            UserSharedPrefs.removeFavWallpaper(
+                                _currentWallpaper);
+                          } else {
+                            _favoritedIds.add(id);
+                            UserSharedPrefs.saveFavWallpaper(
+                                _currentWallpaper);
+                          }
+                        });
                       },
                       child: AnimatedSwitcher(
                         duration: const Duration(milliseconds: 200),
                         child: Icon(
-                          _isFavorite
+                          _isFav(_currentWallpaper.id)
                               ? Icons.favorite
                               : Icons.favorite_border,
-                          key: ValueKey(_isFavorite),
-                          color: _isFavorite
+                          key: ValueKey(_isFav(_currentWallpaper.id)),
+                          color: _isFav(_currentWallpaper.id)
                               ? colorScheme.secondary
                               : colorScheme.onSurface,
                         ),

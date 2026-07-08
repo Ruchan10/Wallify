@@ -82,6 +82,7 @@ dependencies {
     implementation("com.google.mlkit:object-detection:17.0.2")
     implementation("com.google.mlkit:object-detection-custom:17.0.2")
     implementation("com.google.mlkit:face-detection:16.1.6")
+    implementation("androidx.palette:palette-ktx:1.0.0")
 }
 
 flutter {

@@ -72,6 +72,19 @@ class MainActivity : FlutterActivity() {
                         result.error("INVALID_FILES", "Both home and lock file paths are required", null)
                     }
                 }
+                "extractWallpaperColors" -> {
+                    val filePath: String? = call.argument<String>("filePath")
+                    if (filePath != null) {
+                        val colors = WallpaperUtils.extractColorsFromFile(applicationContext, filePath)
+                        if (colors.isNotEmpty()) {
+                            result.success(colors)
+                        } else {
+                            result.error("EXTRACT_FAILED", "Could not extract colors from image", null)
+                        }
+                    } else {
+                        result.error("INVALID_PATH", "File path is required", null)
+                    }
+                }
                 else -> {
                     result.notImplemented()
                 }

@@ -9,12 +9,16 @@ class ImageTile extends StatefulWidget {
   final Wallpaper wallpaper;
   final bool isFav;
   final VoidCallback onFavToggle;
+  final List<Wallpaper> allWallpapers;
+  final int index;
 
   const ImageTile({
     super.key,
     required this.wallpaper,
     required this.isFav,
     required this.onFavToggle,
+    required this.allWallpapers,
+    required this.index,
   });
 
   @override
@@ -73,7 +77,8 @@ class _ImageTileState extends State<ImageTile>
                             FadeTransition(
                               opacity: animation,
                               child: WallpaperPreviewPage(
-                                wallpaper: widget.wallpaper,
+                                wallpapers: widget.allWallpapers,
+                                initialIndex: widget.index,
                                 isFavorite: widget.isFav,
                               ),
                             ),

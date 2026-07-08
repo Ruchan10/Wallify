@@ -6,16 +6,15 @@ import 'package:wallify/functions/shimmer_widget.dart';
 import 'package:wallify/model/wallpaper_model.dart';
 import 'package:wallify/screens/wallpaper_preview.dart';
 
-class HistoryPage extends StatefulWidget {
-  const HistoryPage({super.key});
+class FavoritesPage extends StatefulWidget {
+  const FavoritesPage({super.key});
 
   @override
-  State<HistoryPage> createState() => _HistoryPageState();
+  State<FavoritesPage> createState() => _FavoritesPageState();
 }
 
-class _HistoryPageState extends State<HistoryPage> {
-  List<Wallpaper> _historyWalls = [];
-  Set<String> _favIds = {};
+class _FavoritesPageState extends State<FavoritesPage> {
+  List<Wallpaper> _favWalls = [];
   bool _isLoading = true;
 
   @override
@@ -26,35 +25,12 @@ class _HistoryPageState extends State<HistoryPage> {
 
   Future<void> _initialize() async {
     setState(() => _isLoading = true);
-    _historyWalls = await UserSharedPrefs.getWallpaperHistory();
-    await _loadFavorites();
+    _favWalls = await UserSharedPrefs.getFavWallpapers();
     setState(() => _isLoading = false);
-  }
-
-  Future<void> _loadFavorites() async {
-    final favs = await UserSharedPrefs.getFavWallpapers();
-    _favIds = favs.map((w) => w.id).toSet();
   }
 
   Future<void> _refresh() async {
     await _initialize();
-  }
-
-  Future<void> _toggleFavorite(Wallpaper wallpaper) async {
-    final isFav = _favIds.contains(wallpaper.id);
-    setState(() {
-      if (isFav) {
-        _favIds.remove(wallpaper.id);
-      } else {
-        _favIds.add(wallpaper.id);
-      }
-    });
-
-    if (isFav) {
-      await UserSharedPrefs.removeFavWallpaper(wallpaper);
-    } else {
-      await UserSharedPrefs.saveFavWallpaper(wallpaper);
-    }
   }
 
   @override
@@ -63,7 +39,7 @@ class _HistoryPageState extends State<HistoryPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text("History"),
+        title: const Text("Favorites"),
         elevation: 0,
         backgroundColor: colorScheme.primary,
         foregroundColor: colorScheme.onPrimary,
@@ -84,20 +60,20 @@ class _HistoryPageState extends State<HistoryPage> {
                 },
               ),
             )
-          : _historyWalls.isEmpty
+          : _favWalls.isEmpty
               ? Center(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(
-                        Icons.history,
+                        Icons.favorite_border,
                         size: 64,
                         color: colorScheme.onSurfaceVariant
                             .withValues(alpha: 0.5),
                       ),
                       const SizedBox(height: 16),
                       Text(
-                        "No history yet",
+                        "No favorites yet",
                         style: TextStyle(
                           color: colorScheme.onSurfaceVariant,
                           fontSize: 16,
@@ -105,7 +81,7 @@ class _HistoryPageState extends State<HistoryPage> {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        "Wallpapers you set will appear here",
+                        "Tap the heart icon to save wallpapers",
                         style: TextStyle(
                           color: colorScheme.onSurfaceVariant
                               .withValues(alpha: 0.7),
@@ -123,18 +99,17 @@ class _HistoryPageState extends State<HistoryPage> {
                       crossAxisCount: 2,
                       mainAxisSpacing: 8,
                       crossAxisSpacing: 8,
-                      itemCount: _historyWalls.length,
+                      itemCount: _favWalls.length,
                       itemBuilder: (context, index) {
-                        final wallpaper = _historyWalls[index];
-                        final isFav = _favIds.contains(wallpaper.id);
+                        final wallpaper = _favWalls[index];
 
                         return ClipRRect(
                           borderRadius: BorderRadius.circular(12),
                           child: Stack(
                             children: [
                               GestureDetector(
-                                onTap: () async {
-                                  await Navigator.push(
+                                onTap: () {
+                                  Navigator.push(
                                     context,
                                     PageRouteBuilder(
                                       pageBuilder: (context, animation,
@@ -142,9 +117,9 @@ class _HistoryPageState extends State<HistoryPage> {
                                           FadeTransition(
                                         opacity: animation,
                                         child: WallpaperPreviewPage(
-                                          wallpapers: _historyWalls,
+                                          wallpapers: _favWalls,
                                           initialIndex: index,
-                                          isFavorite: isFav,
+                                          isFavorite: true,
                                         ),
                                       ),
                                       transitionsBuilder: (context, animation,
@@ -157,10 +132,6 @@ class _HistoryPageState extends State<HistoryPage> {
                                           const Duration(milliseconds: 300),
                                     ),
                                   );
-                                  // Favorite state may have changed inside the
-                                  // preview page, so refresh it on return.
-                                  await _loadFavorites();
-                                  if (mounted) setState(() {});
                                 },
                                 child: Hero(
                                   tag: 'wallpaper_${wallpaper.url}',
@@ -191,7 +162,8 @@ class _HistoryPageState extends State<HistoryPage> {
                                 top: 8,
                                 right: 8,
                                 child: AnimatedContainer(
-                                  duration: const Duration(milliseconds: 200),
+                                  duration:
+                                      const Duration(milliseconds: 200),
                                   decoration: BoxDecoration(
                                     color: colorScheme.surface
                                         .withValues(alpha: 0.7),
@@ -201,20 +173,19 @@ class _HistoryPageState extends State<HistoryPage> {
                                     style: IconButton.styleFrom(
                                       backgroundColor: Colors.transparent,
                                     ),
-                                    icon: AnimatedSwitcher(
-                                      duration:
-                                          const Duration(milliseconds: 200),
-                                      child: Icon(
-                                        isFav
-                                            ? Icons.favorite
-                                            : Icons.favorite_border,
-                                        key: ValueKey(isFav),
-                                        color: isFav
-                                            ? Colors.red
-                                            : colorScheme.onSurface,
-                                      ),
+                                    icon: const Icon(
+                                      Icons.favorite,
+                                      color: Colors.red,
                                     ),
-                                    onPressed: () => _toggleFavorite(wallpaper),
+                                    onPressed: () {
+                                      setState(() {
+                                        _favWalls.removeWhere(
+                                          (w) => w.id == wallpaper.id,
+                                        );
+                                        UserSharedPrefs.removeFavWallpaper(
+                                            wallpaper);
+                                      });
+                                    },
                                   ),
                                 ),
                               ),

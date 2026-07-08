@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:wallify/core/user_shared_prefs.dart';
+import 'package:wallify/functions/wallpaper_cache_manager.dart';
 import 'package:wallify/model/wallpaper_model.dart';
 
 class WallpaperManager {
@@ -12,11 +13,8 @@ class WallpaperManager {
   static String tag = "nature";
   static final usp = UserSharedPrefs();
 
-  
-
   static Future<List<Wallpaper>> fetchImagesFromAllSources() async {
     try {
-      // Load from favorites first
       urls.addAll(await UserSharedPrefs.getFavWallpapers());
       tag = await UserSharedPrefs.getRandomTag();
       deviceWidth = await UserSharedPrefs.getDeviceWidth();
@@ -33,7 +31,7 @@ class WallpaperManager {
       );
       final wallData = jsonDecode(wallRes.body);
       for (var item in wallData["data"]) {
-        urls.add(Wallpaper(id: item["id"].toString(), url: item["path"]));
+        urls.add(Wallpaper(id: item["id"].toString(), url: item["path"], timestamp: DateTime.now()));
       }
 
       // 🔹 Unsplash
@@ -50,7 +48,7 @@ class WallpaperManager {
       final unsplashData = jsonDecode(unsplashRes.body);
       for (var item in unsplashData) {
         urls.add(
-          Wallpaper(id: item["id"].toString(), url: item["urls"]["regular"]),
+          Wallpaper(id: item["id"].toString(), url: item["urls"]["regular"], timestamp: DateTime.now()),
         );
       }
 
@@ -68,7 +66,7 @@ class WallpaperManager {
       final pixabayData = jsonDecode(pixabayRes.body);
       for (var item in pixabayData["hits"]) {
         urls.add(
-          Wallpaper(id: item["id"].toString(), url: item["largeImageURL"]),
+          Wallpaper(id: item["id"].toString(), url: item["largeImageURL"], timestamp: DateTime.now()),
         );
       }
     } catch (e) {

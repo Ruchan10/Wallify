@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:math';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -10,6 +9,7 @@ import 'package:wallify/core/theme_provider.dart';
 import 'package:wallify/core/update_manager.dart';
 import 'package:wallify/core/user_shared_prefs.dart';
 import 'package:wallify/functions/backup_function.dart';
+import 'package:wallify/functions/wallpaper_cache_manager.dart';
 import 'package:wallify/functions/wallpaper_manager.dart';
 import 'package:wallpaper_manager_flutter/wallpaper_manager_flutter.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -34,6 +34,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
   );
   static const platform = MethodChannel('wallpaper_channel');
   bool _autoWallpaperEnabled = false;
+  String _wallpaperSource = "internet";
+  String? _folderPath;
 
   @override
   void initState() {
@@ -43,12 +45,14 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
     WidgetsBinding.instance.addObserver(this);
   }
 
-  void _initialize() async {
+  Future<void> _initialize() async {
     _autoWallpaperEnabled = await UserSharedPrefs.getAutoWallpaperEnabled();
     savedTags = await UserSharedPrefs.getTags();
     wallpaperLocation = await UserSharedPrefs.getWallpaperLocation();
     _intervalMinutes = await UserSharedPrefs.getInterval();
     _intervalController.text = _intervalMinutes.toString();
+    _wallpaperSource = await UserSharedPrefs.getWallpaperSource();
+    _folderPath = await UserSharedPrefs.getFolderPath();
 
     setState(() {});
     if (_autoWallpaperEnabled) {
@@ -87,10 +91,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
         foregroundColor: scheme.onPrimary,
       ),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
         children: [
-          Text("Apply To",
-            style: Theme.of(context).textTheme.titleMedium),
+          Text("Apply To", style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),
           Wrap(
             spacing: 8,
@@ -162,9 +165,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
                       UserSharedPrefs.saveTags(savedTags);
                     }
                     _tagController.clear();
-                    final urls =
-                        await WallpaperManager.fetchImagesFromAllSources();
-                    await UserSharedPrefs.saveWallpapers(urls);
+                    final fetched = await WallpaperManager.fetchImagesFromAllSources();
+                    await UserSharedPrefs.saveWallpapers(fetched);
+                    WallpaperCacheManager.cacheWallpapers(fetched);
                     resetAutoWallpaper();
                   },
                 ),
@@ -182,9 +185,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
                     UserSharedPrefs.saveTags(savedTags);
                   }
                   _tagController.clear();
-                  final urls =
-                      await WallpaperManager.fetchImagesFromAllSources();
-                  await UserSharedPrefs.saveWallpapers(urls);
+                  final fetched = await WallpaperManager.fetchImagesFromAllSources();
+                  await UserSharedPrefs.saveWallpapers(fetched);
+                  WallpaperCacheManager.cacheWallpapers(fetched);
                   resetAutoWallpaper();
                 },
                 child: const Text("Add"),
@@ -203,9 +206,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
                   onDeleted: () async {
                     setState(() => savedTags.remove(tag));
                     UserSharedPrefs.saveTags(savedTags);
-                    final urls =
-                        await WallpaperManager.fetchImagesFromAllSources();
-                    await UserSharedPrefs.saveWallpapers(urls);
+                    final fetched = await WallpaperManager.fetchImagesFromAllSources();
+                    await UserSharedPrefs.saveWallpapers(fetched);
+                    WallpaperCacheManager.cacheWallpapers(fetched);
                     resetAutoWallpaper();
                   },
                 );
@@ -226,9 +229,11 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
               Switch(
                 value: _autoWallpaperEnabled,
                 onChanged: (value) async {
-                  final urls =
-                      await WallpaperManager.fetchImagesFromAllSources();
-                  await UserSharedPrefs.saveWallpapers(urls);
+                  if (_wallpaperSource == "internet") {
+                    final fetched = await WallpaperManager.fetchImagesFromAllSources();
+                    await UserSharedPrefs.saveWallpapers(fetched);
+                    WallpaperCacheManager.cacheWallpapers(fetched);
+                  }
                   setState(() => _autoWallpaperEnabled = value);
 
                   if (value) {
@@ -328,12 +333,24 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
             leading: Icon(Icons.upload_file, color: scheme.primary),
             title: const Text("Export Settings"),
             onTap: () async {
-              await SettingsBackup.exportSettings();
-              if (mounted) {
-                showSnackBar(
-                  context: context,
-                  message: "Settings file exported to Downloads folder",
-                );
+              try {
+                final file = await SettingsBackup.exportSettings();
+                if (mounted) {
+                  showSnackBar(
+                    context: context,
+                    color: Colors.green,
+                    message: "Exported to ${file.path}",
+                  );
+                }
+              } catch (e) {
+                if (mounted) {
+                  print("Export failed: $e");
+                  showSnackBar(
+                    context: context,
+                    color: Colors.red,
+                    message: "Export failed: $e",
+                  );
+                }
               }
             },
           ),
@@ -341,19 +358,31 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
             leading: Icon(Icons.download, color: scheme.primary),
             title: const Text("Import Settings"),
             onTap: () async {
-              final result = await FilePicker.platform.pickFiles(
-                type: FileType.custom,
-                allowedExtensions: ['json'],
-              );
-              if (result != null && result.files.single.path != null) {
-                final file = File(result.files.single.path!);
-                await SettingsBackup.importSettings(file);
+              try {
+                final result = await FilePicker.platform.pickFiles(
+                  type: FileType.custom,
+                  allowedExtensions: ['json'],
+                );
+                if (result != null && result.files.single.path != null) {
+                  final file = File(result.files.single.path!);
+                  final count = await SettingsBackup.importSettings(file);
 
+                  await _initialize();
+
+                  if (mounted) {
+                    showSnackBar(
+                      context: context,
+                      color: Colors.green,
+                      message: "Imported $count settings successfully",
+                    );
+                  }
+                }
+              } catch (e) {
                 if (mounted) {
-                  setState(() {});
                   showSnackBar(
                     context: context,
-                    message: "Settings imported successfully",
+                    color: Colors.red,
+                    message: "Import failed: $e",
                   );
                 }
               }
@@ -393,7 +422,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
           foregroundColor: scheme.onPrimary,
         ),
         onPressed: () => changeWallpaper(changeNow: true),
-        icon: const Icon(Icons.refresh),
+        icon: const Icon(Icons.wallpaper),
         label: const Text("Change Now"),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
@@ -441,6 +470,94 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
             ),
           ],
         ),
+        const SizedBox(height: 16),
+        Text(
+          "Wallpaper Source",
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          children: [
+            ChoiceChip(
+              label: const Text("Internet"),
+              selected: _wallpaperSource == "internet",
+              selectedColor: scheme.primary,
+              backgroundColor: scheme.surfaceContainerHighest,
+              onSelected: (_) async {
+                setState(() => _wallpaperSource = "internet");
+                await UserSharedPrefs.setWallpaperSource("internet");
+                resetAutoWallpaper();
+              },
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              showCheckmark: false,
+              shape: StadiumBorder(
+                side: BorderSide(
+                  color: _wallpaperSource == "internet"
+                      ? Colors.transparent
+                      : scheme.outlineVariant,
+                ),
+              ),
+            ),
+            ChoiceChip(
+              label: const Text("Folder"),
+              selected: _wallpaperSource == "folder",
+              selectedColor: scheme.primary,
+              backgroundColor: scheme.surfaceContainerHighest,
+              onSelected: (_) async {
+                setState(() => _wallpaperSource = "folder");
+                await UserSharedPrefs.setWallpaperSource("folder");
+                resetAutoWallpaper();
+              },
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              showCheckmark: false,
+              shape: StadiumBorder(
+                side: BorderSide(
+                  color: _wallpaperSource == "folder"
+                      ? Colors.transparent
+                      : scheme.outlineVariant,
+                ),
+              ),
+            ),
+          ],
+        ),
+        if (_wallpaperSource == "folder") ...[
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: scheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    _folderPath ?? "No folder selected",
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: _folderPath != null
+                          ? scheme.onSurface
+                          : scheme.onSurfaceVariant,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                TextButton(
+                  onPressed: () async {
+                    final path = await FilePicker.platform.getDirectoryPath();
+                    if (path != null) {
+                      setState(() => _folderPath = path);
+                      await UserSharedPrefs.setFolderPath(path);
+                      resetAutoWallpaper();
+                    }
+                  },
+                  child: const Text("Browse"),
+                ),
+              ],
+            ),
+          ),
+        ],
         const SizedBox(height: 8),
         _buildConstraintsChipSection(context),
         const SizedBox(height: 20),
