@@ -340,15 +340,28 @@ class UserSharedPrefs {
     return prefs.getBool(_constraintWifiKey) ?? true;
   }
 
-  /// ---- WALLPAPER SOURCE ----
-  static Future<String> getWallpaperSource() async {
+  /// ---- WALLPAPER SOURCE (multi-select) ----
+  /// Sources are stored as a comma-separated string e.g. "internet,folder,favorites".
+  static Future<List<String>> getWallpaperSources() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_wallpaperSourceKey) ?? "internet";
+    final raw = prefs.getString(_wallpaperSourceKey) ?? "internet";
+    final list = raw.split(",").map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+    return list.isEmpty ? ["internet"] : list;
+  }
+
+  static Future<void> saveWallpaperSources(List<String> sources) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_wallpaperSourceKey, sources.join(","));
+  }
+
+  /// Legacy single-source accessor – returns the first source, or "internet".
+  static Future<String> getWallpaperSource() async {
+    final sources = await getWallpaperSources();
+    return sources.first;
   }
 
   static Future<void> setWallpaperSource(String source) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_wallpaperSourceKey, source);
+    await saveWallpaperSources([source]);
   }
 
   /// ---- FOLDER PATH ----
@@ -382,5 +395,57 @@ class UserSharedPrefs {
   static Future<void> clearCachedWallpaperPaths() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_cachedWallpaperPathsKey);
+  }
+
+  /// ---- DISCOVER FILTERS ----
+  static const _keyFilterSorting = "discover_filter_sorting";
+  static const _keyFilterPurity = "discover_filter_purity";
+  static const _keyFilterOrientation = "discover_filter_orientation";
+  static const _keyFilterCategory = "discover_filter_category";
+  static const _keyFilterRange = "discover_filter_range";
+
+  static Future<String?> getFilterSorting() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_keyFilterSorting);
+  }
+  static Future<void> setFilterSorting(String? val) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (val == null) { await prefs.remove(_keyFilterSorting); } else { await prefs.setString(_keyFilterSorting, val); }
+  }
+
+  static Future<String?> getFilterPurity() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_keyFilterPurity);
+  }
+  static Future<void> setFilterPurity(String? val) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (val == null) { await prefs.remove(_keyFilterPurity); } else { await prefs.setString(_keyFilterPurity, val); }
+  }
+
+  static Future<String?> getFilterOrientation() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_keyFilterOrientation);
+  }
+  static Future<void> setFilterOrientation(String? val) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (val == null) { await prefs.remove(_keyFilterOrientation); } else { await prefs.setString(_keyFilterOrientation, val); }
+  }
+
+  static Future<String?> getFilterCategory() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_keyFilterCategory);
+  }
+  static Future<void> setFilterCategory(String? val) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (val == null) { await prefs.remove(_keyFilterCategory); } else { await prefs.setString(_keyFilterCategory, val); }
+  }
+
+  static Future<String?> getFilterRange() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_keyFilterRange);
+  }
+  static Future<void> setFilterRange(String? val) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (val == null) { await prefs.remove(_keyFilterRange); } else { await prefs.setString(_keyFilterRange, val); }
   }
 }

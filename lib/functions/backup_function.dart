@@ -23,7 +23,7 @@ class SettingsBackup {
       "favWallpapers": favWallpapers.map((w) => jsonEncode(w.toJson())).toList(),
       "imageUrls": imageWallpapers.map((w) => jsonEncode(w.toJson())).toList(),
       "errorReportingEnabled": await UserSharedPrefs.getErrorReportingEnabled(),
-      "wallpaperSource": await UserSharedPrefs.getWallpaperSource(),
+      "wallpaperSource": prefs.getString("wallpaperSource") ?? "internet",
       "folderPath": await UserSharedPrefs.getFolderPath(),
 
       // Constraints
@@ -36,18 +36,30 @@ class SettingsBackup {
 
     final jsonString = const JsonEncoder.withIndent('  ').convert(data);
 
-    final dir = await getDownloadsDirectory();
-    if (dir == null) {
-      final appDir = await getApplicationDocumentsDirectory();
-      final file = File("${appDir.path}/wallify_settings_backup.json");
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    final fileName = "wallify_settings_backup_$timestamp.json";
+
+    final downloadDir = await getDownloadsDirectory();
+    if (downloadDir != null) {
+      final file = File("${downloadDir.path}/$fileName");
       await file.writeAsString(jsonString, flush: true);
       return file;
     }
 
-    final timestamp = DateTime.now().millisecondsSinceEpoch;
-    final file = File("${dir.path}/wallify_settings_backup_$timestamp.json");
-    await file.writeAsString(jsonString, flush: true);
+    final extDir = await getExternalStorageDirectory();
+    if (extDir != null) {
+      final downloadSubdir = Directory("${extDir.path}/Download");
+      if (!await downloadSubdir.exists()) {
+        await downloadSubdir.create(recursive: true);
+      }
+      final file = File("${downloadSubdir.path}/$fileName");
+      await file.writeAsString(jsonString, flush: true);
+      return file;
+    }
 
+    final appDir = await getApplicationDocumentsDirectory();
+    final file = File("${appDir.path}/$fileName");
+    await file.writeAsString(jsonString, flush: true);
     return file;
   }
 

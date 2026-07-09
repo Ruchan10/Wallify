@@ -11,6 +11,7 @@ import 'package:wallify/core/user_shared_prefs.dart';
 import 'package:wallify/functions/image_card.dart';
 import 'package:wallify/functions/shimmer_widget.dart';
 import 'package:wallify/model/wallpaper_model.dart';
+import 'package:wallify/core/snackbar.dart';
 
 class DiscoverPage extends ConsumerStatefulWidget {
   const DiscoverPage({super.key});
@@ -36,6 +37,8 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
   String _selectedRange = "1M";
   bool _showTopBar = true;
   double _lastOffset = 0;
+  List<String> _userTags = [];
+  bool _tagFilterActive = false;
 
   static const int maxImages = PerformanceConfig.maxImagesInMemory;
 
@@ -56,12 +59,29 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
     });
   }
 
-  void initialize() {
+  void initialize() async {
     UserSharedPrefs.getFavWallpapers().then((value) {
       setState(() {
         favorites.addAll(value.map((e) => e.url));
       });
     });
+    UserSharedPrefs.getTags().then((tags) {
+      setState(() => _userTags = tags);
+    });
+    final sorting = await UserSharedPrefs.getFilterSorting();
+    final purity = await UserSharedPrefs.getFilterPurity();
+    final orientation = await UserSharedPrefs.getFilterOrientation();
+    final category = await UserSharedPrefs.getFilterCategory();
+    final range = await UserSharedPrefs.getFilterRange();
+    if (mounted) {
+      setState(() {
+        _selectedSorting = sorting;
+        _selectedPurity = purity;
+        _selectedOrientation = orientation;
+        _selectedCategory = category;
+        if (range != null) _selectedRange = range;
+      });
+    }
   }
 
   void _onScroll() {
@@ -107,77 +127,148 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
     });
 
     final List<Wallpaper> results = [];
-    try {
-      final wallRes = await http.get(
-        Uri.parse(
-          "https://wallhaven.cc/api/v1/search?"
-          "page=$count"
-          "${"&topRange=$_selectedRange"}"
-          "${_selectedCategory == null ? "" : "&categories=${_selectedCategory == "general"
-                    ? "100"
-                    : _selectedCategory == "anime"
-                    ? "101"
-                    : "110"}"}"
-          "${_selectedPurity == null ? "" : "&purity=${_selectedPurity == "SFW"
-                      ? "100"
-                      : _selectedPurity == "Sketchy"
-                      ? "110"
-                      : "111"}"}"
-          "&sorting=${_selectedSorting == null ? "toplist" : "${_selectedRange == "1M" ? _selectedSorting : "toplist"}"}"
-          "${query == null ? "" : "&q=$query"}"
-          "&order=asc",
-        ),
-      );
-      final wallData = jsonDecode(wallRes.body);
-      for (var item in wallData["data"]) {
-        results.add(Wallpaper(id: item["id"], url: item["path"], timestamp: DateTime.now()));
-      }
 
-      final unsplashRes = await http.get(
-        Uri.parse(
-          "${query == null ? "https://api.unsplash.com/photos" : "https://api.unsplash.com/search/photos"}"
-          "${query == null ? "" : "&query=$query"}"
-          "${query == null
-                ? "?order_by=popular"
-                : _selectedSorting == null
-                ? ""
-                : "&order_by=${_selectedSorting == "dater_added" ? "latest" : "relevant"}"}"
-          "${_selectedPurity == null ? "" : "&content_filter=${_selectedPurity == "NSFW" ? "high" : "low"}"}"
-          "${_selectedOrientation == null ? "" : "&orientation=$_selectedOrientation"}"
-          "&page=$count",
-        ),
-        headers: {
-          "Authorization":
-              "Client-ID yTBcYNAtnRHbrYMn2p4DrBiqzOAfdH9nyexQQtJWO-E",
-        },
-      );
-      final unsplashData = jsonDecode(unsplashRes.body);
+    Future<List<Wallpaper>> _fetchWallhaven() async {
+      final res = await http
+          .get(
+            Uri.parse(
+              "https://wallhaven.cc/api/v1/search?"
+              "page=$count"
+              "${"&topRange=$_selectedRange"}"
+              "${_selectedCategory == null ? "" : "&categories=${_selectedCategory == "general"
+                        ? "100"
+                        : _selectedCategory == "anime"
+                        ? "101"
+                        : "110"}"}"
+              "${_selectedPurity == null ? "" : "&purity=${_selectedPurity == "SFW"
+                        ? "100"
+                        : _selectedPurity == "Sketchy"
+                        ? "110"
+                        : "111"}"}"
+              "&sorting=${_selectedSorting == null ? "toplist" : "${_selectedRange == "1M" ? _selectedSorting : "toplist"}"}"
+              "${query == null ? "" : "&q=$query"}"
+              "&order=asc",
+            ),
+          )
+          .timeout(const Duration(seconds: 15));
+      final data = jsonDecode(res.body);
+      final list = <Wallpaper>[];
+      if (data["data"] is List)
+        for (var item in data["data"]) {
+          list.add(
+            Wallpaper(
+              id: item["id"],
+              url: item["path"],
+              timestamp: DateTime.now(),
+            ),
+          );
+        }
+      return list;
+    }
 
-      for (var item
-          in query == null ? unsplashData : unsplashData["results"]) {
-        results.add(Wallpaper(id: item["id"], url: item["urls"]["regular"], timestamp: DateTime.now()));
+    Future<List<Wallpaper>> _fetchUnsplash() async {
+      final res = await http
+          .get(
+            Uri.parse(
+              "${query == null ? "https://api.unsplash.com/photos" : "https://api.unsplash.com/search/photos"}"
+              "${query == null ? "" : "&query=$query"}"
+              "${query == null
+                  ? "?order_by=popular"
+                  : _selectedSorting == null
+                  ? ""
+                  : "&order_by=${_selectedSorting == "dater_added" ? "latest" : "relevant"}"}"
+              "${_selectedPurity == null ? "" : "&content_filter=${_selectedPurity == "NSFW" ? "high" : "low"}"}"
+              "${_selectedOrientation == null ? "" : "&orientation=$_selectedOrientation"}"
+              "&page=$count",
+            ),
+            headers: {
+              "Authorization":
+                  "Client-ID yTBcYNAtnRHbrYMn2p4DrBiqzOAfdH9nyexQQtJWO-E",
+            },
+          )
+          .timeout(const Duration(seconds: 15));
+      final unsplashData = jsonDecode(res.body);
+      final list = <Wallpaper>[];
+      if (query == null) {
+        if (unsplashData is List)
+          for (var item in unsplashData) {
+            list.add(
+              Wallpaper(
+                id: item["id"],
+                url: item["urls"]["regular"],
+                timestamp: DateTime.now(),
+              ),
+            );
+          }
+      } else {
+        if (unsplashData["results"] is List)
+          for (var item in unsplashData["results"]) {
+            list.add(
+              Wallpaper(
+                id: item["id"],
+                url: item["urls"]["regular"],
+                timestamp: DateTime.now(),
+              ),
+            );
+          }
       }
+      return list;
+    }
 
-      final pixabayRes = await http.get(
-        Uri.parse(
-          "https://pixabay.com/api/"
-          "?key=52028006-a7e910370a5d0158c371bb06a"
-          "${query == null ? "" : "&q=$query"}"
-          "&image_type=photo"
-          "${_selectedPurity == null ? "" : "&safesearch=${_selectedPurity == "NSFW" ? "false" : "true"}"}"
-          "${_selectedSorting == null ? "&order=popular" : "&order=${_selectedSorting == "dater_added" ? "latest" : "popular"}"}"
-          "${_selectedOrientation == null ? "" : "&orientation=$_selectedOrientation"}"
-          "&page=$count",
-        ),
+    Future<List<Wallpaper>> _fetchPixabay() async {
+      final res = await http
+          .get(
+            Uri.parse(
+              "https://pixabay.com/api/"
+              "?key=52028006-a7e910370a5d0158c371bb06a"
+              "${query == null ? "" : "&q=$query"}"
+              "&image_type=photo"
+              "${_selectedPurity == null ? "" : "&safesearch=${_selectedPurity == "NSFW" ? "false" : "true"}"}"
+              "${_selectedSorting == null ? "&order=popular" : "&order=${_selectedSorting == "dater_added" ? "latest" : "popular"}"}"
+              "${_selectedOrientation == null ? "" : "&orientation=$_selectedOrientation"}"
+              "&page=$count",
+            ),
+          )
+          .timeout(const Duration(seconds: 15));
+      final pixabayData = jsonDecode(res.body);
+      final list = <Wallpaper>[];
+      if (pixabayData["hits"] is List)
+        for (var item in pixabayData["hits"]) {
+          list.add(
+            Wallpaper(
+              id: item["id"].toString(),
+              url: item["largeImageURL"],
+              timestamp: DateTime.now(),
+            ),
+          );
+        }
+      return list;
+    }
+
+    final apiResults = await Future.wait([
+      _fetchWallhaven().catchError((e) {
+        debugPrint("Wallhaven failed: $e");
+        return <Wallpaper>[];
+      }),
+      _fetchUnsplash().catchError((e) {
+        debugPrint("Unsplash failed: $e");
+        return <Wallpaper>[];
+      }),
+      _fetchPixabay().catchError((e) {
+        debugPrint("Pixabay failed: $e");
+        return <Wallpaper>[];
+      }),
+    ]);
+    for (final apiList in apiResults) {
+      results.addAll(apiList);
+    }
+    results.shuffle();
+    if (results.isEmpty && mounted) {
+      showSnackBar(
+        context: context,
+        message: "Could not fetch wallpapers — check your connection",
+        color: Colors.red,
       );
-      final pixabayData = jsonDecode(pixabayRes.body);
-      for (var item in pixabayData["hits"]) {
-        results.add(
-          Wallpaper(id: item["id"].toString(), url: item["largeImageURL"], timestamp: DateTime.now()),
-        );
-      }
-    } catch (e) {
-      debugPrint("Error fetching images: $e ====================");
     }
     setState(() {
       if (isSearch) {
@@ -191,6 +282,9 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
       _isLoading = false;
     });
     app_config.Config.setImageUrls(_images);
+    if (_tagFilterActive) {
+      UserSharedPrefs.saveWallpapers(_images);
+    }
   }
 
   void _showFilters(BuildContext context) {
@@ -233,6 +327,11 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
                       ),
                       TextButton(
                         onPressed: () {
+                          UserSharedPrefs.setFilterSorting(null);
+                          UserSharedPrefs.setFilterPurity(null);
+                          UserSharedPrefs.setFilterOrientation(null);
+                          UserSharedPrefs.setFilterCategory(null);
+                          UserSharedPrefs.setFilterRange(null);
                           setState(() {
                             _selectedSorting = null;
                             _selectedPurity = null;
@@ -294,6 +393,13 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
                     width: double.infinity,
                     child: FilledButton(
                       onPressed: () {
+                        UserSharedPrefs.setFilterSorting(_selectedSorting);
+                        UserSharedPrefs.setFilterPurity(_selectedPurity);
+                        UserSharedPrefs.setFilterOrientation(
+                          _selectedOrientation,
+                        );
+                        UserSharedPrefs.setFilterCategory(_selectedCategory);
+                        UserSharedPrefs.setFilterRange(_selectedRange);
                         Navigator.pop(context);
                         _fetchImages(
                           query: _searchController.text.isNotEmpty
@@ -384,67 +490,113 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
                 curve: Curves.easeInOutCubic,
                 height: _showTopBar ? 120 : 0,
                 child: Column(
-                    children: [
-                      SizedBox(
-                        height: 48,
-                        child: TextField(
-                          controller: _searchController,
-                          focusNode: _searchFocus,
-                          decoration: InputDecoration(
-                            hintText: "Search wallpapers...",
-                            prefixIcon: const Icon(Icons.search),
-                            suffixIcon: _searchController.text.isNotEmpty
-                                ? IconButton(
-                                    icon: const Icon(Icons.clear),
-                                    onPressed: () {
-                                      setState(() {
-                                        _searchController.clear();
-                                        _lastQuery = null;
-                                        _images.clear();
-                                      });
-                                      _fetchImages();
-                                    },
-                                  )
-                                : null,
-                            filled: true,
-                            fillColor: colorScheme.surfaceContainerHighest
-                                .withValues(alpha: 0.5),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(16),
-                              borderSide: BorderSide.none,
-                            ),
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                            ),
+                  children: [
+                    SizedBox(
+                      height: 48,
+                      child: TextField(
+                        controller: _searchController,
+                        focusNode: _searchFocus,
+                        decoration: InputDecoration(
+                          hintText: "Search wallpapers...",
+                          prefixIcon: const Icon(Icons.search),
+                          suffixIcon: _searchController.text.isNotEmpty
+                              ? IconButton(
+                                  icon: const Icon(Icons.clear),
+                                  onPressed: () {
+                                    setState(() {
+                                      _searchController.clear();
+                                      _lastQuery = null;
+                                      _images.clear();
+                                      _tagFilterActive = false;
+                                    });
+                                    _fetchImages();
+                                  },
+                                )
+                              : null,
+                          filled: true,
+                          fillColor: colorScheme.surfaceContainerHighest
+                              .withValues(alpha: 0.5),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            borderSide: BorderSide.none,
                           ),
-                          onSubmitted: (value) {
-                            if (value.isNotEmpty) {
-                              _fetchImages(
-                                query: value.trim(),
-                                isSearch: true,
-                              );
-                            }
-                          },
-                          onChanged: (_) => setState(() {}),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                          ),
                         ),
+                        onSubmitted: (value) {
+                          if (value.isNotEmpty) {
+                            setState(() => _tagFilterActive = false);
+                            _fetchImages(query: value.trim(), isSearch: true);
+                          }
+                        },
+                        onChanged: (_) => setState(() {}),
                       ),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
+                    ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        if (_userTags.isNotEmpty)
                           Padding(
                             padding: const EdgeInsets.only(top: 8),
                             child: TextButton.icon(
-                              icon: const Icon(Icons.filter_list, size: 20),
-                              label: const Text("Filters"),
-                              onPressed: () => _showFilters(context),
+                              icon: Icon(
+                                _tagFilterActive
+                                    ? Icons.bookmark
+                                    : Icons.bookmark_border,
+                                size: 20,
+                              ),
+                              label: Text(
+                                _tagFilterActive
+                                    ? "Your Wallpapers (on)"
+                                    : "Your Wallpapers",
+                              ),
+                              onPressed: () {
+                                if (_tagFilterActive) {
+                                  setState(() {
+                                    _tagFilterActive = false;
+                                    _searchController.clear();
+                                    _lastQuery = null;
+                                    _images.clear();
+                                  });
+                                  _fetchImages();
+                                  _scrollController.animateTo(
+                                    0,
+                                    duration: const Duration(milliseconds: 300),
+                                    curve: Curves.easeInOut,
+                                  );
+                                } else {
+                                  final tags = _userTags.join(",");
+                                  _searchController.text = tags;
+                                  setState(() {
+                                    _images.clear();
+                                    _isLoading = true;
+                                  });
+                                  _fetchImages(query: tags, isSearch: true);
+                                  setState(() => _tagFilterActive = true);
+                                  _scrollController.animateTo(
+                                    0,
+                                    duration: const Duration(milliseconds: 300),
+                                    curve: Curves.easeInOut,
+                                  );
+                                }
+                              },
                             ),
                           ),
-                        ],
-                      ),
-                    ],
-                  ),
+                        Padding(
+                          padding: const EdgeInsets.only(top: 8),
+                          child: TextButton.icon(
+                            icon: const Icon(Icons.filter_list, size: 20),
+                            label: const Text("Filters"),
+                            onPressed: () => _showFilters(context),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
             ),
-          ),
 
             if (_lastQuery != null)
               Padding(
@@ -462,65 +614,77 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
               ),
 
             Expanded(
-              child: _images.isEmpty
-                  ? MasonryGridView.count(
-                      crossAxisCount: 2,
-                      mainAxisSpacing: 8,
-                      crossAxisSpacing: 8,
-                      itemCount: 6,
-                      itemBuilder: (context, index) => ShimmerLoading(
-                        height: 150 + (index % 3) * 50,
-                        borderRadius: 12,
-                      ),
-                    )
-                  : MasonryGridView.builder(
-                      key: const PageStorageKey("discover_grid"),
-                      controller: _scrollController,
-                      gridDelegate:
-                          SliverSimpleGridDelegateWithFixedCrossAxisCount(
+              child: RefreshIndicator(
+                onRefresh: () async {
+                  count = 1;
+                  _images.clear();
+                  await _fetchImages(
+                    query: _searchController.text.isNotEmpty
+                        ? _searchController.text
+                        : null,
+                  );
+                },
+                child: _images.isEmpty
+                    ? MasonryGridView.count(
                         crossAxisCount: 2,
-                      ),
-                      mainAxisSpacing: 8,
-                      crossAxisSpacing: 8,
-                      itemCount: _images.length + (_isLoading ? 4 : 0),
-                      addAutomaticKeepAlives:
-                          PerformanceConfig.addAutomaticKeepAlives,
-                      addRepaintBoundaries:
-                          PerformanceConfig.addRepaintBoundaries,
-                      addSemanticIndexes: false,
-                      cacheExtent: PerformanceConfig.gridCacheExtent.toDouble(),
-                      itemBuilder: (context, index) {
-                        if (index >= _images.length) {
-                          return ShimmerLoading(
-                            height: 150 + (index % 3) * 50,
-                            borderRadius: 12,
+                        mainAxisSpacing: 8,
+                        crossAxisSpacing: 8,
+                        itemCount: 6,
+                        itemBuilder: (context, index) => ShimmerLoading(
+                          height: 150 + (index % 3) * 50,
+                          borderRadius: 12,
+                        ),
+                      )
+                    : MasonryGridView.builder(
+                        key: const PageStorageKey("discover_grid"),
+                        controller: _scrollController,
+                        gridDelegate:
+                            SliverSimpleGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: 2,
+                            ),
+                        mainAxisSpacing: 8,
+                        crossAxisSpacing: 8,
+                        itemCount: _images.length + (_isLoading ? 4 : 0),
+                        addAutomaticKeepAlives:
+                            PerformanceConfig.addAutomaticKeepAlives,
+                        addRepaintBoundaries:
+                            PerformanceConfig.addRepaintBoundaries,
+                        addSemanticIndexes: false,
+                        cacheExtent: PerformanceConfig.gridCacheExtent
+                            .toDouble(),
+                        itemBuilder: (context, index) {
+                          if (index >= _images.length) {
+                            return ShimmerLoading(
+                              height: 150 + (index % 3) * 50,
+                              borderRadius: 12,
+                            );
+                          }
+
+                          final img = _images[index];
+                          final isFav = favorites.contains(img);
+
+                          return RepaintBoundary(
+                            child: ImageTile(
+                              wallpaper: img,
+                              isFav: isFav,
+                              allWallpapers: _images,
+                              index: index,
+                              onFavToggle: () {
+                                setState(() {
+                                  if (isFav) {
+                                    favorites.remove(img.url);
+                                    UserSharedPrefs.removeFavWallpaper(img);
+                                  } else {
+                                    favorites.add(img.url);
+                                    UserSharedPrefs.saveFavWallpaper(img);
+                                  }
+                                });
+                              },
+                            ),
                           );
-                        }
-
-                        final img = _images[index];
-                        final isFav = favorites.contains(img);
-
-                        return RepaintBoundary(
-                          child: ImageTile(
-                            wallpaper: img,
-                            isFav: isFav,
-                            allWallpapers: _images,
-                            index: index,
-                            onFavToggle: () {
-                              setState(() {
-                                if (isFav) {
-                                  favorites.remove(img.url);
-                                  UserSharedPrefs.removeFavWallpaper(img);
-                                } else {
-                                  favorites.add(img.url);
-                                  UserSharedPrefs.saveFavWallpaper(img);
-                                }
-                              });
-                            },
-                          ),
-                        );
-                      },
-                    ),
+                        },
+                      ),
+              ),
             ),
           ],
         ),

@@ -59,7 +59,7 @@ class _SplashViewState extends State<SplashView>
       _initializeApp();
       _initialized = true;
     }
-    precacheImage(const AssetImage('assets/images/logo.png'), context);
+    precacheImage(const AssetImage('assets/images/logo.webp'), context);
   }
 
   @override
@@ -87,7 +87,7 @@ class _SplashViewState extends State<SplashView>
                         ),
                         child: SizedBox(
                           height: 80,
-                          child: Image.asset('assets/images/logo.png'),
+                          child: Image.asset('assets/images/logo.webp'),
                         ),
                       ),
                       const SizedBox(height: 24),

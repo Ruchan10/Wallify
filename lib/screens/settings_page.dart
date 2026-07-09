@@ -15,7 +15,8 @@ import 'package:wallpaper_manager_flutter/wallpaper_manager_flutter.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 class SettingsPage extends ConsumerStatefulWidget {
-  const SettingsPage({super.key});
+  final bool isNavBarVisible;
+  const SettingsPage({super.key, required this.isNavBarVisible});
 
   @override
   ConsumerState<SettingsPage> createState() => _SettingsPageState();
@@ -34,7 +35,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
   );
   static const platform = MethodChannel('wallpaper_channel');
   bool _autoWallpaperEnabled = false;
-  String _wallpaperSource = "internet";
+  List<String> _wallpaperSources = ["internet"];
   String? _folderPath;
 
   @override
@@ -51,7 +52,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
     wallpaperLocation = await UserSharedPrefs.getWallpaperLocation();
     _intervalMinutes = await UserSharedPrefs.getInterval();
     _intervalController.text = _intervalMinutes.toString();
-    _wallpaperSource = await UserSharedPrefs.getWallpaperSource();
+    _wallpaperSources = await UserSharedPrefs.getWallpaperSources();
     _folderPath = await UserSharedPrefs.getFolderPath();
 
     setState(() {});
@@ -62,6 +63,12 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
 
   Future<void> changeWallpaper({bool changeNow = false}) async {
     try {
+      // Pre-cache wallpapers from selected sources before triggering native change.
+      if (_wallpaperSources.contains("internet") || _wallpaperSources.contains("favorites")) {
+        final fetched = await WallpaperManager.fetchImagesFromAllSources(sources: _wallpaperSources);
+        await UserSharedPrefs.saveWallpapers(fetched);
+        WallpaperCacheManager.cacheWallpapers(fetched);
+      }
       await platform.invokeMethod("scheduleBackgroundWallpaperWorkerNow");
     } catch (e) {
       showSnackBar(context: context, color: Colors.red, message: "Error: $e");
@@ -90,342 +97,347 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
         backgroundColor: scheme.primary,
         foregroundColor: scheme.onPrimary,
       ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
+      body: Stack(
         children: [
-          Text("Apply To", style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
+          ListView(
+            padding: EdgeInsets.fromLTRB(16, 16, 16, widget.isNavBarVisible ? 130 : 90),
             children: [
-              ChoiceChip(
-                label: const Text("Home"),
-                selected:
-                    wallpaperLocation == WallpaperManagerFlutter.homeScreen,
-                onSelected: (_) {
-                  setState(
-                    () =>
-                        wallpaperLocation = WallpaperManagerFlutter.homeScreen,
-                  );
-                  UserSharedPrefs.saveWallpaperLocation(wallpaperLocation);
-                  resetAutoWallpaper();
-                },
-                selectedColor: scheme.primary.withValues(alpha: 0.2),
-                backgroundColor: scheme.surfaceContainerHighest,
+              Text("Apply To", style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                children: [
+                  ChoiceChip(
+                    label: const Text("Home"),
+                    selected:
+                        wallpaperLocation == WallpaperManagerFlutter.homeScreen,
+                    onSelected: (_) {
+                      setState(
+                        () => wallpaperLocation = WallpaperManagerFlutter.homeScreen,
+                      );
+                      UserSharedPrefs.saveWallpaperLocation(wallpaperLocation);
+                      resetAutoWallpaper();
+                    },
+                    selectedColor: scheme.primary.withValues(alpha: 0.2),
+                    backgroundColor: scheme.surfaceContainerHighest,
+                  ),
+                  ChoiceChip(
+                    label: const Text("Lock"),
+                    selected:
+                        wallpaperLocation == WallpaperManagerFlutter.lockScreen,
+                    onSelected: (_) {
+                      setState(
+                        () => wallpaperLocation = WallpaperManagerFlutter.lockScreen,
+                      );
+                      UserSharedPrefs.saveWallpaperLocation(wallpaperLocation);
+                      resetAutoWallpaper();
+                    },
+                    selectedColor: scheme.primary.withValues(alpha: 0.2),
+                    backgroundColor: scheme.surfaceContainerHighest,
+                  ),
+                  ChoiceChip(
+                    label: const Text("Both"),
+                    selected:
+                        wallpaperLocation == WallpaperManagerFlutter.bothScreens,
+                    onSelected: (_) {
+                      setState(
+                        () => wallpaperLocation = WallpaperManagerFlutter.bothScreens,
+                      );
+                      UserSharedPrefs.saveWallpaperLocation(wallpaperLocation);
+                      resetAutoWallpaper();
+                    },
+                    selectedColor: scheme.primary.withValues(alpha: 0.2),
+                    backgroundColor: scheme.surfaceContainerHighest,
+                  ),
+                ],
               ),
-              ChoiceChip(
-                label: const Text("Lock"),
-                selected:
-                    wallpaperLocation == WallpaperManagerFlutter.lockScreen,
-                onSelected: (_) {
-                  setState(
-                    () =>
-                        wallpaperLocation = WallpaperManagerFlutter.lockScreen,
-                  );
-                  UserSharedPrefs.saveWallpaperLocation(wallpaperLocation);
-                  resetAutoWallpaper();
-                },
-                selectedColor: scheme.primary.withValues(alpha: 0.2),
-                backgroundColor: scheme.surfaceContainerHighest,
-              ),
-              ChoiceChip(
-                label: const Text("Both"),
-                selected:
-                    wallpaperLocation == WallpaperManagerFlutter.bothScreens,
-                onSelected: (_) {
-                  setState(
-                    () =>
-                        wallpaperLocation = WallpaperManagerFlutter.bothScreens,
-                  );
-                  UserSharedPrefs.saveWallpaperLocation(wallpaperLocation);
-                  resetAutoWallpaper();
-                },
-                selectedColor: scheme.primary.withValues(alpha: 0.2),
-                backgroundColor: scheme.surfaceContainerHighest,
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _tagController,
-                  decoration: InputDecoration(
-                    labelText: "Enter a tag",
-                    fillColor: scheme.surfaceContainerHighest,
-                    filled: true,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _tagController,
+                      decoration: InputDecoration(
+                        labelText: "Enter a tag",
+                        fillColor: scheme.surfaceContainerHighest,
+                        filled: true,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      onSubmitted: (value) async {
+                        if (value.isNotEmpty && !savedTags.contains(value)) {
+                          setState(() => savedTags.add(value));
+                          UserSharedPrefs.saveTags(savedTags);
+                        }
+                        _tagController.clear();
+                        final fetched = await WallpaperManager.fetchImagesFromAllSources(sources: _wallpaperSources);
+                        await UserSharedPrefs.saveWallpapers(fetched);
+                        WallpaperCacheManager.cacheWallpapers(fetched);
+                        resetAutoWallpaper();
+                      },
                     ),
                   ),
-                  onSubmitted: (value) async {
-                    if (value.isNotEmpty && !savedTags.contains(value)) {
-                      setState(() => savedTags.add(value));
-                      UserSharedPrefs.saveTags(savedTags);
-                    }
-                    _tagController.clear();
-                    final fetched = await WallpaperManager.fetchImagesFromAllSources();
-                    await UserSharedPrefs.saveWallpapers(fetched);
-                    WallpaperCacheManager.cacheWallpapers(fetched);
-                    resetAutoWallpaper();
-                  },
+                  const SizedBox(width: 8),
+                  FilledButton(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: scheme.primary,
+                      foregroundColor: scheme.onPrimary,
+                    ),
+                    onPressed: () async {
+                      if (_tagController.text.isNotEmpty &&
+                          !savedTags.contains(_tagController.text)) {
+                        setState(() => savedTags.add(_tagController.text));
+                        UserSharedPrefs.saveTags(savedTags);
+                      }
+                      _tagController.clear();
+                      final fetched = await WallpaperManager.fetchImagesFromAllSources(sources: _wallpaperSources);
+                      await UserSharedPrefs.saveWallpapers(fetched);
+                      WallpaperCacheManager.cacheWallpapers(fetched);
+                      resetAutoWallpaper();
+                    },
+                    child: const Text("Add"),
+                  ),
+                ],
+              ),
+              if (savedTags.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 6,
+                  children: savedTags.map((tag) {
+                    return Chip(
+                      label: Text(tag),
+                      deleteIcon: Icon(Icons.close, color: scheme.onSurfaceVariant),
+                      backgroundColor: scheme.surfaceContainerHighest,
+                      onDeleted: () async {
+                        setState(() => savedTags.remove(tag));
+                        UserSharedPrefs.saveTags(savedTags);
+                        final fetched = await WallpaperManager.fetchImagesFromAllSources(sources: _wallpaperSources);
+                        await UserSharedPrefs.saveWallpapers(fetched);
+                        WallpaperCacheManager.cacheWallpapers(fetched);
+                        resetAutoWallpaper();
+                      },
+                    );
+                  }).toList(),
                 ),
+              ],
+              const Divider(),
+
+              SizedBox(height: 16),
+
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    "Automate Wallpaper",
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                  Switch(
+                    value: _autoWallpaperEnabled,
+                    onChanged: (value) async {
+                      if (_wallpaperSources.contains("internet")) {
+                        final fetched = await WallpaperManager.fetchImagesFromAllSources(sources: _wallpaperSources);
+                        await UserSharedPrefs.saveWallpapers(fetched);
+                        WallpaperCacheManager.cacheWallpapers(fetched);
+                      }
+                      setState(() => _autoWallpaperEnabled = value);
+
+                      if (value) {
+                        try {
+                          await platform.invokeMethod(
+                            "scheduleBackgroundWallpaperWorker",
+                          );
+                          showSnackBar(
+                            context: context,
+                            message: "Auto wallpaper enabled ✅",
+                          );
+                        } catch (e) {
+                          showSnackBar(
+                            context: context,
+                            color: Colors.red,
+                            message: "Failed to enable auto wallpaper: $e",
+                          );
+                        }
+                      } else {
+                        try {
+                          showSnackBar(
+                            color: Colors.red,
+                            context: context,
+                            message: "Auto wallpaper disabled 🚫",
+                          );
+                        } catch (e) {
+                          showSnackBar(
+                            color: Colors.red,
+                            context: context,
+                            message: "Failed to disable automation: $e",
+                          );
+                        }
+                      }
+                      await UserSharedPrefs.setAutoWallpaperEnabled(value);
+                    },
+                  ),
+                ],
               ),
-              const SizedBox(width: 8),
-              FilledButton(
-                style: FilledButton.styleFrom(
-                  backgroundColor: scheme.primary,
-                  foregroundColor: scheme.onPrimary,
-                ),
-                onPressed: () async {
-                  if (_tagController.text.isNotEmpty &&
-                      !savedTags.contains(_tagController.text)) {
-                    setState(() => savedTags.add(_tagController.text));
-                    UserSharedPrefs.saveTags(savedTags);
-                  }
-                  _tagController.clear();
-                  final fetched = await WallpaperManager.fetchImagesFromAllSources();
-                  await UserSharedPrefs.saveWallpapers(fetched);
-                  WallpaperCacheManager.cacheWallpapers(fetched);
-                  resetAutoWallpaper();
-                },
-                child: const Text("Add"),
-              ),
-            ],
-          ),
-          if (savedTags.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 6,
-              children: savedTags.map((tag) {
-                return Chip(
-                  label: Text(tag),
-                  deleteIcon: Icon(Icons.close, color: scheme.onSurfaceVariant),
-                  backgroundColor: scheme.surfaceContainerHighest,
-                  onDeleted: () async {
-                    setState(() => savedTags.remove(tag));
-                    UserSharedPrefs.saveTags(savedTags);
-                    final fetched = await WallpaperManager.fetchImagesFromAllSources();
-                    await UserSharedPrefs.saveWallpapers(fetched);
-                    WallpaperCacheManager.cacheWallpapers(fetched);
-                    resetAutoWallpaper();
-                  },
-                );
-              }).toList(),
-            ),
-          ],
-          const Divider(),
 
-          SizedBox(height: 16),
-
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                "Automate Wallpaper",
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
-              Switch(
-                value: _autoWallpaperEnabled,
-                onChanged: (value) async {
-                  if (_wallpaperSource == "internet") {
-                    final fetched = await WallpaperManager.fetchImagesFromAllSources();
-                    await UserSharedPrefs.saveWallpapers(fetched);
-                    WallpaperCacheManager.cacheWallpapers(fetched);
-                  }
-                  setState(() => _autoWallpaperEnabled = value);
-
-                  if (value) {
-                    try {
-                      await platform.invokeMethod(
-                        "scheduleBackgroundWallpaperWorker",
-                      );
-                      showSnackBar(
-                        context: context,
-                        message: "Auto wallpaper enabled ✅",
-                      );
-                    } catch (e) {
-                      showSnackBar(
-                        context: context,
-                        color: Colors.red,
-
-                        message: "Failed to enable auto wallpaper: $e",
-                      );
-                    }
-                  } else {
-                    try {
-                      showSnackBar(
-                        color: Colors.red,
-                        context: context,
-                        message: "Auto wallpaper disabled 🚫",
-                      );
-                    } catch (e) {
-                      showSnackBar(
-                        color: Colors.red,
-                        context: context,
-                        message: "Failed to disable automation: $e",
-                      );
-                    }
-                  }
-                  await UserSharedPrefs.setAutoWallpaperEnabled(value);
-                },
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 12),
-          if (_autoWallpaperEnabled) _buildWallpaperSettings(context, scheme),
-          const Divider(),
-          // ========== THEME TOGGLE ==========
-          Text("Appearance", style: Theme.of(context).textTheme.titleLarge),
-          const SizedBox(height: 8),
-          ListTile(
-            leading: Icon(Icons.brightness_6, color: scheme.primary),
-            title: const Text("Theme"),
-            subtitle: const Text("Switch between light and dark mode"),
-            trailing: Switch(
-              value: isDark,
-              onChanged: (val) {
-                ref.read(themeProvider.notifier).toggleTheme(val);
-              },
-              activeThumbColor: scheme.secondary,
-            ),
-          ),
-
-          // ========== ERROR REPORTING ==========
-          FutureBuilder<bool>(
-            future: UserSharedPrefs.getErrorReportingEnabled(),
-            builder: (context, snapshot) {
-              final isEnabled = snapshot.data ?? false;
-              return ListTile(
-                leading: Icon(Icons.bug_report, color: scheme.primary),
-                title: const Text("Error Reporting"),
-                subtitle: const Text(
-                  "Send crash reports to help improve the app",
-                ),
+              const SizedBox(height: 12),
+              if (_autoWallpaperEnabled) _buildWallpaperSettings(context, scheme),
+              const Divider(),
+              // ========== THEME TOGGLE ==========
+              Text("Appearance", style: Theme.of(context).textTheme.titleLarge),
+              const SizedBox(height: 8),
+              ListTile(
+                leading: Icon(Icons.brightness_6, color: scheme.primary),
+                title: const Text("Theme"),
+                subtitle: const Text("Switch between light and dark mode"),
                 trailing: Switch(
-                  value: isEnabled,
-                  onChanged: (val) async {
-                    await UserSharedPrefs.setErrorReportingEnabled(val);
-                    setState(() {});
-                    if (mounted) {
-                      showSnackBar(
-                        context: context,
-                        message: val
-                            ? "Error reporting enabled"
-                            : "Error reporting disabled",
-                      );
-                    }
+                  value: isDark,
+                  onChanged: (val) {
+                    ref.read(themeProvider.notifier).toggleTheme(val);
                   },
                   activeThumbColor: scheme.secondary,
                 ),
-              );
-            },
-          ),
-          const Divider(),
+              ),
 
-          // ========== EXPORT / IMPORT ==========
-          SizedBox(height: 16),
-          Text("Data", style: Theme.of(context).textTheme.titleLarge),
-          const SizedBox(height: 8),
-          ListTile(
-            leading: Icon(Icons.upload_file, color: scheme.primary),
-            title: const Text("Export Settings"),
-            onTap: () async {
-              try {
-                final file = await SettingsBackup.exportSettings();
-                if (mounted) {
-                  showSnackBar(
-                    context: context,
-                    color: Colors.green,
-                    message: "Exported to ${file.path}",
+              // ========== ERROR REPORTING ==========
+              FutureBuilder<bool>(
+                future: UserSharedPrefs.getErrorReportingEnabled(),
+                builder: (context, snapshot) {
+                  final isEnabled = snapshot.data ?? false;
+                  return ListTile(
+                    leading: Icon(Icons.bug_report, color: scheme.primary),
+                    title: const Text("Error Reporting"),
+                    subtitle: const Text(
+                      "Send crash reports to help improve the app",
+                    ),
+                    trailing: Switch(
+                      value: isEnabled,
+                      onChanged: (val) async {
+                        await UserSharedPrefs.setErrorReportingEnabled(val);
+                        setState(() {});
+                        if (mounted) {
+                          showSnackBar(
+                            context: context,
+                            message: val
+                                ? "Error reporting enabled"
+                                : "Error reporting disabled",
+                          );
+                        }
+                      },
+                      activeThumbColor: scheme.secondary,
+                    ),
                   );
-                }
-              } catch (e) {
-                if (mounted) {
-                  print("Export failed: $e");
-                  showSnackBar(
-                    context: context,
-                    color: Colors.red,
-                    message: "Export failed: $e",
-                  );
-                }
-              }
-            },
-          ),
-          ListTile(
-            leading: Icon(Icons.download, color: scheme.primary),
-            title: const Text("Import Settings"),
-            onTap: () async {
-              try {
-                final result = await FilePicker.platform.pickFiles(
-                  type: FileType.custom,
-                  allowedExtensions: ['json'],
-                );
-                if (result != null && result.files.single.path != null) {
-                  final file = File(result.files.single.path!);
-                  final count = await SettingsBackup.importSettings(file);
+                },
+              ),
+              const Divider(),
 
-                  await _initialize();
+              // ========== EXPORT / IMPORT ==========
+              SizedBox(height: 16),
+              Text("Data", style: Theme.of(context).textTheme.titleLarge),
+              const SizedBox(height: 8),
+              ListTile(
+                leading: Icon(Icons.upload_file, color: scheme.primary),
+                title: const Text("Export Settings"),
+                onTap: () async {
+                  try {
+                    final file = await SettingsBackup.exportSettings();
+                    if (mounted) {
+                      showSnackBar(
+                        context: context,
+                        color: Colors.green,
+                        message: "Exported to ${file.path}",
+                      );
+                    }
+                  } catch (e) {
+                    if (mounted) {
+                      print("Export failed: $e");
+                      showSnackBar(
+                        context: context,
+                        color: Colors.red,
+                        message: "Export failed: $e",
+                      );
+                    }
+                  }
+                },
+              ),
+              ListTile(
+                leading: Icon(Icons.download, color: scheme.primary),
+                title: const Text("Import Settings"),
+                onTap: () async {
+                  try {
+                    final result = await FilePicker.pickFiles(
+                      type: FileType.custom,
+                      allowedExtensions: ['json'],
+                    );
+                    if (result != null && result.files.single.path != null) {
+                      final file = File(result.files.single.path!);
+                      final count = await SettingsBackup.importSettings(file);
 
-                  if (mounted) {
+                      await _initialize();
+
+                      if (mounted) {
+                        showSnackBar(
+                          context: context,
+                          color: Colors.green,
+                          message: "Imported $count settings successfully",
+                        );
+                      }
+                    }
+                  } catch (e) {
+                    if (mounted) {
+                      showSnackBar(
+                        context: context,
+                        color: Colors.red,
+                        message: "Import failed: $e",
+                      );
+                    }
+                  }
+                },
+              ),
+              const Divider(),
+              SizedBox(height: 16),
+
+              // ========== CHECK UPDATE ==========
+              ListTile(
+                leading: Icon(
+                  Config.getUpdateAvailable() ? Icons.update : Icons.system_update,
+                  color: scheme.primary,
+                ),
+                title: Config.getUpdateAvailable()
+                    ? Text("Update Available")
+                    : Text("Check for Updates"),
+                onTap: () {
+                  UpdateManager.checkForUpdates();
+                  if (Config.getUpdateAvailable()) {
+                    UpdateManager.showUpdateDialog(context);
+                  } else {
                     showSnackBar(
                       context: context,
-                      color: Colors.green,
-                      message: "Imported $count settings successfully",
+                      message: "You're on the latest version",
                     );
                   }
-                }
-              } catch (e) {
-                if (mounted) {
-                  showSnackBar(
-                    context: context,
-                    color: Colors.red,
-                    message: "Import failed: $e",
-                  );
-                }
-              }
-            },
-          ),
-          const Divider(),
-          SizedBox(height: 16),
+                },
+              ),
 
-          // ========== CHECK UPDATE ==========
-          ListTile(
-            leading: Icon(
-              Config.getUpdateAvailable() ? Icons.update : Icons.system_update,
-              color: scheme.primary,
+              const SizedBox(height: 20),
+            ],
+          ),
+          Positioned(
+            left: 16,
+            right: 16,
+            bottom: widget.isNavBarVisible ? 96 : 16,
+            child: FilledButton.icon(
+              style: FilledButton.styleFrom(
+                backgroundColor: scheme.primary,
+                foregroundColor: scheme.onPrimary,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+              ),
+              onPressed: () => changeWallpaper(changeNow: true),
+              icon: const Icon(Icons.wallpaper),
+              label: const Text("Change Now"),
             ),
-            title: Config.getUpdateAvailable()
-                ? Text("Update Available")
-                : Text("Check for Updates"),
-            onTap: () {
-              UpdateManager.checkForUpdates();
-              if (Config.getUpdateAvailable()) {
-                UpdateManager.showUpdateDialog(context);
-              } else {
-                showSnackBar(
-                  context: context,
-                  message: "You're on the latest version",
-                );
-              }
-            },
           ),
-
-          const SizedBox(height: 20),
         ],
       ),
-      floatingActionButton: FilledButton.icon(
-        style: FilledButton.styleFrom(
-          backgroundColor: scheme.primary,
-          foregroundColor: scheme.onPrimary,
-        ),
-        onPressed: () => changeWallpaper(changeNow: true),
-        icon: const Icon(Icons.wallpaper),
-        label: const Text("Change Now"),
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
     );
   }
 
@@ -479,49 +491,40 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
         Wrap(
           spacing: 8,
           children: [
-            ChoiceChip(
-              label: const Text("Internet"),
-              selected: _wallpaperSource == "internet",
-              selectedColor: scheme.primary,
-              backgroundColor: scheme.surfaceContainerHighest,
-              onSelected: (_) async {
-                setState(() => _wallpaperSource = "internet");
-                await UserSharedPrefs.setWallpaperSource("internet");
-                resetAutoWallpaper();
-              },
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-              showCheckmark: false,
-              shape: StadiumBorder(
-                side: BorderSide(
-                  color: _wallpaperSource == "internet"
-                      ? Colors.transparent
-                      : scheme.outlineVariant,
+            for (final source in ["internet", "folder", "favorites"])
+              FilterChip(
+                label: Text(source == "internet" ? "Internet" : source == "folder" ? "Folder" : "Favorites"),
+                selected: _wallpaperSources.contains(source),
+                onSelected: (selected) async {
+                  setState(() {
+                    if (selected) {
+                      _wallpaperSources.add(source);
+                    } else {
+                      _wallpaperSources.remove(source);
+                    }
+                    // Always keep at least one source selected.
+                    if (_wallpaperSources.isEmpty) {
+                      _wallpaperSources.add("internet");
+                    }
+                  });
+                  await UserSharedPrefs.saveWallpaperSources(_wallpaperSources);
+                  resetAutoWallpaper();
+                },
+                selectedColor: scheme.primary,
+                backgroundColor: scheme.surfaceContainerHighest,
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                showCheckmark: true,
+                shape: StadiumBorder(
+                  side: BorderSide(
+                    color: _wallpaperSources.contains(source)
+                        ? Colors.transparent
+                        : scheme.outlineVariant,
+                  ),
                 ),
               ),
-            ),
-            ChoiceChip(
-              label: const Text("Folder"),
-              selected: _wallpaperSource == "folder",
-              selectedColor: scheme.primary,
-              backgroundColor: scheme.surfaceContainerHighest,
-              onSelected: (_) async {
-                setState(() => _wallpaperSource = "folder");
-                await UserSharedPrefs.setWallpaperSource("folder");
-                resetAutoWallpaper();
-              },
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-              showCheckmark: false,
-              shape: StadiumBorder(
-                side: BorderSide(
-                  color: _wallpaperSource == "folder"
-                      ? Colors.transparent
-                      : scheme.outlineVariant,
-                ),
-              ),
-            ),
           ],
         ),
-        if (_wallpaperSource == "folder") ...[
+        if (_wallpaperSources.contains("folder")) ...[
           const SizedBox(height: 12),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -545,7 +548,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
                 ),
                 TextButton(
                   onPressed: () async {
-                    final path = await FilePicker.platform.getDirectoryPath();
+                    final path = await FilePicker.getDirectoryPath();
                     if (path != null) {
                       setState(() => _folderPath = path);
                       await UserSharedPrefs.setFolderPath(path);

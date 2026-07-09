@@ -85,6 +85,20 @@ class MainActivity : FlutterActivity() {
                         result.error("INVALID_PATH", "File path is required", null)
                     }
                 }
+                "checkImageHasFace" -> {
+                    val filePath: String? = call.argument<String>("filePath")
+                    if (filePath != null) {
+                        val bitmap = BitmapFactory.decodeFile(filePath)
+                        if (bitmap != null) {
+                            val hasFace = WallpaperUtils.imageHasFace(applicationContext, bitmap)
+                            result.success(hasFace)
+                        } else {
+                            result.success(false)
+                        }
+                    } else {
+                        result.success(false)
+                    }
+                }
                 else -> {
                     result.notImplemented()
                 }

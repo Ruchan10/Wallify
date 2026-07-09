@@ -17,11 +17,11 @@ class _MainScaffoldState extends State<MainScaffold>
   bool _isNavBarVisible = true;
   late AnimationController _animController;
 
-  final List<Widget> _pages = [
+  List<Widget> get _pages => [
     const DiscoverPage(),
     const FavoritesPage(),
     const HistoryPage(),
-    const SettingsPage(),
+    SettingsPage(isNavBarVisible: _isNavBarVisible),
   ];
 
   @override

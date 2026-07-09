@@ -218,6 +218,36 @@ class _HistoryPageState extends State<HistoryPage> {
                                   ),
                                 ),
                               ),
+                              Positioned(
+                                bottom: 8,
+                                left: 8,
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 200),
+                                  decoration: BoxDecoration(
+                                    color: Colors.red.withValues(alpha: 0.15),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: IconButton(
+                                    style: IconButton.styleFrom(
+                                      backgroundColor: Colors.transparent,
+                                      minimumSize: const Size(28, 28),
+                                      padding: EdgeInsets.zero,
+                                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                    ),
+                                    icon: Icon(
+                                      Icons.delete_outline,
+                                      size: 18,
+                                      color: Colors.red,
+                                    ),
+                                    onPressed: () async {
+                                      await UserSharedPrefs.removeWallpaperHistory(wallpaper);
+                                      setState(() {
+                                        _historyWalls.removeAt(index);
+                                      });
+                                    },
+                                  ),
+                                ),
+                              ),
                             ],
                           ),
                         );

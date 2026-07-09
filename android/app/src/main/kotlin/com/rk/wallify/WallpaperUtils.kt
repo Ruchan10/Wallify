@@ -12,19 +12,54 @@ import org.json.JSONArray
 import java.util.*
 import java.text.SimpleDateFormat
 import androidx.core.graphics.scale
-import com.google.mlkit.vision.common.InputImage
-import com.google.mlkit.vision.objects.ObjectDetection
-import com.google.mlkit.vision.objects.defaults.ObjectDetectorOptions
-import android.graphics.Rect
 import android.graphics.Bitmap
-import com.google.android.gms.tasks.Tasks
-import com.google.mlkit.vision.face.FaceDetection
-import com.google.mlkit.vision.face.FaceDetectorOptions
 import org.json.JSONObject
 import androidx.palette.graphics.Palette
+import com.google.mediapipe.framework.image.BitmapImageBuilder
+import com.google.mediapipe.tasks.core.BaseOptions
+import com.google.mediapipe.tasks.vision.core.RunningMode
+import com.google.mediapipe.tasks.vision.objectdetector.ObjectDetector
+import com.google.mediapipe.tasks.vision.objectdetector.ObjectDetector.ObjectDetectorOptions
+import com.google.mediapipe.tasks.vision.facedetector.FaceDetector
+import com.google.mediapipe.tasks.vision.facedetector.FaceDetector.FaceDetectorOptions
+import android.graphics.RectF
 
 object WallpaperUtils {
     private val imageExtensions = setOf("jpg", "jpeg", "png", "webp", "bmp", "gif")
+
+    private var cachedObjectDetector: ObjectDetector? = null
+    private var cachedFaceDetector: FaceDetector? = null
+
+    private fun getObjectDetector(context: Context): ObjectDetector {
+        if (cachedObjectDetector == null) {
+            val baseOptions = BaseOptions.builder()
+                .setModelAssetPath("efficientdet_lite0.tflite")
+                .build()
+            val options = ObjectDetectorOptions.builder()
+                .setBaseOptions(baseOptions)
+                .setMaxResults(1)
+                .setScoreThreshold(0.5f)
+                .setRunningMode(RunningMode.IMAGE)
+                .build()
+            cachedObjectDetector = ObjectDetector.createFromOptions(context, options)
+        }
+        return cachedObjectDetector!!
+    }
+
+    private fun getFaceDetector(context: Context): FaceDetector {
+        if (cachedFaceDetector == null) {
+            val baseOptions = BaseOptions.builder()
+                .setModelAssetPath("blaze_face_short_range.tflite")
+                .build()
+            val options = FaceDetectorOptions.builder()
+                .setBaseOptions(baseOptions)
+                .setMinDetectionConfidence(0.5f)
+                .setRunningMode(RunningMode.IMAGE)
+                .build()
+            cachedFaceDetector = FaceDetector.createFromOptions(context, options)
+        }
+        return cachedFaceDetector!!
+    }
 
     fun downloadAndSetWallpaperBackground(context: Context) {
         try {
@@ -32,35 +67,32 @@ object WallpaperUtils {
 
             val prefs = context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
             val wallpaperSource = prefs.getString("flutter.wallpaperSource", "internet") ?: "internet"
+            val sources = wallpaperSource.split(",").map { it.trim() }.filter { it.isNotEmpty() }.toSet()
 
             val imageSources = mutableListOf<String>()
 
-            if (wallpaperSource == "folder") {
+            if (sources.contains("folder")) {
                 val folderPath = prefs.getString("flutter.folderPath", null)
-                if (folderPath.isNullOrEmpty()) {
+                if (!folderPath.isNullOrEmpty()) {
+                    val folder = File(folderPath)
+                    if (folder.exists() && folder.isDirectory()) {
+                        folder.listFiles { f -> f.isFile && f.extension.lowercase() in imageExtensions }
+                            ?.forEach { imageSources.add(it.absolutePath) }
+                        Log.d("Wallify", "Found ${imageSources.size} images in folder: $folderPath")
+                    } else {
+                        Log.e("Wallify", "Folder does not exist: $folderPath")
+                    }
+                } else {
                     Log.e("Wallify", "Folder source selected but no folder path set")
-                    return
                 }
-                val folder = File(folderPath)
-                if (!folder.exists() || !folder.isDirectory()) {
-                    Log.e("Wallify", "Folder does not exist: $folderPath")
-                    return
-                }
-                folder.listFiles { f -> f.isFile && f.extension.lowercase() in imageExtensions }
-                    ?.forEach { imageSources.add(it.absolutePath) }
-                if (imageSources.isEmpty()) {
-                    Log.e("Wallify", "No image files found in folder: $folderPath")
-                    return
-                }
-                Log.d("Wallify", "📁 Found ${imageSources.size} images in folder: $folderPath")
-            } else {
-                // Try cached local paths first (offline cache downloaded by Flutter)
+            }
+
+            if (sources.contains("internet") || sources.isEmpty() || sources.contains("folder").not()) {
                 val cachedPaths = getCachedLocalPaths(context)
                 if (cachedPaths.isNotEmpty()) {
                     Log.d("Wallify", "Using ${cachedPaths.size} locally cached wallpapers")
                     imageSources.addAll(cachedPaths)
                 } else {
-                    // Fall back to URL-based fetching
                     var imageJsonString = prefs.getString("flutter.imageUrls", "[]") ?: "[]"
                     if (imageJsonString.contains("![")) {
                         imageJsonString = imageJsonString.substringAfter("!")
@@ -94,6 +126,11 @@ object WallpaperUtils {
                 }
             }
 
+            if (imageSources.isEmpty()) {
+                Log.e("Wallify", "No wallpapers from any source, aborting.")
+                return
+            }
+
             val wallpaperLocationValue = prefs.all["flutter.wallpaperLocation"]
             val wallpaperLocation = when (wallpaperLocationValue) {
                 is Int -> wallpaperLocationValue
@@ -104,7 +141,7 @@ object WallpaperUtils {
             Log.e("Wallify", wallpaperLocation.toString())
 
             val wallpaperManager = WallpaperManager.getInstance(context)
-            val isFolderMode = wallpaperSource == "folder"
+            val isFolderMode = sources.contains("folder")
 
             when (wallpaperLocation) {
                 1 -> {
@@ -171,26 +208,17 @@ object WallpaperUtils {
         }
     }
 
-    private fun imageHasFace(context: Context, bitmap: Bitmap): Boolean {
+    internal fun imageHasFace(context: Context, bitmap: Bitmap): Boolean {
         return try {
-            val options = FaceDetectorOptions.Builder()
-                .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_ACCURATE)
-                .enableTracking()
-                .build()
-
-            val detector = FaceDetection.getClient(options)
-            val image = InputImage.fromBitmap(bitmap, 0)
-
-            val task = detector.process(image)
-            val faces = Tasks.await(task)
-
-            val hasFace = faces.isNotEmpty()
+            val detector = getFaceDetector(context)
+            val mpImage = BitmapImageBuilder(bitmap).build()
+            val results = detector.detect(mpImage)
+            val hasFace = results.detections().isNotEmpty()
             if (hasFace) {
-                Log.d("Wallify", "🚫 Face detected — skipping this wallpaper.")
+                Log.d("Wallify", "Face detected - skipping this wallpaper.")
             } else {
-                Log.d("Wallify", "✅ No faces detected — safe to use.")
+                Log.d("Wallify", "No faces detected - safe to use.")
             }
-
             hasFace
         } catch (e: Exception) {
             Log.e("Wallify", "Error detecting faces: ${e.message}", e)
@@ -240,7 +268,7 @@ object WallpaperUtils {
             val deviceWidth = (prefs.all["flutter.deviceWidth"] as? Int) ?: 1080
             val deviceHeight = (prefs.all["flutter.deviceHeight"] as? Int) ?: 1920
 
-            Log.d("Wallify", "🌐 Fetching wallpapers with tag=$tag, size=${deviceWidth}x$deviceHeight")
+            Log.d("Wallify", "Fetching wallpapers with tag=$tag, size=${deviceWidth}x$deviceHeight")
 
             val wallhavenUrl =
                 "https://wallhaven.cc/api/v1/search?q=$tag&categories=100&purity=100&ratios=portrait&sorting=random"
@@ -253,7 +281,7 @@ object WallpaperUtils {
             urls.addAll(fetchFromPixabay(pixabayUrl))
 
             if (urls.isEmpty()) {
-                Log.w("Wallify", "⚠️ No wallpapers found from any source")
+                Log.w("Wallify", "No wallpapers found from any source")
             } else {
                 val jsonArray = JSONArray()
                 urls.forEach { url ->
@@ -262,10 +290,10 @@ object WallpaperUtils {
                     jsonArray.put(obj)
                 }
                 prefs.edit().putString("flutter.imageUrls", jsonArray.toString()).apply()
-                Log.d("Wallify", "✅ Saved ${urls.size} image URLs to SharedPreferences")
+                Log.d("Wallify", "Saved ${urls.size} image URLs to SharedPreferences")
             }
         } catch (e: Exception) {
-            Log.e("Wallify", "❌ Error fetching images: ${e.message}", e)
+            Log.e("Wallify", "Error fetching images: ${e.message}", e)
         }
 
         return urls
@@ -465,7 +493,7 @@ object WallpaperUtils {
         editor.putString("flutter.lastWallpaperChange", now)
         editor.apply()
 
-        Log.d("Wallify", "🕒 Updated lastWallpaperChange = $now")
+        Log.d("Wallify", "Updated lastWallpaperChange = $now")
     }
 
     private fun removeUsedUrl(context: Context, usedUrl: String) {
@@ -481,10 +509,8 @@ object WallpaperUtils {
             val historyJsonString = prefs.getString("flutter.wallpaperHistory", "[]") ?: "[]"
             val historyList = JSONArray(historyJsonString)
 
-            Log.d("Wallify", "🧹 Removing used wallpaper URL: $usedUrl")
+            Log.d("Wallify", "Removing used wallpaper URL: $usedUrl")
 
-            // Pull the used wallpaper out of the pending imageUrls list and
-            // keep a reference to it so it can be moved into history.
             val newImageList = JSONArray()
             var movedObject: JSONObject? = null
 
@@ -495,7 +521,7 @@ object WallpaperUtils {
 
                 if (url == usedUrl && movedObject == null) {
                     movedObject = item
-                    Log.d("Wallify", "➡️ Moved to history: $item")
+                    Log.d("Wallify", "Moved to history: $item")
                 } else {
                     newImageList.put(itemStr)
                 }
@@ -503,14 +529,9 @@ object WallpaperUtils {
 
             prefs.edit().putString("flutter.imageUrls", newImageList.toString()).apply()
 
-            // The used wallpaper may not be in imageUrls anymore (e.g. it was
-            // already consumed by a previous set in the same run). Still record
-            // it in history using at least its url.
             val movedEntry = movedObject ?: JSONObject().put("url", usedUrl)
             val movedUrl = movedEntry.optString("url", usedUrl)
 
-            // Rebuild history newest-first, dropping any previous entry for the
-            // same wallpaper so it moves to the top instead of duplicating.
             val newHistory = JSONArray()
             newHistory.put(movedEntry)
             for (i in 0 until historyList.length()) {
@@ -519,7 +540,6 @@ object WallpaperUtils {
                 newHistory.put(existing)
             }
 
-            // Keep history from growing without bound.
             val maxHistory = 100
             val cappedHistory = if (newHistory.length() > maxHistory) {
                 JSONArray().apply {
@@ -531,8 +551,8 @@ object WallpaperUtils {
 
             prefs.edit().putString("flutter.wallpaperHistory", cappedHistory.toString()).apply()
 
-            Log.d("Wallify", "📌 History size: ${cappedHistory.length()}")
-            Log.d("Wallify", "📌 Remaining imageUrls: ${newImageList.length()}")
+            Log.d("Wallify", "History size: ${cappedHistory.length()}")
+            Log.d("Wallify", "Remaining imageUrls: ${newImageList.length()}")
 
         } catch (e: Exception) {
             Log.e("Wallify", "Error updating history: ${e.message}", e)
@@ -565,75 +585,55 @@ object WallpaperUtils {
         targetHeight: Int
     ): Bitmap {
         return try {
-            val image = InputImage.fromBitmap(bitmap, 0)
-            val options = ObjectDetectorOptions.Builder()
-                .setDetectorMode(ObjectDetectorOptions.SINGLE_IMAGE_MODE)
-                .enableMultipleObjects()
-                .enableClassification()
-                .build()
-            val detector = ObjectDetection.getClient(options)
+            val detector = getObjectDetector(context)
+            val mpImage = BitmapImageBuilder(bitmap).build()
+            val results = detector.detect(mpImage)
 
             var resultBitmap = bitmap
-            val task = detector.process(image)
-                .addOnSuccessListener { detectedObjects ->
-                    if (detectedObjects.isNotEmpty()) {
-                        val obj = detectedObjects.first()
-                        val box: Rect = obj.boundingBox
-                        Log.d("Wallify", "🎯 Detected object bounds: $box")
+            val detectedObjects = results.detections()
 
-                        // Center the crop viewport on the detected object
-                        // while maintaining the target device aspect ratio
-                        val targetAspect = targetWidth.toDouble() / targetHeight.toDouble()
-                        val imgW = bitmap.width
-                        val imgH = bitmap.height
+            if (detectedObjects.isNotEmpty()) {
+                val obj = detectedObjects.first()
+                val box: RectF = obj.boundingBox()
+                Log.d("Wallify", "Detected object bounds: $box")
 
-                        // Object center point
-                        val objCenterX = (box.left + box.right) / 2.0
-                        val objCenterY = (box.top + box.bottom) / 2.0
+                val targetAspect = targetWidth.toDouble() / targetHeight.toDouble()
+                val imgW = bitmap.width
+                val imgH = bitmap.height
 
-                        // Determine crop dimensions that maintain device aspect ratio
-                        // Start with the full image dimension and compute the other
-                        var cropW: Int
-                        var cropH: Int
-                        val imgAspect = imgW.toDouble() / imgH.toDouble()
+                val objCenterX = (box.left + box.right) / 2.0
+                val objCenterY = (box.top + box.bottom) / 2.0
 
-                        if (imgAspect > targetAspect) {
-                            // Image is wider than target — use full height, compute width
-                            cropH = imgH
-                            cropW = (imgH * targetAspect).toInt()
-                        } else {
-                            // Image is taller than target — use full width, compute height
-                            cropW = imgW
-                            cropH = (imgW / targetAspect).toInt()
-                        }
+                var cropW: Int
+                var cropH: Int
+                val imgAspect = imgW.toDouble() / imgH.toDouble()
 
-                        // Ensure crop doesn't exceed image bounds
-                        cropW = cropW.coerceAtMost(imgW)
-                        cropH = cropH.coerceAtMost(imgH)
-
-                        // Position the crop rect centered on the detected object
-                        var cropLeft = (objCenterX - cropW / 2.0).toInt()
-                        var cropTop = (objCenterY - cropH / 2.0).toInt()
-
-                        // Clamp to image boundaries
-                        cropLeft = cropLeft.coerceIn(0, imgW - cropW)
-                        cropTop = cropTop.coerceIn(0, imgH - cropH)
-
-                        Log.d("Wallify", "📐 Smart crop: ${cropW}x${cropH} at ($cropLeft, $cropTop), object center: ($objCenterX, $objCenterY)")
-
-                        val cropped = Bitmap.createBitmap(bitmap, cropLeft, cropTop, cropW, cropH)
-                        resultBitmap = cropped.scale(targetWidth, targetHeight, true)
-                    } else {
-                        Log.d("Wallify", "⚠️ No object detected, center-cropping full image.")
-                        resultBitmap = centerCropToAspect(bitmap, targetWidth, targetHeight)
-                    }
-                }
-                .addOnFailureListener { e ->
-                    Log.e("Wallify", "❌ Object detection failed: $e")
-                    resultBitmap = centerCropToAspect(bitmap, targetWidth, targetHeight)
+                if (imgAspect > targetAspect) {
+                    cropH = imgH
+                    cropW = (imgH * targetAspect).toInt()
+                } else {
+                    cropW = imgW
+                    cropH = (imgW / targetAspect).toInt()
                 }
 
-            Tasks.await(task)
+                cropW = cropW.coerceAtMost(imgW)
+                cropH = cropH.coerceAtMost(imgH)
+
+                var cropLeft = (objCenterX - cropW / 2.0).toInt()
+                var cropTop = (objCenterY - cropH / 2.0).toInt()
+
+                cropLeft = cropLeft.coerceIn(0, imgW - cropW)
+                cropTop = cropTop.coerceIn(0, imgH - cropH)
+
+                Log.d("Wallify", "Smart crop: ${cropW}x${cropH} at ($cropLeft, $cropTop), object center: ($objCenterX, $objCenterY)")
+
+                val cropped = Bitmap.createBitmap(bitmap, cropLeft, cropTop, cropW, cropH)
+                resultBitmap = cropped.scale(targetWidth, targetHeight, true)
+            } else {
+                Log.d("Wallify", "No object detected, center-cropping full image.")
+                resultBitmap = centerCropToAspect(bitmap, targetWidth, targetHeight)
+            }
+
             resultBitmap
         } catch (e: Exception) {
             Log.e("Wallify", "Error during object detection: $e")
@@ -641,7 +641,6 @@ object WallpaperUtils {
         }
     }
 
-    /** Simple center-crop fallback that maintains target aspect ratio */
     private fun centerCropToAspect(bitmap: Bitmap, targetWidth: Int, targetHeight: Int): Bitmap {
         val targetAspect = targetWidth.toDouble() / targetHeight.toDouble()
         val imgW = bitmap.width

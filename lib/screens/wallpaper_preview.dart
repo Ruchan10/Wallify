@@ -12,6 +12,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wallify/core/snackbar.dart';
 import 'package:wallify/core/user_shared_prefs.dart';
+import 'package:wallify/functions/wallpaper_cache_manager.dart';
 import 'package:wallify/functions/wallpaper_info_sheet.dart';
 import 'package:wallify/model/wallpaper_model.dart';
 import 'package:wallify/core/wallpaper_theme_provider.dart';
@@ -188,12 +189,17 @@ class _WallpaperPreviewPageState extends ConsumerState<WallpaperPreviewPage>
       if (fileInfo != null && fileInfo.file.existsSync()) {
         imageFile = fileInfo.file;
       } else {
-        final response = await http.get(Uri.parse(_currentWallpaper.url));
-        final dir = await getTemporaryDirectory();
-        imageFile = File(
-          "${dir.path}/wallpaper_${DateTime.now().millisecondsSinceEpoch}.jpg",
-        );
-        await imageFile.writeAsBytes(response.bodyBytes);
+        final cached = await WallpaperCacheManager.downloadAndCache(_currentWallpaper);
+        if (cached != null) {
+          imageFile = File(cached);
+        } else {
+          final response = await http.get(Uri.parse(_currentWallpaper.url));
+          final dir = await getTemporaryDirectory();
+          imageFile = File(
+            "${dir.path}/wallpaper_${DateTime.now().millisecondsSinceEpoch}.jpg",
+          );
+          await imageFile.writeAsBytes(response.bodyBytes);
+        }
       }
 
       setState(() {
@@ -237,37 +243,64 @@ class _WallpaperPreviewPageState extends ConsumerState<WallpaperPreviewPage>
 
       File croppedFile;
 
+      img.Image processImage;
       if (matrix != Matrix4.identity()) {
         final imageWidth = originalImage.width.toDouble();
         final imageHeight = originalImage.height.toDouble();
-
         final scale = matrix.getMaxScaleOnAxis();
-
         final translation = matrix.getTranslation();
 
-        final visibleWidth = screenSize.width / scale;
-        final visibleHeight = screenSize.height / scale;
-
-        final offsetX =
-            (-translation.x / scale).clamp(0.0, imageWidth - visibleWidth);
-        final offsetY =
-            (-translation.y / scale).clamp(0.0, imageHeight - visibleHeight);
-
-        final croppedImage = img.copyCrop(
-          originalImage,
-          x: offsetX.toInt(),
-          y: offsetY.toInt(),
-          width: visibleWidth.toInt().clamp(1, originalImage.width),
-          height: visibleHeight.toInt().clamp(1, originalImage.height),
-        );
-
-        final dir = await getTemporaryDirectory();
-        croppedFile = File(
-          "${dir.path}/wallpaper_cropped_${DateTime.now().millisecondsSinceEpoch}.jpg",
-        );
-        await croppedFile.writeAsBytes(img.encodeJpg(croppedImage, quality: 100));
+        if (scale >= 1.0) {
+          final visibleWidth = screenSize.width / scale;
+          final visibleHeight = screenSize.height / scale;
+          final offsetX =
+              (-translation.x / scale).clamp(0.0, imageWidth - visibleWidth);
+          final offsetY =
+              (-translation.y / scale).clamp(0.0, imageHeight - visibleHeight);
+          processImage = img.copyCrop(
+            originalImage,
+            x: offsetX.toInt(),
+            y: offsetY.toInt(),
+            width: visibleWidth.toInt().clamp(1, originalImage.width),
+            height: visibleHeight.toInt().clamp(1, originalImage.height),
+          );
+        } else {
+          final sw = screenSize.width.toInt();
+          final sh = screenSize.height.toInt();
+          final result = img.Image(width: sw, height: sh);
+          final dx = ((sw - imageWidth * scale) / 2 + translation.x / scale).toInt();
+          final dy = ((sh - imageHeight * scale) / 2 + translation.y / scale).toInt();
+          img.compositeImage(result, originalImage, dstX: dx, dstY: dy);
+          processImage = result;
+        }
       } else {
-        croppedFile = _downloadedImage!;
+        processImage = originalImage;
+      }
+
+      final dir = await getTemporaryDirectory();
+      croppedFile = File(
+        "${dir.path}/wallpaper_cropped_${DateTime.now().millisecondsSinceEpoch}.jpg",
+      );
+      await croppedFile.writeAsBytes(img.encodeJpg(processImage, quality: 100));
+
+      final noFacesEnabled = await UserSharedPrefs.getConstraintNoFaces();
+      if (noFacesEnabled) {
+        const channel = MethodChannel('wallpaper_channel');
+        final hasFace = await channel.invokeMethod<bool>(
+          'checkImageHasFace',
+          {'filePath': croppedFile.path},
+        );
+        if (hasFace == true) {
+          if (mounted) {
+            showSnackBar(
+              context: context,
+              message: "Face detected — this wallpaper cannot be used with the 'No Faces' constraint enabled",
+              color: Colors.red,
+            );
+          }
+          setState(() => _isProcessing = false);
+          return;
+        }
       }
 
       await WallpaperManagerFlutter().setWallpaper(
@@ -325,6 +358,32 @@ class _WallpaperPreviewPageState extends ConsumerState<WallpaperPreviewPage>
         return "Both Screens";
       default:
         return "Wallpaper";
+    }
+  }
+
+  Future<void> _downloadWallpaper() async {
+    try {
+      final response = await http.get(Uri.parse(_currentWallpaper.url));
+      final dir = await getDownloadsDirectory();
+      if (dir == null) {
+        if (mounted) showSnackBar(context: context, message: "Could not access downloads folder", color: Colors.red);
+        return;
+      }
+      final file = File(
+        "${dir.path}/wallify_${DateTime.now().millisecondsSinceEpoch}.jpg",
+      );
+      await file.writeAsBytes(response.bodyBytes);
+      if (mounted) {
+        showSnackBar(
+          context: context,
+          message: "Saved to Downloads folder",
+          color: Colors.green,
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        showSnackBar(context: context, message: "Download failed: $e", color: Colors.red);
+      }
     }
   }
 
@@ -533,23 +592,17 @@ class _WallpaperPreviewPageState extends ConsumerState<WallpaperPreviewPage>
       body: Stack(
         children: [
           if (_isCropMode && _downloadedImage != null)
-            Positioned.fill(
+            Center(
               child: InteractiveViewer(
                 key: _imageKey,
                 transformationController: _transformationController,
-                minScale: 1.0,
+                minScale: 0.3,
                 maxScale: 4.0,
                 boundaryMargin: EdgeInsets.zero,
                 constrained: false,
                 child: Image.file(
                   _downloadedImage!,
-                  fit: BoxFit.cover,
-                  width: MediaQuery.of(context).size.width,
-                  height: MediaQuery.of(context).size.height,
-                  cacheWidth:
-                      MediaQuery.of(context).size.width.toInt() * 2,
-                  cacheHeight:
-                      MediaQuery.of(context).size.height.toInt() * 2,
+                  fit: BoxFit.none,
                   filterQuality: FilterQuality.medium,
                 ),
               ),
@@ -614,7 +667,7 @@ class _WallpaperPreviewPageState extends ConsumerState<WallpaperPreviewPage>
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: const Text(
-                  "Drag to position • Pinch to zoom",
+                  "Pinch to zoom in/out • Drag to position",
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     color: Colors.white,
@@ -644,6 +697,15 @@ class _WallpaperPreviewPageState extends ConsumerState<WallpaperPreviewPage>
                         Icons.info,
                         color: colorScheme.onSurface,
                       ),
+                    ),
+                    const SizedBox(height: 12),
+                    FloatingActionButton(
+                      heroTag: "download_btn",
+                      backgroundColor: colorScheme.surfaceContainerHighest
+                          .withValues(alpha: 0.8),
+                      foregroundColor: colorScheme.onSurface,
+                      onPressed: () => _downloadWallpaper(),
+                      child: const Icon(Icons.download),
                     ),
                     const SizedBox(height: 12),
                     FloatingActionButton(

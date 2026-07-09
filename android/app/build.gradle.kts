@@ -62,6 +62,10 @@ android {
         getByName("release") {
             isMinifyEnabled = true
             isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
             signingConfig = signingConfigs.findByName("release")
         }
         debug {
@@ -79,10 +83,8 @@ kotlin {
 
 dependencies {
     implementation("androidx.work:work-runtime-ktx:2.9.0")
-    implementation("com.google.mlkit:object-detection:17.0.2")
-    implementation("com.google.mlkit:object-detection-custom:17.0.2")
-    implementation("com.google.mlkit:face-detection:16.1.6")
     implementation("androidx.palette:palette-ktx:1.0.0")
+    implementation("com.google.mediapipe:tasks-vision:0.10.18")
 }
 
 flutter {
