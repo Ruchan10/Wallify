@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wallify/core/user_shared_prefs.dart';
@@ -37,7 +38,25 @@ class SettingsBackup {
     final jsonString = const JsonEncoder.withIndent('  ').convert(data);
 
     final timestamp = DateTime.now().millisecondsSinceEpoch;
-    final fileName = "wallify_settings_backup_$timestamp.json";
+    final fileName = "WallifyBackup.json";
+
+    final appDir = await getTemporaryDirectory();
+    final tempFile = File("${appDir.path}/$fileName");
+    await tempFile.writeAsString(jsonString, flush: true);
+
+    try {
+      const channel = MethodChannel('wallpaper_channel');
+      final result = await channel.invokeMethod<String>(
+        'saveToDownloads',
+        {'filePath': tempFile.path, 'fileName': fileName},
+      );
+      if (result != null) {
+        await tempFile.delete();
+        return File(result);
+      }
+    } catch (_) {
+      // Fall back to legacy methods
+    }
 
     final downloadDir = await getDownloadsDirectory();
     if (downloadDir != null) {
@@ -57,8 +76,8 @@ class SettingsBackup {
       return file;
     }
 
-    final appDir = await getApplicationDocumentsDirectory();
-    final file = File("${appDir.path}/$fileName");
+    final docDir = await getApplicationDocumentsDirectory();
+    final file = File("${docDir.path}/$fileName");
     await file.writeAsString(jsonString, flush: true);
     return file;
   }

@@ -29,36 +29,52 @@ object WallpaperUtils {
 
     private var cachedObjectDetector: ObjectDetector? = null
     private var cachedFaceDetector: FaceDetector? = null
+    private var objectDetectorFailed = false
+    private var faceDetectorFailed = false
 
-    private fun getObjectDetector(context: Context): ObjectDetector {
+    private fun getObjectDetector(context: Context): ObjectDetector? {
+        if (objectDetectorFailed) return null
         if (cachedObjectDetector == null) {
-            val baseOptions = BaseOptions.builder()
-                .setModelAssetPath("efficientdet_lite0.tflite")
-                .build()
-            val options = ObjectDetectorOptions.builder()
-                .setBaseOptions(baseOptions)
-                .setMaxResults(1)
-                .setScoreThreshold(0.5f)
-                .setRunningMode(RunningMode.IMAGE)
-                .build()
-            cachedObjectDetector = ObjectDetector.createFromOptions(context, options)
+            try {
+                val baseOptions = BaseOptions.builder()
+                    .setModelAssetPath("efficientdet_lite0.tflite")
+                    .build()
+                val options = ObjectDetectorOptions.builder()
+                    .setBaseOptions(baseOptions)
+                    .setMaxResults(1)
+                    .setScoreThreshold(0.5f)
+                    .setRunningMode(RunningMode.IMAGE)
+                    .build()
+                cachedObjectDetector = ObjectDetector.createFromOptions(context, options)
+            } catch (e: Throwable) {
+                Log.w("Wallify", "Object detector not available: ${e.message}")
+                objectDetectorFailed = true
+                return null
+            }
         }
-        return cachedObjectDetector!!
+        return cachedObjectDetector
     }
 
-    private fun getFaceDetector(context: Context): FaceDetector {
+    private fun getFaceDetector(context: Context): FaceDetector? {
+        if (faceDetectorFailed) return null
         if (cachedFaceDetector == null) {
-            val baseOptions = BaseOptions.builder()
-                .setModelAssetPath("blaze_face_short_range.tflite")
-                .build()
-            val options = FaceDetectorOptions.builder()
-                .setBaseOptions(baseOptions)
-                .setMinDetectionConfidence(0.5f)
-                .setRunningMode(RunningMode.IMAGE)
-                .build()
-            cachedFaceDetector = FaceDetector.createFromOptions(context, options)
+            try {
+                val baseOptions = BaseOptions.builder()
+                    .setModelAssetPath("blaze_face_short_range.tflite")
+                    .build()
+                val options = FaceDetectorOptions.builder()
+                    .setBaseOptions(baseOptions)
+                    .setMinDetectionConfidence(0.5f)
+                    .setRunningMode(RunningMode.IMAGE)
+                    .build()
+                cachedFaceDetector = FaceDetector.createFromOptions(context, options)
+            } catch (e: Throwable) {
+                Log.w("Wallify", "Face detector not available: ${e.message}")
+                faceDetectorFailed = true
+                return null
+            }
         }
-        return cachedFaceDetector!!
+        return cachedFaceDetector
     }
 
     fun downloadAndSetWallpaperBackground(context: Context) {
@@ -205,12 +221,14 @@ object WallpaperUtils {
             Log.d("Wallify", "Wallpaper change completed (mode=$wallpaperLocation, source=$wallpaperSource)")
         } catch (e: Exception) {
             Log.e("Wallify", "Error setting wallpaper in background", e)
+        } catch (e: Error) {
+            Log.e("Wallify", "Fatal error setting wallpaper in background: ${e.message}", e)
         }
     }
 
     internal fun imageHasFace(context: Context, bitmap: Bitmap): Boolean {
+        val detector = getFaceDetector(context) ?: return false
         return try {
-            val detector = getFaceDetector(context)
             val mpImage = BitmapImageBuilder(bitmap).build()
             val results = detector.detect(mpImage)
             val hasFace = results.detections().isNotEmpty()
@@ -584,8 +602,12 @@ object WallpaperUtils {
         targetWidth: Int,
         targetHeight: Int
     ): Bitmap {
+        val detector = getObjectDetector(context)
+        if (detector == null) {
+            Log.d("Wallify", "Object detector unavailable, center-cropping.")
+            return centerCropToAspect(bitmap, targetWidth, targetHeight)
+        }
         return try {
-            val detector = getObjectDetector(context)
             val mpImage = BitmapImageBuilder(bitmap).build()
             val results = detector.detect(mpImage)
 
@@ -637,6 +659,9 @@ object WallpaperUtils {
             resultBitmap
         } catch (e: Exception) {
             Log.e("Wallify", "Error during object detection: $e")
+            centerCropToAspect(bitmap, targetWidth, targetHeight)
+        } catch (e: Error) {
+            Log.e("Wallify", "Native library error during object detection: ${e.message}", e)
             centerCropToAspect(bitmap, targetWidth, targetHeight)
         }
     }

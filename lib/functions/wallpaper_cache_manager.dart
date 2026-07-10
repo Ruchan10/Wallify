@@ -37,7 +37,8 @@ class WallpaperCacheManager {
 
   static Future<void> cacheWallpapers(List<Wallpaper> wallpapers) async {
     final paths = <String>[];
-    for (final w in wallpapers) {
+    final snapshot = wallpapers.toList();
+    for (final w in snapshot) {
       final path = await downloadAndCache(w);
       if (path != null) paths.add(path);
       if (paths.length >= _maxCached) break;

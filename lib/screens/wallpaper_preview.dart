@@ -224,70 +224,71 @@ class _WallpaperPreviewPageState extends ConsumerState<WallpaperPreviewPage>
     });
   }
 
+  Future<img.Image?> _processImage() async {
+    if (_downloadedImage == null) return null;
+    final matrix = _transformationController.value;
+    final screenSize = MediaQuery.of(context).size;
+    final imageBytes = await _downloadedImage!.readAsBytes();
+    final originalImage = img.decodeImage(imageBytes);
+    if (originalImage == null) return null;
+
+    if (matrix == Matrix4.identity()) return originalImage;
+
+    final imageWidth = originalImage.width.toDouble();
+    final imageHeight = originalImage.height.toDouble();
+    final scale = matrix.getMaxScaleOnAxis();
+    final translation = matrix.getTranslation();
+
+    if (scale >= 1.0) {
+      final visibleWidth = screenSize.width / scale;
+      final visibleHeight = screenSize.height / scale;
+      final offsetX =
+          (-translation.x / scale).clamp(0.0, imageWidth - visibleWidth);
+      final offsetY =
+          (-translation.y / scale).clamp(0.0, imageHeight - visibleHeight);
+      return img.copyCrop(
+        originalImage,
+        x: offsetX.toInt(),
+        y: offsetY.toInt(),
+        width: visibleWidth.toInt().clamp(1, originalImage.width),
+        height: visibleHeight.toInt().clamp(1, originalImage.height),
+      );
+    } else {
+      final sw = screenSize.width.toInt();
+      final sh = screenSize.height.toInt();
+      final result = img.Image(width: sw, height: sh);
+      final displayWidth = (imageWidth * scale).toInt().clamp(1, originalImage.width);
+      final displayHeight = (imageHeight * scale).toInt().clamp(1, originalImage.height);
+      final scaledImage = img.copyResize(originalImage,
+        width: displayWidth,
+        height: displayHeight,
+      );
+      final dx = translation.x.toInt();
+      final dy = translation.y.toInt();
+      img.compositeImage(result, scaledImage, dstX: dx, dstY: dy);
+      return result;
+    }
+  }
+
+  Future<File> _saveProcessedToTemp(img.Image processImage) async {
+    final dir = await getTemporaryDirectory();
+    final file = File(
+      "${dir.path}/wallpaper_cropped_${DateTime.now().millisecondsSinceEpoch}.jpg",
+    );
+    await file.writeAsBytes(img.encodeJpg(processImage, quality: 100));
+    return file;
+  }
+
   Future<void> _setWallpaper() async {
     if (_downloadedImage == null || _selectedLocation == null) return;
 
     setState(() => _isProcessing = true);
 
     try {
-      final matrix = _transformationController.value;
+      final processImage = await _processImage();
+      if (processImage == null) throw Exception("Failed to process image");
 
-      final screenSize = MediaQuery.of(context).size;
-
-      final imageBytes = await _downloadedImage!.readAsBytes();
-      final originalImage = img.decodeImage(imageBytes);
-
-      if (originalImage == null) {
-        throw Exception("Failed to decode image");
-      }
-
-      File croppedFile;
-
-      img.Image processImage;
-      if (matrix != Matrix4.identity()) {
-        final imageWidth = originalImage.width.toDouble();
-        final imageHeight = originalImage.height.toDouble();
-        final scale = matrix.getMaxScaleOnAxis();
-        final translation = matrix.getTranslation();
-
-        if (scale >= 1.0) {
-          final visibleWidth = screenSize.width / scale;
-          final visibleHeight = screenSize.height / scale;
-          final offsetX =
-              (-translation.x / scale).clamp(0.0, imageWidth - visibleWidth);
-          final offsetY =
-              (-translation.y / scale).clamp(0.0, imageHeight - visibleHeight);
-          processImage = img.copyCrop(
-            originalImage,
-            x: offsetX.toInt(),
-            y: offsetY.toInt(),
-            width: visibleWidth.toInt().clamp(1, originalImage.width),
-            height: visibleHeight.toInt().clamp(1, originalImage.height),
-          );
-        } else {
-          final sw = screenSize.width.toInt();
-          final sh = screenSize.height.toInt();
-          final result = img.Image(width: sw, height: sh);
-          final displayWidth = (imageWidth * scale).toInt().clamp(1, originalImage.width);
-          final displayHeight = (imageHeight * scale).toInt().clamp(1, originalImage.height);
-          final scaledImage = img.copyResize(originalImage,
-            width: displayWidth,
-            height: displayHeight,
-          );
-          final dx = translation.x.toInt();
-          final dy = translation.y.toInt();
-          img.compositeImage(result, scaledImage, dstX: dx, dstY: dy);
-          processImage = result;
-        }
-      } else {
-        processImage = originalImage;
-      }
-
-      final dir = await getTemporaryDirectory();
-      croppedFile = File(
-        "${dir.path}/wallpaper_cropped_${DateTime.now().millisecondsSinceEpoch}.jpg",
-      );
-      await croppedFile.writeAsBytes(img.encodeJpg(processImage, quality: 100));
+      final croppedFile = await _saveProcessedToTemp(processImage);
 
       final noFacesEnabled = await UserSharedPrefs.getConstraintNoFaces();
       if (noFacesEnabled) {
@@ -367,25 +368,65 @@ class _WallpaperPreviewPageState extends ConsumerState<WallpaperPreviewPage>
     }
   }
 
-  Future<void> _downloadWallpaper() async {
+  Future<void> _saveFileToWallifyFolder(String tempPath, String fileName) async {
     try {
-      final response = await http.get(Uri.parse(_currentWallpaper.url));
-      final dir = await getDownloadsDirectory();
-      if (dir == null) {
-        if (mounted) showSnackBar(context: context, message: "Could not access downloads folder", color: Colors.red);
-        return;
-      }
-      final file = File(
-        "${dir.path}/wallify_${DateTime.now().millisecondsSinceEpoch}.jpg",
+      const channel = MethodChannel('wallpaper_channel');
+      final result = await channel.invokeMethod<String>(
+        'saveToDownloads',
+        {
+          'filePath': tempPath,
+          'fileName': fileName,
+          'subdirectory': 'Wallify',
+        },
       );
-      await file.writeAsBytes(response.bodyBytes);
+      if (result != null) {
+        if (mounted) {
+          showSnackBar(
+            context: context,
+            message: "Saved to Downloads/Wallify/",
+            color: Colors.green,
+          );
+        }
+        File(tempPath).delete();
+      } else {
+        throw Exception("Save returned null");
+      }
+    } catch (e) {
       if (mounted) {
         showSnackBar(
           context: context,
-          message: "Saved to Downloads folder",
-          color: Colors.green,
+          message: "Failed to save: $e",
+          color: Colors.red,
         );
       }
+    }
+  }
+
+  Future<void> _downloadCroppedWallpaper() async {
+    setState(() => _isProcessing = true);
+    try {
+      final processImage = await _processImage();
+      if (processImage == null) throw Exception("Failed to process image");
+      final tempFile = await _saveProcessedToTemp(processImage);
+      final fileName = "Wallify_Cropped_${DateTime.now().millisecondsSinceEpoch}.jpg";
+      await _saveFileToWallifyFolder(tempFile.path, fileName);
+    } catch (e) {
+      if (mounted) {
+        showSnackBar(context: context, message: "Download failed: $e", color: Colors.red);
+      }
+    } finally {
+      if (mounted) setState(() => _isProcessing = false);
+    }
+  }
+
+  Future<void> _downloadWallpaper() async {
+    try {
+      final response = await http.get(Uri.parse(_currentWallpaper.url));
+      final dir = await getTemporaryDirectory();
+      final fileName = "Wallify_${DateTime.now().millisecondsSinceEpoch}.jpg";
+      final tempFile = File("${dir.path}/$fileName");
+      await tempFile.writeAsBytes(response.bodyBytes);
+      await _saveFileToWallifyFolder(tempFile.path, fileName);
     } catch (e) {
       if (mounted) {
         showSnackBar(context: context, message: "Download failed: $e", color: Colors.red);
@@ -762,25 +803,50 @@ class _WallpaperPreviewPageState extends ConsumerState<WallpaperPreviewPage>
           if (_isCropMode)
             Positioned(
               bottom: 24,
-              right: 24,
-              child: FloatingActionButton.extended(
-                onPressed: _isProcessing ? null : _setWallpaper,
-                backgroundColor: _isProcessing
-                    ? colorScheme.primary.withValues(alpha: 0.5)
-                    : colorScheme.primary,
-                foregroundColor: colorScheme.onPrimary,
-                elevation: 8,
-                icon: _isProcessing
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
-                    : const Icon(Icons.wallpaper),
-                label: Text(_isProcessing ? "Setting..." : "Set Wallpaper"),
+              left: 0,
+              right: 0,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  FloatingActionButton(
+                    heroTag: "crop_download",
+                    onPressed: _isProcessing ? null : _downloadCroppedWallpaper,
+                    backgroundColor: colorScheme.surfaceContainerHighest
+                        .withValues(alpha: 0.8),
+                    foregroundColor: colorScheme.onSurface,
+                    elevation: 8,
+                    child: _isProcessing
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Icon(Icons.download),
+                  ),
+                  const SizedBox(width: 16),
+                  FloatingActionButton.extended(
+                    onPressed: _isProcessing ? null : _setWallpaper,
+                    backgroundColor: _isProcessing
+                        ? colorScheme.primary.withValues(alpha: 0.5)
+                        : colorScheme.primary,
+                    foregroundColor: colorScheme.onPrimary,
+                    elevation: 8,
+                    icon: _isProcessing
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Icon(Icons.wallpaper),
+                    label: Text(_isProcessing ? "Setting..." : "Set Wallpaper"),
+                  ),
+                ],
               ),
             ),
         ],

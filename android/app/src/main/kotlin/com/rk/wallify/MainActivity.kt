@@ -13,6 +13,10 @@ import java.net.URL
 import java.net.HttpURLConnection
 import android.graphics.Bitmap
 import android.content.Context
+import android.content.ContentValues
+import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
 import androidx.work.*
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
@@ -97,6 +101,21 @@ class MainActivity : FlutterActivity() {
                         }
                     } else {
                         result.success(false)
+                    }
+                }
+                "saveToDownloads" -> {
+                    val filePath: String? = call.argument<String>("filePath")
+                    val fileName: String? = call.argument<String>("fileName")
+                    val subDir: String? = call.argument<String>("subdirectory")
+                    if (filePath != null && fileName != null) {
+                        val savedUri = saveToPublicDownloads(filePath, fileName, subDir)
+                        if (savedUri != null) {
+                            result.success(savedUri)
+                        } else {
+                            result.error("SAVE_FAILED", "Could not save to public Downloads folder", null)
+                        }
+                    } else {
+                        result.error("INVALID_ARGS", "filePath and fileName are required", null)
                     }
                 }
                 else -> {
@@ -301,7 +320,52 @@ class MainActivity : FlutterActivity() {
         return urls
     }
 
+    private fun saveToPublicDownloads(filePath: String, fileName: String, subdirectory: String? = null): String? {
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val contentValues = ContentValues().apply {
+                    put(MediaStore.Downloads.DISPLAY_NAME, fileName)
+                    put(MediaStore.Downloads.MIME_TYPE, getMimeType(fileName))
+                    put(MediaStore.Downloads.IS_PENDING, 1)
+                    if (subdirectory != null) {
+                        put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/$subdirectory")
+                    }
+                }
+                val uri = contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues)
+                if (uri != null) {
+                    contentResolver.openOutputStream(uri)?.use { output ->
+                        java.io.File(filePath).inputStream().use { input ->
+                            input.copyTo(output)
+                        }
+                    }
+                    contentValues.clear()
+                    contentValues.put(MediaStore.Downloads.IS_PENDING, 0)
+                    contentResolver.update(uri, contentValues, null, null)
+                    uri.toString()
+                } else null
+            } else {
+                val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                val targetDir = if (subdirectory != null) java.io.File(downloadsDir, subdirectory) else downloadsDir
+                targetDir.mkdirs()
+                val destFile = java.io.File(targetDir, fileName)
+                java.io.File(filePath).copyTo(destFile, overwrite = true)
+                destFile.absolutePath
+            }
+        } catch (e: Exception) {
+            Log.e("Wallify", "Failed to save to public Downloads: ${e.message}", e)
+            null
+        }
+    }
 
+    private fun getMimeType(fileName: String): String {
+        return when {
+            fileName.endsWith(".jpg") || fileName.endsWith(".jpeg") -> "image/jpeg"
+            fileName.endsWith(".png") -> "image/png"
+            fileName.endsWith(".json") -> "application/json"
+            fileName.endsWith(".webp") -> "image/webp"
+            else -> "application/octet-stream"
+        }
+    }
 
 fun downloadAndSetWallpaper(imageUrl: String, wallpaperLocation: Int, result: MethodChannel.Result) {
     Thread {
