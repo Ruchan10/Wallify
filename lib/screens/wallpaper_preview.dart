@@ -268,9 +268,15 @@ class _WallpaperPreviewPageState extends ConsumerState<WallpaperPreviewPage>
           final sw = screenSize.width.toInt();
           final sh = screenSize.height.toInt();
           final result = img.Image(width: sw, height: sh);
-          final dx = ((sw - imageWidth * scale) / 2 + translation.x / scale).toInt();
-          final dy = ((sh - imageHeight * scale) / 2 + translation.y / scale).toInt();
-          img.compositeImage(result, originalImage, dstX: dx, dstY: dy);
+          final displayWidth = (imageWidth * scale).toInt().clamp(1, originalImage.width);
+          final displayHeight = (imageHeight * scale).toInt().clamp(1, originalImage.height);
+          final scaledImage = img.copyResize(originalImage,
+            width: displayWidth,
+            height: displayHeight,
+          );
+          final dx = translation.x.toInt();
+          final dy = translation.y.toInt();
+          img.compositeImage(result, scaledImage, dstX: dx, dstY: dy);
           processImage = result;
         }
       } else {
@@ -598,7 +604,7 @@ class _WallpaperPreviewPageState extends ConsumerState<WallpaperPreviewPage>
                 transformationController: _transformationController,
                 minScale: 0.3,
                 maxScale: 4.0,
-                boundaryMargin: EdgeInsets.zero,
+                boundaryMargin: const EdgeInsets.all(double.infinity),
                 constrained: false,
                 child: Image.file(
                   _downloadedImage!,
