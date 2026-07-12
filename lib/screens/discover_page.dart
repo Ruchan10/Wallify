@@ -216,12 +216,13 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
     }
 
     Future<List<Wallpaper>> _fetchPixabay() async {
+      final pixabayQuery = query != null && query!.length > 99 ? query!.substring(0, 99) : query;
       final res = await http
           .get(
             Uri.parse(
               "https://pixabay.com/api/"
               "?key=52028006-a7e910370a5d0158c371bb06a"
-              "${query == null ? "" : "&q=$query"}"
+              "${pixabayQuery == null ? "" : "&q=$pixabayQuery"}"
               "&image_type=photo"
               "${_selectedPurity == null ? "" : "&safesearch=${_selectedPurity == "NSFW" ? "false" : "true"}"}"
               "${_selectedSorting == null ? "&order=popular" : "&order=${_selectedSorting == "dater_added" ? "latest" : "popular"}"}"
@@ -661,7 +662,7 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
                           }
 
                           final img = _images[index];
-                          final isFav = favorites.contains(img);
+                          final isFav = favorites.contains(img.url);
 
                           return RepaintBoundary(
                             child: ImageTile(

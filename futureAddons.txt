@@ -1,3 +1,4 @@
+- if a tag is empty in all sources display a red border check this while adding 
 - in home page add a button for your wallpapers then filter with added tags(only display this btn if tags is set)
 - wallpaper view should have black spaces in top bottom left and right 
 - wallpapers for you button in discover page when clicked should filter through the tags(if available) with other user and device preferences

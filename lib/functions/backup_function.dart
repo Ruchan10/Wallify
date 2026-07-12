@@ -20,7 +20,7 @@ class SettingsBackup {
       "wallpaperHistory": prefs.getString("wallpaperHistory") ?? "[]",
       "autoWallpaperEnabled": await UserSharedPrefs.getAutoWallpaperEnabled(),
       "lastWallpaperChange": prefs.getString("lastWallpaperChange"),
-      "interval": await UserSharedPrefs.getInterval(),
+      "wallpaper_interval": await UserSharedPrefs.getInterval(),
       "favWallpapers": favWallpapers.map((w) => jsonEncode(w.toJson())).toList(),
       "imageUrls": imageWallpapers.map((w) => jsonEncode(w.toJson())).toList(),
       "errorReportingEnabled": await UserSharedPrefs.getErrorReportingEnabled(),

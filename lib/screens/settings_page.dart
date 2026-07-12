@@ -606,7 +606,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
                       const SizedBox(width: 6),
                       Expanded(
                         child: Text(
-                          "Next change approx. after ${DateFormat("MMM d, h:mm a").format(lastChange ?? DateTime.now().add(Duration(minutes: _intervalMinutes)))} when device meets constraints",
+                          "Next change approx. after ${DateFormat("MMM d, h:mm a").format((lastChange ?? DateTime.now()).add(Duration(minutes: _intervalMinutes)))} when device meets constraints",
                           style: TextStyle(
                             fontSize: 13,
                             color: scheme.onSurfaceVariant,
