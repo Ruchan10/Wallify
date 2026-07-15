@@ -397,6 +397,19 @@ class UserSharedPrefs {
     await prefs.remove(_cachedWallpaperPathsKey);
   }
 
+  /// ---- INVALID TAGS ----
+  static const _invalidTagsKey = "invalidTags";
+
+  static Future<Set<String>> getInvalidTags() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getStringList(_invalidTagsKey)?.toSet() ?? {};
+  }
+
+  static Future<void> saveInvalidTags(Set<String> tags) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(_invalidTagsKey, tags.toList());
+  }
+
   /// ---- DISCOVER FILTERS ----
   static const _keyFilterSorting = "discover_filter_sorting";
   static const _keyFilterPurity = "discover_filter_purity";

@@ -8,10 +8,10 @@ on:
 
 env:
   APK_NAME: "Wallify"
-  APP_VERSION: "1.3.8"
+  APP_VERSION: "1.3.9"
   CHANGES: |
-    - Your wallpaper button fixed
-    - Discover page fav icon not changing fixed 
+    - Tags check if available
+    - Many minor improvements
 
 jobs:
   build:

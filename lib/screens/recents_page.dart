@@ -71,8 +71,11 @@ class _HistoryPageState extends State<HistoryPage> {
       body: _isLoading
           ? Padding(
               padding: const EdgeInsets.all(8.0),
-              child: MasonryGridView.count(
-                crossAxisCount: 2,
+              child: MasonryGridView.builder(
+                gridDelegate:
+                    SliverSimpleGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 2,
+                ),
                 mainAxisSpacing: 8,
                 crossAxisSpacing: 8,
                 itemCount: 6,
@@ -119,8 +122,11 @@ class _HistoryPageState extends State<HistoryPage> {
                   onRefresh: _refresh,
                   child: Padding(
                     padding: const EdgeInsets.all(8.0),
-                    child: MasonryGridView.count(
-                      crossAxisCount: 2,
+                    child: MasonryGridView.builder(
+                      gridDelegate:
+                          SliverSimpleGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 2,
+                      ),
                       mainAxisSpacing: 8,
                       crossAxisSpacing: 8,
                       itemCount: _historyWalls.length,
@@ -168,6 +174,8 @@ class _HistoryPageState extends State<HistoryPage> {
                                     key: ValueKey(wallpaper.url),
                                     imageUrl: wallpaper.url,
                                     fit: BoxFit.cover,
+                                    memCacheWidth: 400,
+                                    memCacheHeight: 600,
                                     placeholder: (context, url) =>
                                         ShimmerLoading(
                                       height: 200,

@@ -29,13 +29,13 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
   final ScrollController _scrollController = ScrollController();
 
   String? _lastQuery;
-  final Set<String> favorites = {};
+  final ValueNotifier<Set<String>> _favoritesNotifier = ValueNotifier({});
+  final ValueNotifier<bool> _showTopBarNotifier = ValueNotifier(true);
   String? _selectedSorting;
   String? _selectedPurity;
   String? _selectedOrientation;
   String? _selectedCategory;
   String _selectedRange = "1M";
-  bool _showTopBar = true;
   double _lastOffset = 0;
   List<String> _userTags = [];
   bool _tagFilterActive = false;
@@ -61,9 +61,7 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
 
   void initialize() async {
     UserSharedPrefs.getFavWallpapers().then((value) {
-      setState(() {
-        favorites.addAll(value.map((e) => e.url));
-      });
+      _favoritesNotifier.value = {...value.map((e) => e.url)};
     });
     UserSharedPrefs.getTags().then((tags) {
       setState(() => _userTags = tags);
@@ -74,13 +72,11 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
     final category = await UserSharedPrefs.getFilterCategory();
     final range = await UserSharedPrefs.getFilterRange();
     if (mounted) {
-      setState(() {
-        _selectedSorting = sorting;
-        _selectedPurity = purity;
-        _selectedOrientation = orientation;
-        _selectedCategory = category;
-        if (range != null) _selectedRange = range;
-      });
+      _selectedSorting = sorting;
+      _selectedPurity = purity;
+      _selectedOrientation = orientation;
+      _selectedCategory = category;
+      if (range != null) _selectedRange = range;
     }
   }
 
@@ -89,11 +85,11 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
 
     final offset = _scrollController.position.pixels;
 
-    if (offset > _lastOffset && _showTopBar && offset > 50) {
-      setState(() => _showTopBar = false);
+    if (offset > _lastOffset && _showTopBarNotifier.value && offset > 50) {
+      _showTopBarNotifier.value = false;
       _searchFocus.unfocus();
-    } else if (offset < _lastOffset && !_showTopBar) {
-      setState(() => _showTopBar = true);
+    } else if (offset < _lastOffset && !_showTopBarNotifier.value) {
+      _showTopBarNotifier.value = true;
     }
 
     _lastOffset = offset;
@@ -117,6 +113,8 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
     _scrollController.dispose();
     _searchController.dispose();
     _searchFocus.dispose();
+    _favoritesNotifier.dispose();
+    _showTopBarNotifier.dispose();
     super.dispose();
   }
 
@@ -341,6 +339,7 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
                             _selectedRange = "1M";
                           });
                           Navigator.pop(context);
+                          count = 1;
                           _fetchImages(isSearch: true);
                         },
                         child: const Text("Reset"),
@@ -402,6 +401,7 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
                         UserSharedPrefs.setFilterCategory(_selectedCategory);
                         UserSharedPrefs.setFilterRange(_selectedRange);
                         Navigator.pop(context);
+                        count = 1;
                         _fetchImages(
                           query: _searchController.text.isNotEmpty
                               ? _searchController.text
@@ -485,55 +485,59 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
         padding: const EdgeInsets.all(16.0),
         child: Column(
           children: [
-            ClipRect(
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 350),
-                curve: Curves.easeInOutCubic,
-                height: _showTopBar ? 120 : 0,
-                child: Column(
-                  children: [
-                    SizedBox(
-                      height: 48,
-                      child: TextField(
-                        controller: _searchController,
-                        focusNode: _searchFocus,
-                        decoration: InputDecoration(
-                          hintText: "Search wallpapers...",
-                          prefixIcon: const Icon(Icons.search),
-                          suffixIcon: _searchController.text.isNotEmpty
-                              ? IconButton(
-                                  icon: const Icon(Icons.clear),
-                                  onPressed: () {
-                                    setState(() {
-                                      _searchController.clear();
-                                      _lastQuery = null;
-                                      _images.clear();
-                                      _tagFilterActive = false;
-                                    });
-                                    _fetchImages();
-                                  },
-                                )
-                              : null,
-                          filled: true,
-                          fillColor: colorScheme.surfaceContainerHighest
-                              .withValues(alpha: 0.5),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(16),
-                            borderSide: BorderSide.none,
+            ValueListenableBuilder<bool>(
+              valueListenable: _showTopBarNotifier,
+              builder: (context, showTopBar, child) {
+                return AnimatedContainer(
+                  duration: const Duration(milliseconds: 350),
+                  curve: Curves.easeInOutCubic,
+                  height: showTopBar ? 120 : 0,
+                  child: Column(
+                    children: [
+                      SizedBox(
+                        height: 48,
+                        child: TextField(
+                          controller: _searchController,
+                          focusNode: _searchFocus,
+                          decoration: InputDecoration(
+                            hintText: "Search wallpapers...",
+                            prefixIcon: const Icon(Icons.search),
+                            suffixIcon: ValueListenableBuilder<TextEditingValue>(
+                              valueListenable: _searchController,
+                              builder: (context, value, child) {
+                                return value.text.isNotEmpty
+                                    ? IconButton(
+                                        icon: const Icon(Icons.clear),
+                                        onPressed: () {
+                                          _searchController.clear();
+                                          _lastQuery = null;
+                                          _images.clear();
+                                          _tagFilterActive = false;
+                                          _fetchImages();
+                                        },
+                                      )
+                                    : const SizedBox.shrink();
+                              },
+                            ),
+                            filled: true,
+                            fillColor: colorScheme.surfaceContainerHighest
+                                .withValues(alpha: 0.5),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(16),
+                              borderSide: BorderSide.none,
+                            ),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                            ),
                           ),
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                          ),
+                          onSubmitted: (value) {
+                            if (value.isNotEmpty) {
+                              setState(() => _tagFilterActive = false);
+                              _fetchImages(query: value.trim(), isSearch: true);
+                            }
+                          },
                         ),
-                        onSubmitted: (value) {
-                          if (value.isNotEmpty) {
-                            setState(() => _tagFilterActive = false);
-                            _fetchImages(query: value.trim(), isSearch: true);
-                          }
-                        },
-                        onChanged: (_) => setState(() {}),
                       ),
-                    ),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
@@ -596,8 +600,9 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
                     ),
                   ],
                 ),
-              ),
-            ),
+              );
+            },
+          ),
 
             if (_lastQuery != null)
               Padding(
@@ -662,7 +667,7 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
                           }
 
                           final img = _images[index];
-                          final isFav = favorites.contains(img.url);
+                          final isFav = _favoritesNotifier.value.contains(img.url);
 
                           return RepaintBoundary(
                             child: ImageTile(
@@ -671,15 +676,15 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
                               allWallpapers: _images,
                               index: index,
                               onFavToggle: () {
-                                setState(() {
-                                  if (isFav) {
-                                    favorites.remove(img.url);
-                                    UserSharedPrefs.removeFavWallpaper(img);
-                                  } else {
-                                    favorites.add(img.url);
-                                    UserSharedPrefs.saveFavWallpaper(img);
-                                  }
-                                });
+                                final updated = Set<String>.from(_favoritesNotifier.value);
+                                if (isFav) {
+                                  updated.remove(img.url);
+                                  UserSharedPrefs.removeFavWallpaper(img);
+                                } else {
+                                  updated.add(img.url);
+                                  UserSharedPrefs.saveFavWallpaper(img);
+                                }
+                                _favoritesNotifier.value = updated;
                               },
                             ),
                           );

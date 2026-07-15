@@ -27,6 +27,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
   final TextEditingController _tagController = TextEditingController();
 
   List<String> savedTags = [];
+  Set<String> _invalidTags = {};
   int wallpaperLocation = WallpaperManagerFlutter.bothScreens;
 
   int _intervalMinutes = 60;
@@ -49,6 +50,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
   Future<void> _initialize() async {
     _autoWallpaperEnabled = await UserSharedPrefs.getAutoWallpaperEnabled();
     savedTags = await UserSharedPrefs.getTags();
+    _invalidTags = await UserSharedPrefs.getInvalidTags();
     wallpaperLocation = await UserSharedPrefs.getWallpaperLocation();
     _intervalMinutes = await UserSharedPrefs.getInterval();
     _intervalController.text = _intervalMinutes.toString();
@@ -169,6 +171,11 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
                         if (value.isNotEmpty && !savedTags.contains(value)) {
                           setState(() => savedTags.add(value));
                           UserSharedPrefs.saveTags(savedTags);
+                          final valid = await WallpaperManager.validateTag(value);
+                          if (!valid) {
+                            setState(() => _invalidTags.add(value));
+                            UserSharedPrefs.saveInvalidTags(_invalidTags);
+                          }
                         }
                         _tagController.clear();
                         final fetched = await WallpaperManager.fetchImagesFromAllSources(sources: _wallpaperSources);
@@ -187,8 +194,14 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
                     onPressed: () async {
                       if (_tagController.text.isNotEmpty &&
                           !savedTags.contains(_tagController.text)) {
-                        setState(() => savedTags.add(_tagController.text));
+                        final tag = _tagController.text;
+                        setState(() => savedTags.add(tag));
                         UserSharedPrefs.saveTags(savedTags);
+                        final valid = await WallpaperManager.validateTag(tag);
+                        if (!valid) {
+                          setState(() => _invalidTags.add(tag));
+                          UserSharedPrefs.saveInvalidTags(_invalidTags);
+                        }
                       }
                       _tagController.clear();
                       final fetched = await WallpaperManager.fetchImagesFromAllSources(sources: _wallpaperSources);
@@ -202,16 +215,24 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
               ),
               if (savedTags.isNotEmpty) ...[
                 const SizedBox(height: 12),
-                Wrap(
+                  Wrap(
                   spacing: 6,
                   children: savedTags.map((tag) {
+                    final isInvalid = _invalidTags.contains(tag);
                     return Chip(
                       label: Text(tag),
                       deleteIcon: Icon(Icons.close, color: scheme.onSurfaceVariant),
-                      backgroundColor: scheme.surfaceContainerHighest,
+                      backgroundColor: isInvalid ? Colors.red.withValues(alpha: 0.1) : scheme.surfaceContainerHighest,
+                      shape: isInvalid
+                          ? StadiumBorder(side: BorderSide(color: Colors.red.shade300, width: 2))
+                          : null,
                       onDeleted: () async {
-                        setState(() => savedTags.remove(tag));
+                        setState(() {
+                          savedTags.remove(tag);
+                          _invalidTags.remove(tag);
+                        });
                         UserSharedPrefs.saveTags(savedTags);
+                        UserSharedPrefs.saveInvalidTags(_invalidTags);
                         final fetched = await WallpaperManager.fetchImagesFromAllSources(sources: _wallpaperSources);
                         await UserSharedPrefs.saveWallpapers(fetched);
                         WallpaperCacheManager.cacheWallpapers(fetched);

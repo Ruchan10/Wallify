@@ -14,6 +14,7 @@ class SettingsBackup {
 
     final data = {
       "tags": await UserSharedPrefs.getTags(),
+      "invalidTags": await UserSharedPrefs.getInvalidTags(),
       "wallpaperLocation": await UserSharedPrefs.getWallpaperLocation(),
       "deviceWidth": await UserSharedPrefs.getDeviceWidth(),
       "deviceHeight": await UserSharedPrefs.getDeviceHeight(),

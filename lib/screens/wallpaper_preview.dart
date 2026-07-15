@@ -173,6 +173,8 @@ class _WallpaperPreviewPageState extends ConsumerState<WallpaperPreviewPage>
     );
   }
 
+  File? _cropTempFile;
+
   Future<void> _enterCropMode(int location) async {
     setState(() {
       _selectedLocation = location;
@@ -199,6 +201,7 @@ class _WallpaperPreviewPageState extends ConsumerState<WallpaperPreviewPage>
             "${dir.path}/wallpaper_${DateTime.now().millisecondsSinceEpoch}.jpg",
           );
           await imageFile.writeAsBytes(response.bodyBytes);
+          _cropTempFile = imageFile;
         }
       }
 
@@ -216,6 +219,8 @@ class _WallpaperPreviewPageState extends ConsumerState<WallpaperPreviewPage>
   }
 
   void _exitCropMode() {
+    try { _cropTempFile?.deleteSync(); } catch (_) {}
+    _cropTempFile = null;
     setState(() {
       _isCropMode = false;
       _selectedLocation = null;
@@ -387,7 +392,6 @@ class _WallpaperPreviewPageState extends ConsumerState<WallpaperPreviewPage>
             color: Colors.green,
           );
         }
-        File(tempPath).delete();
       } else {
         throw Exception("Save returned null");
       }
@@ -399,15 +403,18 @@ class _WallpaperPreviewPageState extends ConsumerState<WallpaperPreviewPage>
           color: Colors.red,
         );
       }
+    } finally {
+      try { await File(tempPath).delete(); } catch (_) {}
     }
   }
 
   Future<void> _downloadCroppedWallpaper() async {
     setState(() => _isProcessing = true);
+    File? tempFile;
     try {
       final processImage = await _processImage();
       if (processImage == null) throw Exception("Failed to process image");
-      final tempFile = await _saveProcessedToTemp(processImage);
+      tempFile = await _saveProcessedToTemp(processImage);
       final fileName = "Wallify_Cropped_${DateTime.now().millisecondsSinceEpoch}.jpg";
       await _saveFileToWallifyFolder(tempFile.path, fileName);
     } catch (e) {
@@ -415,22 +422,28 @@ class _WallpaperPreviewPageState extends ConsumerState<WallpaperPreviewPage>
         showSnackBar(context: context, message: "Download failed: $e", color: Colors.red);
       }
     } finally {
+      if (tempFile != null) {
+        try { await tempFile.delete(); } catch (_) {}
+      }
       if (mounted) setState(() => _isProcessing = false);
     }
   }
 
   Future<void> _downloadWallpaper() async {
+    File? tempFile;
     try {
       final response = await http.get(Uri.parse(_currentWallpaper.url));
       final dir = await getTemporaryDirectory();
       final fileName = "Wallify_${DateTime.now().millisecondsSinceEpoch}.jpg";
-      final tempFile = File("${dir.path}/$fileName");
+      tempFile = File("${dir.path}/$fileName");
       await tempFile.writeAsBytes(response.bodyBytes);
       await _saveFileToWallifyFolder(tempFile.path, fileName);
     } catch (e) {
       if (mounted) {
         showSnackBar(context: context, message: "Download failed: $e", color: Colors.red);
       }
+    } finally {
+      try { await tempFile?.delete(); } catch (_) {}
     }
   }
 

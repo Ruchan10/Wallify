@@ -80,4 +80,25 @@ class WallpaperManager {
     }
     return urls;
   }
+
+  static Future<bool> validateTag(String tag) async {
+    try {
+      final res = await http.get(
+        Uri.parse(
+          "https://pixabay.com/api/"
+          "?key=52028006-a7e910370a5d0158c371bb06a"
+          "&q=$tag"
+          "&image_type=photo"
+          "&orientation=vertical"
+          "&safesearch=true",
+        ),
+      );
+      final data = jsonDecode(res.body);
+      final hits = data["hits"];
+      if (hits is List && hits.isNotEmpty) return true;
+    } catch (e) {
+      debugPrint("Tag validation error: $e");
+    }
+    return false;
+  }
 }

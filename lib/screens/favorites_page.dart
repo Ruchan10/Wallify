@@ -47,8 +47,11 @@ class _FavoritesPageState extends State<FavoritesPage> {
       body: _isLoading
           ? Padding(
               padding: const EdgeInsets.all(8.0),
-              child: MasonryGridView.count(
-                crossAxisCount: 2,
+              child: MasonryGridView.builder(
+                gridDelegate:
+                    SliverSimpleGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 2,
+                ),
                 mainAxisSpacing: 8,
                 crossAxisSpacing: 8,
                 itemCount: 6,
@@ -95,8 +98,11 @@ class _FavoritesPageState extends State<FavoritesPage> {
                   onRefresh: _refresh,
                   child: Padding(
                     padding: const EdgeInsets.all(8.0),
-                    child: MasonryGridView.count(
-                      crossAxisCount: 2,
+                    child: MasonryGridView.builder(
+                      gridDelegate:
+                          SliverSimpleGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 2,
+                      ),
                       mainAxisSpacing: 8,
                       crossAxisSpacing: 8,
                       itemCount: _favWalls.length,
@@ -139,6 +145,8 @@ class _FavoritesPageState extends State<FavoritesPage> {
                                     key: ValueKey(wallpaper.url),
                                     imageUrl: wallpaper.url,
                                     fit: BoxFit.cover,
+                                    memCacheWidth: 400,
+                                    memCacheHeight: 600,
                                     placeholder: (context, url) =>
                                         ShimmerLoading(
                                       height: 200,

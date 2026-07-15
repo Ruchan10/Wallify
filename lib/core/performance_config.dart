@@ -1,5 +1,5 @@
 class PerformanceConfig {
-  static const int gridCacheExtent = 1000;
+  static const int gridCacheExtent = 250;
   static const bool addAutomaticKeepAlives = false;
   static const bool addRepaintBoundaries = true;
 
