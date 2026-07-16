@@ -40,12 +40,14 @@ class MyApp extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final themeMode = ref.watch(themeProvider);
     final seedColorAsync = ref.watch(wallpaperThemeProvider);
+    final monetAsync = ref.watch(monetThemeProvider);
 
+    final useMonet = monetAsync.whenOrNull(data: (v) => v) ?? false;
     final seedColor = seedColorAsync.whenOrNull(
       data: (color) => color,
     );
 
-    final seed = seedColor != null ? Color(seedColor) : null;
+    final seed = useMonet && seedColor != null ? Color(seedColor) : null;
 
     return MaterialApp(
       title: 'Wallify',

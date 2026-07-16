@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:math';
 
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wallify/model/wallpaper_model.dart';
 
@@ -24,6 +25,7 @@ class UserSharedPrefs {
   static const _wallpaperSourceKey = "wallpaperSource";
   static const _folderPathKey = "folderPath";
   static const _cachedWallpaperPathsKey = "cachedWallpaperPaths";
+  static const _useMonetThemeKey = "useMonetTheme";
 
   /// ---- TAGS ----
   static Future<List<String>> getTags() async {
@@ -163,20 +165,24 @@ class UserSharedPrefs {
   }
 
   static Future<void> saveFavWallpaper(Wallpaper wallpaper) async {
-    final prefs = await SharedPreferences.getInstance();
-
-    List<String> history;
     try {
-      history = prefs.getStringList(_favWallpaperKey) ?? [];
-    } catch (_) {
-      history = [];
-    }
+      final prefs = await SharedPreferences.getInstance();
 
-    final entry = jsonEncode(wallpaper.toJson());
+      List<String> history;
+      try {
+        history = prefs.getStringList(_favWallpaperKey) ?? [];
+      } catch (_) {
+        history = [];
+      }
 
-    if (!history.contains(entry)) {
-      history.add(entry);
-      await prefs.setStringList(_favWallpaperKey, history);
+      final entry = jsonEncode(wallpaper.toJson());
+
+      if (!history.contains(entry)) {
+        history.add(entry);
+        await prefs.setStringList(_favWallpaperKey, history);
+      }
+    } catch (e) {
+      debugPrint("saveFavWallpaper failed: $e");
     }
   }
 
@@ -460,5 +466,16 @@ class UserSharedPrefs {
   static Future<void> setFilterRange(String? val) async {
     final prefs = await SharedPreferences.getInstance();
     if (val == null) { await prefs.remove(_keyFilterRange); } else { await prefs.setString(_keyFilterRange, val); }
+  }
+
+  /// ---- MONET THEME ----
+  static Future<bool> getUseMonetTheme() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_useMonetThemeKey) ?? false;
+  }
+
+  static Future<void> setUseMonetTheme(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_useMonetThemeKey, enabled);
   }
 }

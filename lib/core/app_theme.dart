@@ -81,10 +81,10 @@ class AppTheme {
       ),
       navigationBarTheme: NavigationBarThemeData(
         elevation: 4,
-        height: 72,
+        height: 64,
         labelBehavior: NavigationDestinationLabelBehavior.onlyShowSelected,
         indicatorShape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(12),
         ),
       ),
       cardTheme: CardThemeData(

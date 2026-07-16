@@ -103,6 +103,20 @@ class MainActivity : FlutterActivity() {
                         result.success(false)
                     }
                 }
+                "detectFocusPoint" -> {
+                    val filePath: String? = call.argument<String>("filePath")
+                    if (filePath != null) {
+                        val bitmap = BitmapFactory.decodeFile(filePath)
+                        if (bitmap != null) {
+                            val focus = WallpaperUtils.detectFocusPoint(applicationContext, bitmap)
+                            result.success(focus)
+                        } else {
+                            result.success(mapOf("x" to 0f, "y" to 0f, "source" to 0f))
+                        }
+                    } else {
+                        result.success(mapOf("x" to 0f, "y" to 0f, "source" to 0f))
+                    }
+                }
                 "saveToDownloads" -> {
                     val filePath: String? = call.argument<String>("filePath")
                     val fileName: String? = call.argument<String>("fileName")

@@ -42,6 +42,8 @@ class _WallpaperPreviewPageState extends ConsumerState<WallpaperPreviewPage>
   final Map<int, Map<String, dynamic>?> _infoCache = {};
   bool _isCropMode = false;
   bool _isProcessing = false;
+  bool _isDownloading = false;
+  bool _isSettingWallpaper = false;
   int? _selectedLocation;
   File? _downloadedImage;
   final TransformationController _transformationController =
@@ -210,6 +212,9 @@ class _WallpaperPreviewPageState extends ConsumerState<WallpaperPreviewPage>
         _isCropMode = true;
         _isProcessing = false;
       });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _detectAndCenterFocus();
+      });
     } catch (e) {
       setState(() => _isProcessing = false);
       if (mounted) {
@@ -227,6 +232,60 @@ class _WallpaperPreviewPageState extends ConsumerState<WallpaperPreviewPage>
       _downloadedImage = null;
       _transformationController.value = Matrix4.identity();
     });
+  }
+
+  Future<void> _detectAndCenterFocus() async {
+    if (_downloadedImage == null) return;
+    const channel = MethodChannel('wallpaper_channel');
+    final size = MediaQuery.of(context).size;
+    try {
+      final focus = await channel.invokeMethod<Map<dynamic, dynamic>>(
+        'detectFocusPoint',
+        {'filePath': _downloadedImage!.path},
+      );
+      if (focus == null) return;
+      final fx = (focus['x'] as num).toDouble();
+      final fy = (focus['y'] as num).toDouble();
+
+      final decoded = img.decodeImage(await _downloadedImage!.readAsBytes());
+      if (decoded == null) return;
+      final imgW = decoded.width.toDouble();
+      final imgH = decoded.height.toDouble();
+
+      final scaleX = size.width / imgW;
+      final scaleY = size.height / imgH;
+      final scale = scaleX > scaleY ? scaleX : scaleY;
+
+      final tx = size.width / 2 - fx * scale;
+      final ty = size.height / 2 - fy * scale;
+
+      _transformationController.value = Matrix4.identity()
+        ..translate(tx, ty)
+        ..scale(scale);
+    } catch (e) {
+      _centerImageInViewport(size);
+    }
+  }
+
+  void _centerImageInViewport(Size size) {
+    if (_downloadedImage == null) return;
+    try {
+      final decoded = img.decodeImage(File(_downloadedImage!.path).readAsBytesSync());
+      if (decoded == null) return;
+      final imgW = decoded.width.toDouble();
+      final imgH = decoded.height.toDouble();
+
+      final scaleX = size.width / imgW;
+      final scaleY = size.height / imgH;
+      final scale = scaleX > scaleY ? scaleX : scaleY;
+
+      final tx = (size.width - imgW * scale) / 2;
+      final ty = (size.height - imgH * scale) / 2;
+
+      _transformationController.value = Matrix4.identity()
+        ..translate(tx, ty)
+        ..scale(scale);
+    } catch (_) {}
   }
 
   Future<img.Image?> _processImage() async {
@@ -287,7 +346,7 @@ class _WallpaperPreviewPageState extends ConsumerState<WallpaperPreviewPage>
   Future<void> _setWallpaper() async {
     if (_downloadedImage == null || _selectedLocation == null) return;
 
-    setState(() => _isProcessing = true);
+    setState(() => _isSettingWallpaper = true);
 
     try {
       final processImage = await _processImage();
@@ -310,7 +369,7 @@ class _WallpaperPreviewPageState extends ConsumerState<WallpaperPreviewPage>
               color: Colors.red,
             );
           }
-          setState(() => _isProcessing = false);
+          setState(() => _isSettingWallpaper = false);
           return;
         }
       }
@@ -354,7 +413,7 @@ class _WallpaperPreviewPageState extends ConsumerState<WallpaperPreviewPage>
       }
     } finally {
       if (mounted) {
-        setState(() => _isProcessing = false);
+        setState(() => _isSettingWallpaper = false);
       }
     }
   }
@@ -409,7 +468,7 @@ class _WallpaperPreviewPageState extends ConsumerState<WallpaperPreviewPage>
   }
 
   Future<void> _downloadCroppedWallpaper() async {
-    setState(() => _isProcessing = true);
+    setState(() => _isDownloading = true);
     File? tempFile;
     try {
       final processImage = await _processImage();
@@ -425,7 +484,7 @@ class _WallpaperPreviewPageState extends ConsumerState<WallpaperPreviewPage>
       if (tempFile != null) {
         try { await tempFile.delete(); } catch (_) {}
       }
-      if (mounted) setState(() => _isProcessing = false);
+      if (mounted) setState(() => _isDownloading = false);
     }
   }
 
@@ -662,7 +721,7 @@ class _WallpaperPreviewPageState extends ConsumerState<WallpaperPreviewPage>
                 constrained: false,
                 child: Image.file(
                   _downloadedImage!,
-                  fit: BoxFit.none,
+                  fit: BoxFit.contain,
                   filterQuality: FilterQuality.medium,
                 ),
               ),
@@ -823,12 +882,12 @@ class _WallpaperPreviewPageState extends ConsumerState<WallpaperPreviewPage>
                 children: [
                   FloatingActionButton(
                     heroTag: "crop_download",
-                    onPressed: _isProcessing ? null : _downloadCroppedWallpaper,
+                    onPressed: _isDownloading || _isSettingWallpaper ? null : _downloadCroppedWallpaper,
                     backgroundColor: colorScheme.surfaceContainerHighest
                         .withValues(alpha: 0.8),
                     foregroundColor: colorScheme.onSurface,
                     elevation: 8,
-                    child: _isProcessing
+                    child: _isDownloading
                         ? const SizedBox(
                             width: 20,
                             height: 20,
@@ -841,13 +900,13 @@ class _WallpaperPreviewPageState extends ConsumerState<WallpaperPreviewPage>
                   ),
                   const SizedBox(width: 16),
                   FloatingActionButton.extended(
-                    onPressed: _isProcessing ? null : _setWallpaper,
-                    backgroundColor: _isProcessing
+                    onPressed: _isDownloading || _isSettingWallpaper ? null : _setWallpaper,
+                    backgroundColor: _isSettingWallpaper
                         ? colorScheme.primary.withValues(alpha: 0.5)
                         : colorScheme.primary,
                     foregroundColor: colorScheme.onPrimary,
                     elevation: 8,
-                    icon: _isProcessing
+                    icon: _isSettingWallpaper
                         ? const SizedBox(
                             width: 20,
                             height: 20,
@@ -857,7 +916,7 @@ class _WallpaperPreviewPageState extends ConsumerState<WallpaperPreviewPage>
                             ),
                           )
                         : const Icon(Icons.wallpaper),
-                    label: Text(_isProcessing ? "Setting..." : "Set Wallpaper"),
+                    label: Text(_isSettingWallpaper ? "Setting..." : "Set Wallpaper"),
                   ),
                 ],
               ),

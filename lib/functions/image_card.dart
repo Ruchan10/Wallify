@@ -131,6 +131,7 @@ class _ImageTileState extends State<ImageTile>
             top: 6,
             right: 6,
             child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
               onTap: () {
                 widget.onFavToggle();
               },
@@ -151,7 +152,7 @@ class _ImageTileState extends State<ImageTile>
                     color: widget.isFav
                         ? colorScheme.secondary
                         : colorScheme.onSurface,
-                    size: 20,
+                    size: 24,
                   ),
                 ),
               ),

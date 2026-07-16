@@ -38,172 +38,187 @@ class _FavoritesPageState extends State<FavoritesPage> {
     final colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("Favorites"),
-        elevation: 0,
-        backgroundColor: colorScheme.primary,
-        foregroundColor: colorScheme.onPrimary,
-      ),
-      body: _isLoading
-          ? Padding(
-              padding: const EdgeInsets.all(8.0),
-              child: MasonryGridView.builder(
-                gridDelegate:
-                    SliverSimpleGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
+      body: SafeArea(
+        child: _isLoading
+            ? Padding(
+                padding: const EdgeInsets.only(
+                  top: 16.0,
+                  left: 16.0,
+                  right: 16.0,
                 ),
-                mainAxisSpacing: 8,
-                crossAxisSpacing: 8,
-                itemCount: 6,
-                itemBuilder: (context, index) {
-                  return ShimmerLoading(
-                    height: 150 + (index % 3) * 50,
-                    borderRadius: 12,
-                  );
-                },
-              ),
-            )
-          : _favWalls.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.favorite_border,
-                        size: 64,
-                        color: colorScheme.onSurfaceVariant
-                            .withValues(alpha: 0.5),
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        "No favorites yet",
-                        style: TextStyle(
-                          color: colorScheme.onSurfaceVariant,
-                          fontSize: 16,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        "Tap the heart icon to save wallpapers",
-                        style: TextStyle(
-                          color: colorScheme.onSurfaceVariant
-                              .withValues(alpha: 0.7),
-                          fontSize: 13,
-                        ),
-                      ),
-                    ],
-                  ),
-                )
-              : RefreshIndicator(
-                  onRefresh: _refresh,
-                  child: Padding(
-                    padding: const EdgeInsets.all(8.0),
-                    child: MasonryGridView.builder(
-                      gridDelegate:
-                          SliverSimpleGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 2,
-                      ),
-                      mainAxisSpacing: 8,
-                      crossAxisSpacing: 8,
-                      itemCount: _favWalls.length,
-                      itemBuilder: (context, index) {
-                        final wallpaper = _favWalls[index];
 
-                        return ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
-                          child: Stack(
-                            children: [
-                              GestureDetector(
-                                onTap: () {
-                                  Navigator.push(
-                                    context,
-                                    PageRouteBuilder(
-                                      pageBuilder: (context, animation,
-                                              secondaryAnimation) =>
-                                          FadeTransition(
-                                        opacity: animation,
-                                        child: WallpaperPreviewPage(
-                                          wallpapers: _favWalls,
-                                          initialIndex: index,
-                                          isFavorite: true,
+                child: MasonryGridView.builder(
+                  gridDelegate: SliverSimpleGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                  ),
+                  mainAxisSpacing: 8,
+                  crossAxisSpacing: 8,
+                  itemCount: 6,
+                  itemBuilder: (context, index) {
+                    return ShimmerLoading(
+                      height: 150 + (index % 3) * 50,
+                      borderRadius: 12,
+                    );
+                  },
+                ),
+              )
+            : _favWalls.isEmpty
+            ? Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.favorite_border,
+                      size: 64,
+                      color: colorScheme.onSurfaceVariant.withValues(
+                        alpha: 0.5,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      "No favorites yet",
+                      style: TextStyle(
+                        color: colorScheme.onSurfaceVariant,
+                        fontSize: 16,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      "Tap the heart icon to save wallpapers",
+                      style: TextStyle(
+                        color: colorScheme.onSurfaceVariant.withValues(
+                          alpha: 0.7,
+                        ),
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                ),
+              )
+            : RefreshIndicator(
+                onRefresh: _refresh,
+                child: Padding(
+                  padding: const EdgeInsets.only(
+                    top: 16.0,
+                    left: 16.0,
+                    right: 16.0,
+                  ),
+
+                  child: MasonryGridView.builder(
+                    gridDelegate:
+                        SliverSimpleGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 2,
+                        ),
+                    mainAxisSpacing: 8,
+                    crossAxisSpacing: 8,
+                    itemCount: _favWalls.length,
+                    itemBuilder: (context, index) {
+                      final wallpaper = _favWalls[index];
+
+                      return ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: Stack(
+                          children: [
+                            GestureDetector(
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  PageRouteBuilder(
+                                    pageBuilder:
+                                        (
+                                          context,
+                                          animation,
+                                          secondaryAnimation,
+                                        ) => FadeTransition(
+                                          opacity: animation,
+                                          child: WallpaperPreviewPage(
+                                            wallpapers: _favWalls,
+                                            initialIndex: index,
+                                            isFavorite: true,
+                                          ),
+                                        ),
+                                    transitionsBuilder:
+                                        (
+                                          context,
+                                          animation,
+                                          secondaryAnimation,
+                                          child,
+                                        ) => FadeTransition(
+                                          opacity: animation,
+                                          child: child,
+                                        ),
+                                    transitionDuration: const Duration(
+                                      milliseconds: 300,
+                                    ),
+                                  ),
+                                );
+                              },
+                              child: Hero(
+                                tag: 'wallpaper_${wallpaper.url}',
+                                child: CachedNetworkImage(
+                                  key: ValueKey(wallpaper.url),
+                                  imageUrl: wallpaper.url,
+                                  fit: BoxFit.cover,
+                                  memCacheWidth: 400,
+                                  memCacheHeight: 600,
+                                  placeholder: (context, url) => ShimmerLoading(
+                                    height: 200,
+                                    borderRadius: 12,
+                                  ),
+                                  errorWidget: (context, url, error) =>
+                                      Container(
+                                        height: 200,
+                                        color: colorScheme.surface.withValues(
+                                          alpha: 0.2,
+                                        ),
+                                        child: Icon(
+                                          Icons.broken_image,
+                                          color: colorScheme.onSurface
+                                              .withValues(alpha: 0.5),
                                         ),
                                       ),
-                                      transitionsBuilder: (context, animation,
-                                              secondaryAnimation, child) =>
-                                          FadeTransition(
-                                        opacity: animation,
-                                        child: child,
-                                      ),
-                                      transitionDuration:
-                                          const Duration(milliseconds: 300),
-                                    ),
-                                  );
-                                },
-                                child: Hero(
-                                  tag: 'wallpaper_${wallpaper.url}',
-                                  child: CachedNetworkImage(
-                                    key: ValueKey(wallpaper.url),
-                                    imageUrl: wallpaper.url,
-                                    fit: BoxFit.cover,
-                                    memCacheWidth: 400,
-                                    memCacheHeight: 600,
-                                    placeholder: (context, url) =>
-                                        ShimmerLoading(
-                                      height: 200,
-                                      borderRadius: 12,
-                                    ),
-                                    errorWidget: (context, url, error) =>
-                                        Container(
-                                      height: 200,
-                                      color: colorScheme.surface
-                                          .withValues(alpha: 0.2),
-                                      child: Icon(
-                                        Icons.broken_image,
-                                        color: colorScheme.onSurface
-                                            .withValues(alpha: 0.5),
-                                      ),
-                                    ),
-                                  ),
                                 ),
                               ),
-                              Positioned(
-                                top: 8,
-                                right: 8,
+                            ),
+                            Positioned(
+                              top: 6,
+                              right: 6,
+                              child: GestureDetector(
+                                onTap: () {
+                                  setState(() {
+                                    _favWalls.removeWhere(
+                                      (w) => w.id == wallpaper.id,
+                                    );
+                                    UserSharedPrefs.removeFavWallpaper(
+                                      wallpaper,
+                                    );
+                                  });
+                                },
                                 child: AnimatedContainer(
-                                  duration:
-                                      const Duration(milliseconds: 200),
+                                  duration: const Duration(milliseconds: 200),
+                                  padding: const EdgeInsets.all(6),
                                   decoration: BoxDecoration(
-                                    color: colorScheme.surface
-                                        .withValues(alpha: 0.7),
+                                    color: colorScheme.surface.withValues(
+                                      alpha: 0.7,
+                                    ),
                                     shape: BoxShape.circle,
                                   ),
-                                  child: IconButton(
-                                    style: IconButton.styleFrom(
-                                      backgroundColor: Colors.transparent,
-                                    ),
-                                    icon: const Icon(
-                                      Icons.favorite,
-                                      color: Colors.red,
-                                    ),
-                                    onPressed: () {
-                                      setState(() {
-                                        _favWalls.removeWhere(
-                                          (w) => w.id == wallpaper.id,
-                                        );
-                                        UserSharedPrefs.removeFavWallpaper(
-                                            wallpaper);
-                                      });
-                                    },
+                                  child: const Icon(
+                                    Icons.favorite,
+                                    color: Colors.red,
+                                    size: 24,
                                   ),
                                 ),
                               ),
-                            ],
-                          ),
-                        );
-                      },
-                    ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
                   ),
                 ),
+              ),
+      ),
     );
   }
 }

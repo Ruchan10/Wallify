@@ -1,6 +1,8 @@
+import 'dart:developer' as developer;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
+import 'package:wallify/core/snackbar.dart';
 import 'package:wallify/core/user_shared_prefs.dart';
 import 'package:wallify/functions/shimmer_widget.dart';
 import 'package:wallify/model/wallpaper_model.dart';
@@ -50,10 +52,23 @@ class _HistoryPageState extends State<HistoryPage> {
       }
     });
 
-    if (isFav) {
-      await UserSharedPrefs.removeFavWallpaper(wallpaper);
-    } else {
-      await UserSharedPrefs.saveFavWallpaper(wallpaper);
+    try {
+      if (isFav) {
+        await UserSharedPrefs.removeFavWallpaper(wallpaper);
+        developer.log("Removed from favorites: ${wallpaper.id}");
+      } else {
+        await UserSharedPrefs.saveFavWallpaper(wallpaper);
+        developer.log("Saved to favorites: ${wallpaper.id} - ${wallpaper.url}");
+      }
+    } catch (e) {
+      developer.log("Favorite toggle failed: $e");
+      if (mounted) {
+        showSnackBar(
+          context: context,
+          message: "Failed to update favorite",
+          color: Colors.red,
+        );
+      }
     }
   }
 
@@ -62,207 +77,224 @@ class _HistoryPageState extends State<HistoryPage> {
     final colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("History"),
-        elevation: 0,
-        backgroundColor: colorScheme.primary,
-        foregroundColor: colorScheme.onPrimary,
-      ),
-      body: _isLoading
-          ? Padding(
-              padding: const EdgeInsets.all(8.0),
-              child: MasonryGridView.builder(
-                gridDelegate:
-                    SliverSimpleGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
+      body: SafeArea(
+        child: _isLoading
+            ? Padding(
+                padding: const EdgeInsets.only(
+                  top: 16.0,
+                  left: 16.0,
+                  right: 16.0,
                 ),
-                mainAxisSpacing: 8,
-                crossAxisSpacing: 8,
-                itemCount: 6,
-                itemBuilder: (context, index) {
-                  return ShimmerLoading(
-                    height: 150 + (index % 3) * 50,
-                    borderRadius: 12,
-                  );
-                },
-              ),
-            )
-          : _historyWalls.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.history,
-                        size: 64,
-                        color: colorScheme.onSurfaceVariant
-                            .withValues(alpha: 0.5),
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        "No history yet",
-                        style: TextStyle(
-                          color: colorScheme.onSurfaceVariant,
-                          fontSize: 16,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        "Wallpapers you set will appear here",
-                        style: TextStyle(
-                          color: colorScheme.onSurfaceVariant
-                              .withValues(alpha: 0.7),
-                          fontSize: 13,
-                        ),
-                      ),
-                    ],
-                  ),
-                )
-              : RefreshIndicator(
-                  onRefresh: _refresh,
-                  child: Padding(
-                    padding: const EdgeInsets.all(8.0),
-                    child: MasonryGridView.builder(
-                      gridDelegate:
-                          SliverSimpleGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 2,
-                      ),
-                      mainAxisSpacing: 8,
-                      crossAxisSpacing: 8,
-                      itemCount: _historyWalls.length,
-                      itemBuilder: (context, index) {
-                        final wallpaper = _historyWalls[index];
-                        final isFav = _favIds.contains(wallpaper.id);
 
-                        return ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
-                          child: Stack(
-                            children: [
-                              GestureDetector(
-                                onTap: () async {
-                                  await Navigator.push(
-                                    context,
-                                    PageRouteBuilder(
-                                      pageBuilder: (context, animation,
-                                              secondaryAnimation) =>
-                                          FadeTransition(
-                                        opacity: animation,
-                                        child: WallpaperPreviewPage(
-                                          wallpapers: _historyWalls,
-                                          initialIndex: index,
-                                          isFavorite: isFav,
+                child: MasonryGridView.builder(
+                  gridDelegate: SliverSimpleGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                  ),
+                  mainAxisSpacing: 8,
+                  crossAxisSpacing: 8,
+                  itemCount: 6,
+                  itemBuilder: (context, index) {
+                    return ShimmerLoading(
+                      height: 150 + (index % 3) * 50,
+                      borderRadius: 12,
+                    );
+                  },
+                ),
+              )
+            : _historyWalls.isEmpty
+            ? Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.history,
+                      size: 64,
+                      color: colorScheme.onSurfaceVariant.withValues(
+                        alpha: 0.5,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      "No history yet",
+                      style: TextStyle(
+                        color: colorScheme.onSurfaceVariant,
+                        fontSize: 16,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      "Wallpapers you set will appear here",
+                      style: TextStyle(
+                        color: colorScheme.onSurfaceVariant.withValues(
+                          alpha: 0.7,
+                        ),
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                ),
+              )
+            : RefreshIndicator(
+                onRefresh: _refresh,
+                child: Padding(
+                  padding: const EdgeInsets.only(
+                    top: 16.0,
+                    left: 16.0,
+                    right: 16.0,
+                  ),
+
+                  child: MasonryGridView.builder(
+                    gridDelegate:
+                        SliverSimpleGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 2,
+                        ),
+                    mainAxisSpacing: 8,
+                    crossAxisSpacing: 8,
+                    itemCount: _historyWalls.length,
+                    itemBuilder: (context, index) {
+                      final wallpaper = _historyWalls[index];
+                      final isFav = _favIds.contains(wallpaper.id);
+
+                      return ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: Stack(
+                          children: [
+                            GestureDetector(
+                              onTap: () async {
+                                await Navigator.push(
+                                  context,
+                                  PageRouteBuilder(
+                                    pageBuilder:
+                                        (
+                                          context,
+                                          animation,
+                                          secondaryAnimation,
+                                        ) => FadeTransition(
+                                          opacity: animation,
+                                          child: WallpaperPreviewPage(
+                                            wallpapers: _historyWalls,
+                                            initialIndex: index,
+                                            isFavorite: isFav,
+                                          ),
+                                        ),
+                                    transitionsBuilder:
+                                        (
+                                          context,
+                                          animation,
+                                          secondaryAnimation,
+                                          child,
+                                        ) => FadeTransition(
+                                          opacity: animation,
+                                          child: child,
+                                        ),
+                                    transitionDuration: const Duration(
+                                      milliseconds: 300,
+                                    ),
+                                  ),
+                                );
+                                // Favorite state may have changed inside the
+                                // preview page, so refresh it on return.
+                                await _loadFavorites();
+                                if (mounted) setState(() {});
+                              },
+                              child: Hero(
+                                tag: 'wallpaper_${wallpaper.url}',
+                                child: CachedNetworkImage(
+                                  key: ValueKey(wallpaper.url),
+                                  imageUrl: wallpaper.url,
+                                  fit: BoxFit.cover,
+                                  memCacheWidth: 400,
+                                  memCacheHeight: 600,
+                                  placeholder: (context, url) => ShimmerLoading(
+                                    height: 200,
+                                    borderRadius: 12,
+                                  ),
+                                  errorWidget: (context, url, error) =>
+                                      Container(
+                                        height: 200,
+                                        color: colorScheme.surface.withValues(
+                                          alpha: 0.2,
+                                        ),
+                                        child: Icon(
+                                          Icons.broken_image,
+                                          color: colorScheme.onSurface
+                                              .withValues(alpha: 0.5),
                                         ),
                                       ),
-                                      transitionsBuilder: (context, animation,
-                                              secondaryAnimation, child) =>
-                                          FadeTransition(
-                                        opacity: animation,
-                                        child: child,
-                                      ),
-                                      transitionDuration:
-                                          const Duration(milliseconds: 300),
-                                    ),
-                                  );
-                                  // Favorite state may have changed inside the
-                                  // preview page, so refresh it on return.
-                                  await _loadFavorites();
-                                  if (mounted) setState(() {});
-                                },
-                                child: Hero(
-                                  tag: 'wallpaper_${wallpaper.url}',
-                                  child: CachedNetworkImage(
-                                    key: ValueKey(wallpaper.url),
-                                    imageUrl: wallpaper.url,
-                                    fit: BoxFit.cover,
-                                    memCacheWidth: 400,
-                                    memCacheHeight: 600,
-                                    placeholder: (context, url) =>
-                                        ShimmerLoading(
-                                      height: 200,
-                                      borderRadius: 12,
-                                    ),
-                                    errorWidget: (context, url, error) =>
-                                        Container(
-                                      height: 200,
-                                      color: colorScheme.surface
-                                          .withValues(alpha: 0.2),
-                                      child: Icon(
-                                        Icons.broken_image,
-                                        color: colorScheme.onSurface
-                                            .withValues(alpha: 0.5),
-                                      ),
-                                    ),
-                                  ),
                                 ),
                               ),
-                              Positioned(
-                                top: 8,
-                                right: 8,
+                            ),
+                            Positioned(
+                              top: 6,
+                              right: 6,
+                              child: GestureDetector(
+                                onTap: () => _toggleFavorite(wallpaper),
                                 child: AnimatedContainer(
                                   duration: const Duration(milliseconds: 200),
+                                  padding: const EdgeInsets.all(6),
                                   decoration: BoxDecoration(
-                                    color: colorScheme.surface
-                                        .withValues(alpha: 0.7),
+                                    color: colorScheme.surface.withValues(
+                                      alpha: 0.7,
+                                    ),
                                     shape: BoxShape.circle,
                                   ),
-                                  child: IconButton(
-                                    style: IconButton.styleFrom(
-                                      backgroundColor: Colors.transparent,
+                                  child: AnimatedSwitcher(
+                                    duration: const Duration(milliseconds: 200),
+                                    child: Icon(
+                                      isFav
+                                          ? Icons.favorite
+                                          : Icons.favorite_border,
+                                      key: ValueKey(isFav),
+                                      color: isFav
+                                          ? Colors.red
+                                          : colorScheme.onSurface,
+                                      size: 24,
                                     ),
-                                    icon: AnimatedSwitcher(
-                                      duration:
-                                          const Duration(milliseconds: 200),
-                                      child: Icon(
-                                        isFav
-                                            ? Icons.favorite
-                                            : Icons.favorite_border,
-                                        key: ValueKey(isFav),
-                                        color: isFav
-                                            ? Colors.red
-                                            : colorScheme.onSurface,
-                                      ),
-                                    ),
-                                    onPressed: () => _toggleFavorite(wallpaper),
                                   ),
                                 ),
                               ),
-                              Positioned(
-                                bottom: 8,
-                                left: 8,
-                                child: AnimatedContainer(
-                                  duration: const Duration(milliseconds: 200),
-                                  decoration: BoxDecoration(
-                                    color: Colors.red.withValues(alpha: 0.15),
-                                    shape: BoxShape.circle,
+                            ),
+                            Positioned(
+                              bottom: 8,
+                              left: 8,
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 200),
+                                decoration: BoxDecoration(
+                                  color: Colors.red.withValues(alpha: 0.15),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: IconButton(
+                                  style: IconButton.styleFrom(
+                                    backgroundColor: Colors.transparent,
+                                    minimumSize: const Size(28, 28),
+                                    padding: EdgeInsets.zero,
+                                    tapTargetSize:
+                                        MaterialTapTargetSize.shrinkWrap,
                                   ),
-                                  child: IconButton(
-                                    style: IconButton.styleFrom(
-                                      backgroundColor: Colors.transparent,
-                                      minimumSize: const Size(28, 28),
-                                      padding: EdgeInsets.zero,
-                                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                    ),
-                                    icon: Icon(
-                                      Icons.delete_outline,
-                                      size: 18,
-                                      color: Colors.red,
-                                    ),
-                                    onPressed: () async {
-                                      await UserSharedPrefs.removeWallpaperHistory(wallpaper);
-                                      setState(() {
-                                        _historyWalls.removeAt(index);
-                                      });
-                                    },
+                                  icon: Icon(
+                                    Icons.delete_outline,
+                                    size: 18,
+                                    color: Colors.red,
                                   ),
+                                  onPressed: () async {
+                                    await UserSharedPrefs.removeWallpaperHistory(
+                                      wallpaper,
+                                    );
+                                    setState(() {
+                                      _historyWalls.removeAt(index);
+                                    });
+                                  },
                                 ),
                               ),
-                            ],
-                          ),
-                        );
-                      },
-                    ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
                   ),
                 ),
+              ),
+      ),
     );
   }
 }

@@ -244,6 +244,50 @@ object WallpaperUtils {
         }
     }
 
+    internal fun detectFocusPoint(context: Context, bitmap: Bitmap): Map<String, Float> {
+        val centerX = bitmap.width / 2f
+        val centerY = bitmap.height / 2f
+
+        val faceDetector = getFaceDetector(context)
+        if (faceDetector != null) {
+            try {
+                val mpImage = BitmapImageBuilder(bitmap).build()
+                val results = faceDetector.detect(mpImage)
+                val detections = results.detections()
+                if (detections.isNotEmpty()) {
+                    val box = detections.first().boundingBox()
+                    val focusX = (box.left + box.right) / 2f
+                    val focusY = (box.top + box.bottom) / 2f
+                    Log.d("Wallify", "Focus point from face detection: ($focusX, $focusY)")
+                    return mapOf("x" to focusX, "y" to focusY, "source" to 1f)
+                }
+            } catch (e: Exception) {
+                Log.e("Wallify", "Face detection for focus failed: ${e.message}")
+            }
+        }
+
+        val objDetector = getObjectDetector(context)
+        if (objDetector != null) {
+            try {
+                val mpImage = BitmapImageBuilder(bitmap).build()
+                val results = objDetector.detect(mpImage)
+                val detections = results.detections()
+                if (detections.isNotEmpty()) {
+                    val box = detections.first().boundingBox()
+                    val focusX = (box.left + box.right) / 2f
+                    val focusY = (box.top + box.bottom) / 2f
+                    Log.d("Wallify", "Focus point from object detection: ($focusX, $focusY)")
+                    return mapOf("x" to focusX, "y" to focusY, "source" to 2f)
+                }
+            } catch (e: Exception) {
+                Log.e("Wallify", "Object detection for focus failed: ${e.message}")
+            }
+        }
+
+        Log.d("Wallify", "No face or object detected, using image center: ($centerX, $centerY)")
+        return mapOf("x" to centerX, "y" to centerY, "source" to 0f)
+    }
+
     private fun getNonFaceImagePath(context: Context, paths: MutableList<String>, isFolderMode: Boolean): String? {
         val prefs = context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
         val requiresNoFaces = prefs.getBoolean("flutter.constraint_no_faces", true)
