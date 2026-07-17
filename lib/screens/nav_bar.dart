@@ -16,10 +16,10 @@ class _MainScaffoldState extends State<MainScaffold> {
   bool _isNavBarVisible = true;
 
   List<Widget> get _pages => [
-    const DiscoverPage(),
-    const FavoritesPage(),
-    const HistoryPage(),
-    SettingsPage(isNavBarVisible: _isNavBarVisible),
+    const RepaintBoundary(child: DiscoverPage()),
+    const RepaintBoundary(child: FavoritesPage()),
+    const RepaintBoundary(child: HistoryPage()),
+    RepaintBoundary(child: SettingsPage(isNavBarVisible: _isNavBarVisible)),
   ];
 
   bool _handleScrollNotification(ScrollNotification notification) {

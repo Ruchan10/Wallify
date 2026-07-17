@@ -25,29 +25,8 @@ class ImageTile extends StatefulWidget {
   State<ImageTile> createState() => _ImageTileState();
 }
 
-class _ImageTileState extends State<ImageTile>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _animController;
-  late Animation<double> _scaleAnim;
+class _ImageTileState extends State<ImageTile> {
   bool _isPressed = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _animController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 200),
-    );
-    _scaleAnim = Tween<double>(begin: 1.0, end: 0.95).animate(
-      CurvedAnimation(parent: _animController, curve: Curves.easeInOut),
-    );
-  }
-
-  @override
-  void dispose() {
-    _animController.dispose();
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -58,13 +37,9 @@ class _ImageTileState extends State<ImageTile>
       child: Stack(
         children: [
           GestureDetector(
-            onTapDown: (_) {
-              _animController.forward();
-              _isPressed = true;
-            },
+            onTapDown: (_) => setState(() => _isPressed = true),
             onTapUp: (_) {
-              _animController.reverse();
-              _isPressed = false;
+              setState(() => _isPressed = false);
               Navigator.push(
                 context,
                 PageRouteBuilder(
@@ -89,21 +64,15 @@ class _ImageTileState extends State<ImageTile>
                 ),
               );
             },
-            onTapCancel: () {
-              _animController.reverse();
-              _isPressed = false;
-            },
-            child: Hero(
+            onTapCancel: () => setState(() => _isPressed = false),
+            child: AnimatedScale(
+              scale: _isPressed ? 0.95 : 1.0,
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeInOut,
+              child: Hero(
               tag: 'wallpaper_${widget.wallpaper.url}',
-              child: AnimatedBuilder(
-                animation: _scaleAnim,
-                builder: (context, child) {
-                  return Transform.scale(
-                    scale: _scaleAnim.value,
-                    child: child,
-                  );
-                },
-                child: CachedNetworkImage(
+              child: CachedNetworkImage(
+                  cacheManager: PerformanceConfig.cacheManager,
                   imageUrl: widget.wallpaper.url,
                   fit: BoxFit.cover,
                   memCacheWidth: PerformanceConfig.thumbnailWidth,

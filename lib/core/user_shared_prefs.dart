@@ -343,7 +343,7 @@ class UserSharedPrefs {
 
   static Future<bool> getConstraintWifi() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(_constraintWifiKey) ?? true;
+    return prefs.getBool(_constraintWifiKey) ?? false;
   }
 
   /// ---- WALLPAPER SOURCE (multi-select) ----
@@ -416,6 +416,19 @@ class UserSharedPrefs {
     await prefs.setStringList(_invalidTagsKey, tags.toList());
   }
 
+  /// ---- CUSTOM API URLs ----
+  static const _customApisKey = "customApis";
+
+  static Future<List<String>> getCustomApis() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getStringList(_customApisKey) ?? [];
+  }
+
+  static Future<void> saveCustomApis(List<String> urls) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(_customApisKey, urls);
+  }
+
   /// ---- DISCOVER FILTERS ----
   static const _keyFilterSorting = "discover_filter_sorting";
   static const _keyFilterPurity = "discover_filter_purity";
@@ -468,6 +481,19 @@ class UserSharedPrefs {
     if (val == null) { await prefs.remove(_keyFilterRange); } else { await prefs.setString(_keyFilterRange, val); }
   }
 
+  /// ---- ALLOWED WIFI SSIDs ----
+  static const _allowedSsidsKey = "allowedSsids";
+
+  static Future<List<String>> getAllowedSsids() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getStringList(_allowedSsidsKey) ?? [];
+  }
+
+  static Future<void> saveAllowedSsids(List<String> ssids) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(_allowedSsidsKey, ssids);
+  }
+
   /// ---- MONET THEME ----
   static Future<bool> getUseMonetTheme() async {
     final prefs = await SharedPreferences.getInstance();
@@ -477,5 +503,22 @@ class UserSharedPrefs {
   static Future<void> setUseMonetTheme(bool enabled) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_useMonetThemeKey, enabled);
+  }
+
+  /// ---- PEXELS API KEY ----
+  static const _pexelsApiKeyKey = "pexels_api_key";
+
+  static Future<String?> getPexelsApiKey() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_pexelsApiKeyKey);
+  }
+
+  static Future<void> setPexelsApiKey(String? value) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (value == null || value.isEmpty) {
+      await prefs.remove(_pexelsApiKeyKey);
+    } else {
+      await prefs.setString(_pexelsApiKeyKey, value);
+    }
   }
 }

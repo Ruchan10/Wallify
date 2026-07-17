@@ -47,6 +47,10 @@ class MainActivity : FlutterActivity() {
                     scheduleBackgroundWallpaperWorker()
                     result.success("Scheduled wallpaper background worker from Flutter")
                 }
+                "cancelBackgroundWallpaperWorker" -> {
+                    WorkManagerExt.cancelAutoChange(this)
+                    result.success("Cancelled wallpaper background worker")
+                }
                 "scheduleBackgroundWallpaperWorkerNow" -> {
                     CoroutineScope(Dispatchers.IO).launch {
                         try {
@@ -132,6 +136,10 @@ class MainActivity : FlutterActivity() {
                         result.error("INVALID_ARGS", "filePath and fileName are required", null)
                     }
                 }
+                "updateWidget" -> {
+                    WallifyWidgetProvider.triggerUpdate(this)
+                    result.success("Widget updated")
+                }
                 else -> {
                     result.notImplemented()
                 }
@@ -182,54 +190,7 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun scheduleBackgroundWallpaperWorker() {
-        try {
-            val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
-            val intervalValue = prefs.all["flutter.wallpaper_interval"]
-            val requiresCharging = prefs.getBoolean("flutter.constraint_charging", true)
-            val requiresBatteryNotLow = prefs.getBoolean("flutter.constraint_battery", false)
-            val requiresStorageNotLow = prefs.getBoolean("flutter.constraint_storage", false)
-            val requiresNoFaces = prefs.getBoolean("flutter.constraint_no_faces", false)
-            val requiresWifi = prefs.getBoolean("flutter.constraint_wifi", false)
-
-            val intervalMinutes = when (intervalValue) {
-                is Int -> intervalValue
-                is Long -> intervalValue.toInt()
-                is String -> intervalValue.toIntOrNull() ?: 60
-                else -> 60
-            }.coerceAtLeast(15) 
-
-            val constraintsBuilder = Constraints.Builder()
-                .setRequiresBatteryNotLow(requiresBatteryNotLow)
-                .setRequiresStorageNotLow(requiresStorageNotLow)
-                .setRequiresCharging(requiresCharging)
-
-            if (requiresWifi) {
-                constraintsBuilder.setRequiredNetworkType(NetworkType.UNMETERED)
-            } else {
-                constraintsBuilder.setRequiredNetworkType(NetworkType.CONNECTED)
-            }
-
-
-            val wallpaperBackgroundRequest =
-                PeriodicWorkRequestBuilder<WallpaperBackgroundWorker>(
-                    intervalMinutes.toLong(), TimeUnit.MINUTES 
-                )
-                .setInitialDelay(intervalMinutes.toLong(), TimeUnit.MINUTES) 
-                .setConstraints(
-                    constraintsBuilder.build()
-                )
-                .build()
-
-            WorkManager.
-            getInstance(this).enqueueUniquePeriodicWork(
-                WallpaperBackgroundWorker.WORK_NAME,
-                ExistingPeriodicWorkPolicy.CANCEL_AND_REENQUEUE,
-                wallpaperBackgroundRequest
-            )
-
-        } catch (e: Exception) {
-            Log.e("Wallify", "Error scheduling background wallpaper worker", e)
-        }
+        WorkManagerExt.scheduleAutoChange(this)
     }
 
     private fun setWallpaperFromSingleUrl(urlString: String, wallpaperManager: WallpaperManager, flag: Int) {

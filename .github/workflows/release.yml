@@ -8,10 +8,11 @@ on:
 
 env:
   APK_NAME: "Wallify"
-  APP_VERSION: "1.4.0"
+  APP_VERSION: "1.4.1"
   CHANGES: |
-    - Set wallpaper page fixes
-    - Many many minor improvements
+    - popular tags added
+    - more sources
+    - minor performance improvements
 
 jobs:
   build:

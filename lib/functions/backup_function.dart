@@ -14,7 +14,7 @@ class SettingsBackup {
 
     final data = {
       "tags": await UserSharedPrefs.getTags(),
-      "invalidTags": await UserSharedPrefs.getInvalidTags(),
+      "invalidTags": (await UserSharedPrefs.getInvalidTags()).toList(),
       "wallpaperLocation": await UserSharedPrefs.getWallpaperLocation(),
       "deviceWidth": await UserSharedPrefs.getDeviceWidth(),
       "deviceHeight": await UserSharedPrefs.getDeviceHeight(),
@@ -22,9 +22,10 @@ class SettingsBackup {
       "autoWallpaperEnabled": await UserSharedPrefs.getAutoWallpaperEnabled(),
       "lastWallpaperChange": prefs.getString("lastWallpaperChange"),
       "wallpaper_interval": await UserSharedPrefs.getInterval(),
-      "favWallpapers": favWallpapers.map((w) => jsonEncode(w.toJson())).toList(),
+      "favWallpaper": favWallpapers.map((w) => jsonEncode(w.toJson())).toList(),
       "imageUrls": imageWallpapers.map((w) => jsonEncode(w.toJson())).toList(),
       "errorReportingEnabled": await UserSharedPrefs.getErrorReportingEnabled(),
+      "useMonetTheme": await UserSharedPrefs.getUseMonetTheme(),
       "wallpaperSource": prefs.getString("wallpaperSource") ?? "internet",
       "folderPath": await UserSharedPrefs.getFolderPath(),
 
@@ -33,7 +34,6 @@ class SettingsBackup {
       "constraint_battery_not_low": await UserSharedPrefs.getConstraintBatteryNotLow(),
       "constraint_storage_not_low": await UserSharedPrefs.getConstraintStorageNotLow(),
       "constraint_no_faces": await UserSharedPrefs.getConstraintNoFaces(),
-      "constraint_wifi": await UserSharedPrefs.getConstraintWifi(),
     };
 
     final jsonString = const JsonEncoder.withIndent('  ').convert(data);
@@ -107,7 +107,7 @@ class SettingsBackup {
       } else if (value is bool) {
         await prefs.setBool(key, value);
         count++;
-      } else if (value is List<dynamic>) {
+      } else if (value is List) {
         final validStrings = <String>[];
         bool allStrings = true;
         for (final item in value) {

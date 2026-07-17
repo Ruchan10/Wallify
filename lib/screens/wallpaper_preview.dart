@@ -12,6 +12,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wallify/core/snackbar.dart';
 import 'package:wallify/core/user_shared_prefs.dart';
+import 'package:wallify/core/widget_helper.dart';
 import 'package:wallify/functions/wallpaper_cache_manager.dart';
 import 'package:wallify/functions/wallpaper_info_sheet.dart';
 import 'package:wallify/model/wallpaper_model.dart';
@@ -45,6 +46,7 @@ class _WallpaperPreviewPageState extends ConsumerState<WallpaperPreviewPage>
   bool _isDownloading = false;
   bool _isSettingWallpaper = false;
   int? _selectedLocation;
+  bool _blurEnabled = false;
   File? _downloadedImage;
   final TransformationController _transformationController =
       TransformationController();
@@ -103,24 +105,36 @@ class _WallpaperPreviewPageState extends ConsumerState<WallpaperPreviewPage>
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (context) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 40,
-                  height: 4,
-                  margin: const EdgeInsets.only(bottom: 8),
-                  decoration: BoxDecoration(
-                    color: Colors.grey[400],
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-                ListTile(
-                  leading: Container(
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setSheetState) {
+            return SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 40,
+                      height: 4,
+                      margin: const EdgeInsets.only(bottom: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.grey[400],
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                    SwitchListTile(
+                      secondary: Icon(Icons.blur_on, color: colorScheme.primary),
+                      title: const Text("Blur wallpaper"),
+                      subtitle: const Text("Applies a soft blur effect"),
+                      value: _blurEnabled,
+                      onChanged: (val) {
+                        setSheetState(() => _blurEnabled = val);
+                      },
+                    ),
+                    const Divider(height: 1),
+                    ListTile(
+                      leading: Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
                       color: colorScheme.primary.withValues(alpha: 0.1),
@@ -173,6 +187,9 @@ class _WallpaperPreviewPageState extends ConsumerState<WallpaperPreviewPage>
         );
       },
     );
+  },
+);
+
   }
 
   File? _cropTempFile;
@@ -296,42 +313,52 @@ class _WallpaperPreviewPageState extends ConsumerState<WallpaperPreviewPage>
     final originalImage = img.decodeImage(imageBytes);
     if (originalImage == null) return null;
 
-    if (matrix == Matrix4.identity()) return originalImage;
+    img.Image processed;
 
-    final imageWidth = originalImage.width.toDouble();
-    final imageHeight = originalImage.height.toDouble();
-    final scale = matrix.getMaxScaleOnAxis();
-    final translation = matrix.getTranslation();
-
-    if (scale >= 1.0) {
-      final visibleWidth = screenSize.width / scale;
-      final visibleHeight = screenSize.height / scale;
-      final offsetX =
-          (-translation.x / scale).clamp(0.0, imageWidth - visibleWidth);
-      final offsetY =
-          (-translation.y / scale).clamp(0.0, imageHeight - visibleHeight);
-      return img.copyCrop(
-        originalImage,
-        x: offsetX.toInt(),
-        y: offsetY.toInt(),
-        width: visibleWidth.toInt().clamp(1, originalImage.width),
-        height: visibleHeight.toInt().clamp(1, originalImage.height),
-      );
+    if (matrix == Matrix4.identity()) {
+      processed = originalImage;
     } else {
-      final sw = screenSize.width.toInt();
-      final sh = screenSize.height.toInt();
-      final result = img.Image(width: sw, height: sh);
-      final displayWidth = (imageWidth * scale).toInt().clamp(1, originalImage.width);
-      final displayHeight = (imageHeight * scale).toInt().clamp(1, originalImage.height);
-      final scaledImage = img.copyResize(originalImage,
-        width: displayWidth,
-        height: displayHeight,
-      );
-      final dx = translation.x.toInt();
-      final dy = translation.y.toInt();
-      img.compositeImage(result, scaledImage, dstX: dx, dstY: dy);
-      return result;
+      final imageWidth = originalImage.width.toDouble();
+      final imageHeight = originalImage.height.toDouble();
+      final scale = matrix.getMaxScaleOnAxis();
+      final translation = matrix.getTranslation();
+
+      if (scale >= 1.0) {
+        final visibleWidth = screenSize.width / scale;
+        final visibleHeight = screenSize.height / scale;
+        final offsetX =
+            (-translation.x / scale).clamp(0.0, imageWidth - visibleWidth);
+        final offsetY =
+            (-translation.y / scale).clamp(0.0, imageHeight - visibleHeight);
+        processed = img.copyCrop(
+          originalImage,
+          x: offsetX.toInt(),
+          y: offsetY.toInt(),
+          width: visibleWidth.toInt().clamp(1, originalImage.width),
+          height: visibleHeight.toInt().clamp(1, originalImage.height),
+        );
+      } else {
+        final sw = screenSize.width.toInt();
+        final sh = screenSize.height.toInt();
+        final result = img.Image(width: sw, height: sh);
+        final displayWidth = (imageWidth * scale).toInt().clamp(1, originalImage.width);
+        final displayHeight = (imageHeight * scale).toInt().clamp(1, originalImage.height);
+        final scaledImage = img.copyResize(originalImage,
+          width: displayWidth,
+          height: displayHeight,
+        );
+        final dx = translation.x.toInt();
+        final dy = translation.y.toInt();
+        img.compositeImage(result, scaledImage, dstX: dx, dstY: dy);
+        processed = result;
+      }
     }
+
+    if (_blurEnabled) {
+      processed = img.gaussianBlur(processed, radius: 4);
+    }
+
+    return processed;
   }
 
   Future<File> _saveProcessedToTemp(img.Image processImage) async {
@@ -403,6 +430,7 @@ class _WallpaperPreviewPageState extends ConsumerState<WallpaperPreviewPage>
         );
         _exitCropMode();
       }
+      updateWidget();
     } catch (e) {
       if (mounted) {
         showSnackBar(

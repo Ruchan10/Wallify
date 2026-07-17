@@ -15,7 +15,7 @@ class WallpaperBackgroundWorker(context: Context, workerParams: WorkerParameters
             Result.success()
         } catch (e: Exception) {
             Log.e("Wallify", "❌ Error in WallpaperBackgroundWorker", e)
-            Result.failure()
+            Result.retry()
         }
     }
 

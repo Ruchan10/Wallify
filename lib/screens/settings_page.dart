@@ -12,6 +12,7 @@ import 'package:wallify/core/wallpaper_theme_provider.dart';
 import 'package:wallify/functions/backup_function.dart';
 import 'package:wallify/functions/wallpaper_cache_manager.dart';
 import 'package:wallify/functions/wallpaper_manager.dart';
+import 'package:wallify/core/widget_helper.dart';
 import 'package:wallpaper_manager_flutter/wallpaper_manager_flutter.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -38,6 +39,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
   static const platform = MethodChannel('wallpaper_channel');
   bool _autoWallpaperEnabled = false;
   List<String> _wallpaperSources = ["internet"];
+
   String? _folderPath;
   bool _updateAvailable = false;
   bool _checkingUpdate = true;
@@ -88,6 +90,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
         WallpaperCacheManager.cacheWallpapers(fetched);
       }
       await platform.invokeMethod("scheduleBackgroundWallpaperWorkerNow");
+      await updateWidget();
     } catch (e) {
       showSnackBar(context: context, color: Colors.red, message: "Error: $e");
     }
@@ -144,6 +147,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
                           wallpaperLocation,
                         );
                         resetAutoWallpaper();
+                        updateWidget();
                       },
                       selectedColor: scheme.primary.withValues(alpha: 0.2),
                       backgroundColor: scheme.surfaceContainerHighest,
@@ -162,6 +166,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
                           wallpaperLocation,
                         );
                         resetAutoWallpaper();
+                        updateWidget();
                       },
                       selectedColor: scheme.primary.withValues(alpha: 0.2),
                       backgroundColor: scheme.surfaceContainerHighest,
@@ -180,6 +185,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
                           wallpaperLocation,
                         );
                         resetAutoWallpaper();
+                        updateWidget();
                       },
                       selectedColor: scheme.primary.withValues(alpha: 0.2),
                       backgroundColor: scheme.surfaceContainerHighest,
@@ -338,6 +344,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
                           }
                         } else {
                           try {
+                            await platform.invokeMethod(
+                              "cancelBackgroundWallpaperWorker",
+                            );
                             showSnackBar(
                               color: Colors.red,
                               context: context,
@@ -352,6 +361,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
                           }
                         }
                         await UserSharedPrefs.setAutoWallpaperEnabled(value);
+                        updateWidget();
                       },
                     ),
                   ],
@@ -496,6 +506,33 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
                 const Divider(),
                 SizedBox(height: 16),
 
+                // ========== API KEYS ==========
+                Text(
+                  "API Keys",
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  "Get a free Pexels API key at pexels.com/api",
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                _ApiKeyField(
+                  label: "Pexels API Key",
+                  hint: "API key from pexels.com/api",
+                  isSecret: true,
+                  load: () => UserSharedPrefs.getPexelsApiKey(),
+                  save: (v) => UserSharedPrefs.setPexelsApiKey(v),
+                  scheme: scheme,
+                ),
+                const SizedBox(height: 8),
+
+                const Divider(),
+                SizedBox(height: 16),
+
                 // ========== CHECK UPDATE ==========
                 ListTile(
                   leading: Icon(
@@ -572,6 +609,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
     );
   }
 
+
   Widget _buildWallpaperSettings(BuildContext context, ColorScheme scheme) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -601,13 +639,26 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
                 ),
                 onChanged: (value) {
                   final minutes = int.tryParse(value);
-                  if (minutes != null && minutes > 0) {
+                  if (minutes != null && minutes >= 15) {
                     setState(() => _intervalMinutes = minutes);
                     UserSharedPrefs.saveInterval(minutes);
+                    updateWidget();
+                    resetAutoWallpaper();
+                  } else if (minutes != null && minutes > 0 && minutes < 15) {
+                    showSnackBar(
+                      context: context,
+                      color: Colors.orange,
+                      message:
+                          "Minimum interval is 15 minutes (set to $minutes, will be adjusted)",
+                    );
+                    setState(() => _intervalMinutes = 15);
+                    _intervalController.text = "15";
+                    UserSharedPrefs.saveInterval(15);
+                    updateWidget();
+                    resetAutoWallpaper();
                   } else {
                     _intervalController.text = _intervalMinutes.toString();
                   }
-                  resetAutoWallpaper();
                 },
               ),
             ),
@@ -782,7 +833,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
       {"key": "constraint_charging", "label": "Charging"},
       {"key": "constraint_battery", "label": "Battery Not Low"},
       {"key": "constraint_storage", "label": "Storage Not Low"},
-      {"key": "constraint_wifi", "label": "Wi-Fi Only"},
       {"key": "constraint_no_faces", "label": "No Faces"},
     ];
 
@@ -848,6 +898,91 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
           ],
         );
       },
+    );
+  }
+}
+
+class _ApiKeyField extends StatefulWidget {
+  final String label;
+  final String hint;
+  final bool isSecret;
+  final Future<String?> Function() load;
+  final Future<void> Function(String?) save;
+  final ColorScheme scheme;
+
+  const _ApiKeyField({
+    required this.label,
+    required this.hint,
+    required this.isSecret,
+    required this.load,
+    required this.save,
+    required this.scheme,
+  });
+
+  @override
+  State<_ApiKeyField> createState() => _ApiKeyFieldState();
+}
+
+class _ApiKeyFieldState extends State<_ApiKeyField> {
+  final TextEditingController _controller = TextEditingController();
+  bool _obscured = true;
+  bool _loaded = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_loaded) {
+      _loaded = true;
+      widget.load().then((v) {
+        if (v != null && v.isNotEmpty) {
+          _controller.text = v;
+        }
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      decoration: BoxDecoration(
+        color: widget.scheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: _controller,
+              obscureText: widget.isSecret && _obscured,
+              decoration: InputDecoration(
+                labelText: widget.label,
+                hintText: widget.hint,
+                border: InputBorder.none,
+                isDense: true,
+                contentPadding: EdgeInsets.zero,
+              ),
+              style: TextStyle(fontSize: 14),
+              onChanged: (v) => widget.save(v.trim()),
+            ),
+          ),
+          if (widget.isSecret)
+            IconButton(
+              icon: Icon(
+                _obscured ? Icons.visibility_off : Icons.visibility,
+                size: 20,
+              ),
+              onPressed: () => setState(() => _obscured = !_obscured),
+              visualDensity: VisualDensity.compact,
+            ),
+        ],
+      ),
     );
   }
 }

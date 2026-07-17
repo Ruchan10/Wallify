@@ -85,6 +85,22 @@ object WallpaperUtils {
             val wallpaperSource = prefs.getString("flutter.wallpaperSource", "internet") ?: "internet"
             val sources = wallpaperSource.split(",").map { it.trim() }.filter { it.isNotEmpty() }.toSet()
 
+            val allowedSsidsJson = prefs.getString("flutter.allowedSsids", null)
+            if (!allowedSsidsJson.isNullOrBlank()) {
+                val allowed = try {
+                    val arr = org.json.JSONArray(allowedSsidsJson)
+                    (0 until arr.length()).map { arr.getString(it).trim() }.toSet()
+                } catch (_: Exception) { emptySet() }
+                if (allowed.isNotEmpty()) {
+                    val wifiManager = context.getSystemService(Context.WIFI_SERVICE) as? android.net.wifi.WifiManager
+                    val currentSsid = wifiManager?.connectionInfo?.ssid?.trim('"') ?: ""
+                    if (currentSsid !in allowed) {
+                        Log.d("Wallify", "Skipping: SSID '$currentSsid' not in allowed list $allowed")
+                        return
+                    }
+                }
+            }
+
             val imageSources = mutableListOf<String>()
 
             if (sources.contains("folder")) {
@@ -453,6 +469,8 @@ object WallpaperUtils {
             Log.d("Wallify", "Wallpaper set successfully for flag=$flag")
             extractAndSaveWallpaperColors(context, resultBitmap)
             updateLastChangeTime(context)
+            WallifyWidgetProvider.triggerUpdate(context)
+            saveCurrentWallpaper(context, resultBitmap)
             if (!isFolderMode) {
                 removeUsedUrl(context, imagePath)
                 removeUsedCachedPath(context, imagePath)
@@ -707,6 +725,18 @@ object WallpaperUtils {
         } catch (e: Error) {
             Log.e("Wallify", "Native library error during object detection: ${e.message}", e)
             centerCropToAspect(bitmap, targetWidth, targetHeight)
+        }
+    }
+
+    private fun saveCurrentWallpaper(context: Context, bitmap: android.graphics.Bitmap) {
+        try {
+            val file = java.io.File(context.filesDir, "live_wallpaper.jpg")
+            val stream = java.io.FileOutputStream(file)
+            bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 95, stream)
+            stream.close()
+            Log.d("Wallify", "Saved live wallpaper bitmap to ${file.absolutePath}")
+        } catch (e: Exception) {
+            Log.e("Wallify", "Failed to save live wallpaper bitmap", e)
         }
     }
 

@@ -15,9 +15,13 @@ class WallpaperManager {
 
   static Future<List<Wallpaper>> fetchImagesFromAllSources({List<String>? sources}) async {
     final selected = sources ?? ["internet", "favorites"];
+    urls.clear();
+    final seen = <String>{};
     try {
       if (selected.contains("favorites")) {
-        urls.addAll(await UserSharedPrefs.getFavWallpapers());
+        for (final w in await UserSharedPrefs.getFavWallpapers()) {
+          if (seen.add(w.url)) urls.add(w);
+        }
       }
       tag = await UserSharedPrefs.getRandomTag();
       deviceWidth = await UserSharedPrefs.getDeviceWidth();
@@ -35,7 +39,10 @@ class WallpaperManager {
         );
         final wallData = jsonDecode(wallRes.body);
         if (wallData["data"] is List) for (var item in wallData["data"]) {
-          urls.add(Wallpaper(id: item["id"].toString(), url: item["path"], timestamp: DateTime.now()));
+          final url = item["path"] as String?;
+          if (url != null && seen.add(url)) {
+            urls.add(Wallpaper(id: item["id"].toString(), url: url, timestamp: DateTime.now()));
+          }
         }
 
         // Unsplash
@@ -52,9 +59,12 @@ class WallpaperManager {
         final unsplashData = jsonDecode(unsplashRes.body);
         final unsplashResults = unsplashData["results"];
         if (unsplashResults is List) for (var item in unsplashResults) {
-          urls.add(
-            Wallpaper(id: item["id"].toString(), url: item["urls"]["regular"], timestamp: DateTime.now()),
-          );
+          final url = item["urls"]?["regular"] as String?;
+          if (url != null && seen.add(url)) {
+            urls.add(
+              Wallpaper(id: item["id"].toString(), url: url, timestamp: DateTime.now()),
+            );
+          }
         }
 
         // Pixabay
@@ -70,9 +80,12 @@ class WallpaperManager {
         );
         final pixabayData = jsonDecode(pixabayRes.body);
         if (pixabayData["hits"] is List) for (var item in pixabayData["hits"]) {
-          urls.add(
-            Wallpaper(id: item["id"].toString(), url: item["largeImageURL"], timestamp: DateTime.now()),
-          );
+          final url = item["largeImageURL"] as String?;
+          if (url != null && seen.add(url)) {
+            urls.add(
+              Wallpaper(id: item["id"].toString(), url: url, timestamp: DateTime.now()),
+            );
+          }
         }
       }
     } catch (e) {

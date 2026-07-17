@@ -8,6 +8,7 @@ import 'package:wallify/model/wallpaper_model.dart';
 
 class WallpaperCacheManager {
   static const _maxCached = 50;
+  static const _concurrency = 4;
 
   static Future<Directory> _cacheDir() async {
     final appDir = await getApplicationDocumentsDirectory();
@@ -38,10 +39,20 @@ class WallpaperCacheManager {
   static Future<void> cacheWallpapers(List<Wallpaper> wallpapers) async {
     final paths = <String>[];
     final snapshot = wallpapers.toList();
-    for (final w in snapshot) {
-      final path = await downloadAndCache(w);
-      if (path != null) paths.add(path);
-      if (paths.length >= _maxCached) break;
+    for (var i = 0;
+        i < snapshot.length && paths.length < _maxCached;
+        i += _concurrency) {
+      final end = (i + _concurrency < snapshot.length)
+          ? i + _concurrency
+          : snapshot.length;
+      final batch = snapshot.sublist(i, end);
+      final results = await Future.wait(batch.map((w) => downloadAndCache(w)));
+      for (final path in results) {
+        if (path != null) {
+          paths.add(path);
+          if (paths.length >= _maxCached) break;
+        }
+      }
     }
 
     await UserSharedPrefs.saveCachedWallpaperPaths(paths);
