@@ -10,8 +10,13 @@ import java.util.concurrent.TimeUnit
 
 object WorkManagerExt {
 
-    fun scheduleAutoChange(context: Context) {
+    fun scheduleAutoChange(context: Context, forceReset: Boolean = false) {
         val prefs = context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+        val autoEnabled = prefs.getBoolean("flutter.autoWallpaperEnabled", false)
+        if (!autoEnabled && !forceReset) {
+            return
+        }
+
         val intervalValue = prefs.all["flutter.wallpaper_interval"]
         val intervalMinutes = when (intervalValue) {
             is Int -> intervalValue
@@ -20,7 +25,7 @@ object WorkManagerExt {
             else -> null
         }?.coerceAtLeast(15) ?: 60
 
-        val requiresCharging = prefs.getBoolean("flutter.constraint_charging", true)
+        val requiresCharging = prefs.getBoolean("flutter.constraint_charging", false)
         val requiresBatteryNotLow = prefs.getBoolean("flutter.constraint_battery_not_low", false)
         val requiresStorageNotLow = prefs.getBoolean("flutter.constraint_storage_not_low", false)
         val requiresWifi = prefs.getBoolean("flutter.constraint_wifi", false)
@@ -41,18 +46,25 @@ object WorkManagerExt {
         val request = PeriodicWorkRequestBuilder<WallpaperBackgroundWorker>(
             intervalMinutes.toLong(), TimeUnit.MINUTES
         )
-            .setInitialDelay(1, TimeUnit.MINUTES)
             .setConstraints(constraints)
             .build()
 
+        val policy = if (forceReset) {
+            ExistingPeriodicWorkPolicy.CANCEL_AND_REENQUEUE
+        } else {
+            ExistingPeriodicWorkPolicy.UPDATE
+        }
+
         WorkManager.getInstance(context).enqueueUniquePeriodicWork(
             WallpaperBackgroundWorker.WORK_NAME,
-            ExistingPeriodicWorkPolicy.CANCEL_AND_REENQUEUE,
+            policy,
             request
         )
+        WorkerLogger.i(context, "WorkManager", "Periodic auto wallpaper scheduled (interval=${intervalMinutes}m, policy=$policy)")
     }
 
     fun cancelAutoChange(context: Context) {
         WorkManager.getInstance(context).cancelUniqueWork(WallpaperBackgroundWorker.WORK_NAME)
+        WorkerLogger.i(context, "WorkManager", "Cancelled periodic auto wallpaper work")
     }
 }

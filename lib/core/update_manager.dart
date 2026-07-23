@@ -99,8 +99,8 @@ class UpdateManager {
   }
 
   static bool _isVersionHigher(String current, String latest) {
-    final currentParts = current.split('.').map(int.parse).toList();
-    final latestParts = latest.split('.').map(int.parse).toList();
+    final currentParts = current.split('.').map((e) => int.tryParse(e) ?? 0).toList();
+    final latestParts = latest.split('.').map((e) => int.tryParse(e) ?? 0).toList();
 
     for (var i = 0; i < latestParts.length; i++) {
       final currentNum = i < currentParts.length ? currentParts[i] : 0;

@@ -303,7 +303,7 @@ class UserSharedPrefs {
 
   static Future<bool> getConstraintCharging() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(_constraintChargingKey) ?? true;
+    return prefs.getBool(_constraintChargingKey) ?? false;
   }
 
   static Future<void> setConstraintBatteryNotLow(bool enabled) async {

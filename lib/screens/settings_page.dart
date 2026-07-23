@@ -44,12 +44,16 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
   bool _updateAvailable = false;
   bool _checkingUpdate = true;
 
+  List<Map<String, String>> _workerLogs = [];
+  bool _logsExpanded = false;
+
   @override
   void initState() {
     super.initState();
     _initialize();
     _checkUpdateStatus();
     WidgetsBinding.instance.addObserver(this);
+    _loadWorkerLogs();
   }
 
   Future<void> _checkUpdateStatus() async {
@@ -60,6 +64,24 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
         _checkingUpdate = false;
       });
     }
+  }
+
+  Future<void> _loadWorkerLogs() async {
+    try {
+      final logs = await platform.invokeMethod("getWorkerLogs");
+      if (logs is List) {
+        setState(() {
+          _workerLogs = logs.map((e) => Map<String, String>.from(e as Map)).toList();
+        });
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _clearWorkerLogs() async {
+    try {
+      await platform.invokeMethod("clearWorkerLogs");
+      setState(() => _workerLogs.clear());
+    } catch (_) {}
   }
 
   Future<void> _initialize() async {
@@ -585,7 +607,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
                     ),
                   ),
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 24),
+                const Divider(),
+                _buildLogViewer(scheme),
+                const SizedBox(height: 80),
               ],
             ),
             Positioned(
@@ -831,8 +856,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
 
     final constraints = [
       {"key": "constraint_charging", "label": "Charging"},
-      {"key": "constraint_battery", "label": "Battery Not Low"},
-      {"key": "constraint_storage", "label": "Storage Not Low"},
+      {"key": "constraint_battery_not_low", "label": "Battery Not Low"},
+      {"key": "constraint_storage_not_low", "label": "Storage Not Low"},
       {"key": "constraint_no_faces", "label": "No Faces"},
     ];
 
@@ -895,9 +920,133 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
                 );
               }).toList(),
             ),
+            const SizedBox(height: 8),
+            Text(
+              "Auto wallpaper change runs every time the device is plugged in or on interval if all enabled constraints are met.",
+              style: TextStyle(
+                fontSize: 12,
+                color: scheme.onSurfaceVariant,
+              ),
+            ),
           ],
         );
       },
+    );
+  }
+
+  Widget _buildLogViewer(ColorScheme scheme) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        InkWell(
+          onTap: () {
+            setState(() => _logsExpanded = !_logsExpanded);
+            if (_logsExpanded) _loadWorkerLogs();
+          },
+          child: Row(
+            children: [
+              Icon(
+                _logsExpanded ? Icons.expand_less : Icons.expand_more,
+                size: 20,
+                color: scheme.onSurfaceVariant,
+              ),
+              const SizedBox(width: 6),
+              Icon(Icons.terminal, size: 18, color: scheme.onSurfaceVariant),
+              const SizedBox(width: 6),
+              Text(
+                "Worker Logs (${_workerLogs.length})",
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+              const Spacer(),
+              if (_logsExpanded)
+                IconButton(
+                  icon: Icon(Icons.refresh, size: 18),
+                  onPressed: _loadWorkerLogs,
+                  tooltip: "Refresh logs",
+                  visualDensity: VisualDensity.compact,
+                ),
+              if (_logsExpanded && _workerLogs.isNotEmpty)
+                IconButton(
+                  icon: Icon(Icons.delete_outline, size: 18),
+                  onPressed: _clearWorkerLogs,
+                  tooltip: "Clear logs",
+                  visualDensity: VisualDensity.compact,
+                ),
+            ],
+          ),
+        ),
+        if (_logsExpanded) ...[
+          const SizedBox(height: 8),
+          Container(
+            height: 250,
+            decoration: BoxDecoration(
+              color: scheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: _workerLogs.isEmpty
+              ? Center(
+                  child: Text(
+                    "No logs yet.\nLogs appear here when the\nbackground worker runs.",
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.all(8),
+                  itemCount: _workerLogs.length,
+                  itemBuilder: (context, index) {
+                    final log = _workerLogs[index];
+                    final level = log["level"] ?? "";
+                    final ts = log["ts"] ?? "";
+                    final tag = log["tag"] ?? "";
+                    final msg = log["msg"] ?? "";
+                    final color = switch (level) {
+                      "E" => Colors.red.shade300,
+                      "W" => Colors.orange.shade300,
+                      _ => scheme.onSurface,
+                    };
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 1),
+                      child: Text.rich(
+                        TextSpan(
+                          children: [
+                            TextSpan(
+                              text: "[$level]",
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: color,
+                                fontFamily: 'monospace',
+                              ),
+                            ),
+                            TextSpan(
+                              text: " $ts ",
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: scheme.onSurfaceVariant.withValues(alpha: 0.6),
+                                fontFamily: 'monospace',
+                              ),
+                            ),
+                            TextSpan(
+                              text: msg,
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: scheme.onSurface,
+                                fontFamily: 'monospace',
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+          ),
+        ],
+      ],
     );
   }
 }

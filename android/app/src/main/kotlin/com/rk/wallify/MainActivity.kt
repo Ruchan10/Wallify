@@ -136,6 +136,19 @@ class MainActivity : FlutterActivity() {
                         result.error("INVALID_ARGS", "filePath and fileName are required", null)
                     }
                 }
+                "getWorkerLogs" -> {
+                    val logs = WorkerLogger.getLogs(this)
+                    result.success(logs.map { mapOf(
+                        "ts" to (it["ts"] ?: ""),
+                        "level" to (it["level"] ?: ""),
+                        "tag" to (it["tag"] ?: ""),
+                        "msg" to (it["msg"] ?: "")
+                    ) })
+                }
+                "clearWorkerLogs" -> {
+                    WorkerLogger.clearLogs(this)
+                    result.success("Logs cleared")
+                }
                 "updateWidget" -> {
                     WallifyWidgetProvider.triggerUpdate(this)
                     result.success("Widget updated")
@@ -144,48 +157,6 @@ class MainActivity : FlutterActivity() {
                     result.notImplemented()
                 }
             }
-        }
-    }
-
-    fun downloadAndSetWallpaperBackground(context: Context) {
-        try {
-            Log.d("Wallify", "Starting background wallpaper change (no Flutter)")
-
-            // 1️⃣ Get preferences
-            val prefs = context.getSharedPreferences("wallify_prefs", Context.MODE_PRIVATE)
-            val imageUrls = prefs.getStringSet("imageUrls", emptySet())?.toList() ?: emptyList()
-            val wallpaperLocation = prefs.getInt("wallpaperLocation", 1)
-
-            if (imageUrls.isEmpty()) {
-                Log.w("Wallify", "No image URLs found in SharedPreferences")
-                return
-            }
-
-            // 2️⃣ Pick a random image URL
-            val randomUrl = imageUrls.random()
-            Log.d("Wallify", "Selected random URL for wallpaper: $randomUrl, location: $wallpaperLocation")
-
-            // 3️⃣ Call the existing wallpaper setter (reuse your current method)
-            val mainActivity = MainActivity()
-            mainActivity.attachBaseContext(context)
-            mainActivity.downloadAndSetWallpaper(randomUrl, wallpaperLocation,
-                object : io.flutter.plugin.common.MethodChannel.Result {
-                    override fun success(result: Any?) {
-                        Log.d("Wallify", "Wallpaper set successfully in background: $result")
-                    }
-
-                    override fun error(errorCode: String, errorMessage: String?, errorDetails: Any?) {
-                        Log.e("Wallify", "Error setting wallpaper in background: $errorMessage")
-                    }
-
-                    override fun notImplemented() {
-                        Log.w("Wallify", "Method not implemented")
-                    }
-                }
-            )
-
-        } catch (e: Exception) {
-            Log.e("Wallify", "Error in background wallpaper change", e)
         }
     }
 

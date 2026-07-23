@@ -77,29 +77,116 @@ object WallpaperUtils {
         return cachedFaceDetector
     }
 
+    fun checkConstraints(context: Context): Pair<Boolean, String> {
+        val prefs = context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+
+        val autoEnabled = prefs.getBoolean("flutter.autoWallpaperEnabled", false)
+        if (!autoEnabled) {
+            return Pair(false, "Auto wallpaper is disabled")
+        }
+
+        val requiresCharging = prefs.getBoolean("flutter.constraint_charging", false)
+        if (requiresCharging && !isDeviceCharging(context)) {
+            return Pair(false, "Device is not charging")
+        }
+
+        val requiresBatteryNotLow = prefs.getBoolean("flutter.constraint_battery_not_low", false)
+        if (requiresBatteryNotLow && !isBatteryNotLow(context)) {
+            return Pair(false, "Battery level is low (<15%)")
+        }
+
+        val requiresStorageNotLow = prefs.getBoolean("flutter.constraint_storage_not_low", false)
+        if (requiresStorageNotLow && !isStorageNotLow(context)) {
+            return Pair(false, "Storage space is low (<100MB free)")
+        }
+
+        val requiresWifi = prefs.getBoolean("flutter.constraint_wifi", false)
+        if (requiresWifi && !isWifiConnected(context)) {
+            return Pair(false, "Not connected to Wi-Fi")
+        }
+
+        val allowedSsidsJson = prefs.getString("flutter.allowedSsids", null)
+        if (!allowedSsidsJson.isNullOrBlank()) {
+            val allowed = try {
+                val arr = org.json.JSONArray(allowedSsidsJson)
+                (0 until arr.length()).map { arr.getString(it).trim() }.toSet()
+            } catch (_: Exception) { emptySet() }
+            if (allowed.isNotEmpty()) {
+                val wifiManager = context.getSystemService(Context.WIFI_SERVICE) as? android.net.wifi.WifiManager
+                val currentSsid = wifiManager?.connectionInfo?.ssid?.trim('"') ?: ""
+                if (currentSsid !in allowed) {
+                    return Pair(false, "SSID '$currentSsid' not in allowed list")
+                }
+            }
+        }
+
+        return Pair(true, "All constraints met")
+    }
+
+    fun isDeviceCharging(context: Context): Boolean {
+        return try {
+            val intent = context.registerReceiver(null, android.content.IntentFilter(android.content.Intent.ACTION_BATTERY_CHANGED))
+            val status = intent?.getIntExtra(android.os.BatteryManager.EXTRA_STATUS, -1) ?: -1
+            status == android.os.BatteryManager.BATTERY_STATUS_CHARGING || status == android.os.BatteryManager.BATTERY_STATUS_FULL
+        } catch (e: Exception) {
+            true
+        }
+    }
+
+    fun isBatteryNotLow(context: Context): Boolean {
+        return try {
+            val intent = context.registerReceiver(null, android.content.IntentFilter(android.content.Intent.ACTION_BATTERY_CHANGED))
+            val level = intent?.getIntExtra(android.os.BatteryManager.EXTRA_LEVEL, -1) ?: -1
+            val scale = intent?.getIntExtra(android.os.BatteryManager.EXTRA_SCALE, -1) ?: -1
+            if (level >= 0 && scale > 0) {
+                val pct = (level * 100) / scale.toFloat()
+                pct >= 15f
+            } else {
+                true
+            }
+        } catch (e: Exception) {
+            true
+        }
+    }
+
+    fun isStorageNotLow(context: Context): Boolean {
+        return try {
+            val stat = android.os.StatFs(context.filesDir.path)
+            val availableBytes = stat.availableBlocksLong * stat.blockSizeLong
+            availableBytes > 100 * 1024 * 1024
+        } catch (e: Exception) {
+            true
+        }
+    }
+
+    fun isWifiConnected(context: Context): Boolean {
+        return try {
+            val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? android.net.ConnectivityManager
+            val network = cm?.activeNetwork ?: return false
+            val caps = cm.getNetworkCapabilities(network) ?: return false
+            caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) ||
+            caps.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_NOT_METERED)
+        } catch (e: Exception) {
+            true
+        }
+    }
+
     fun downloadAndSetWallpaperBackground(context: Context) {
         try {
+            WorkerLogger.i(context, "Wallify", "Starting background wallpaper change check")
             Log.d("Wallify", "Starting background wallpaper change (no Activity)")
+
+            val (met, reason) = checkConstraints(context)
+            if (!met) {
+                WorkerLogger.w(context, "Wallify", "Skipping wallpaper change: $reason")
+                Log.d("Wallify", "Skipping wallpaper change: $reason")
+                return
+            }
 
             val prefs = context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
             val wallpaperSource = prefs.getString("flutter.wallpaperSource", "internet") ?: "internet"
             val sources = wallpaperSource.split(",").map { it.trim() }.filter { it.isNotEmpty() }.toSet()
-
-            val allowedSsidsJson = prefs.getString("flutter.allowedSsids", null)
-            if (!allowedSsidsJson.isNullOrBlank()) {
-                val allowed = try {
-                    val arr = org.json.JSONArray(allowedSsidsJson)
-                    (0 until arr.length()).map { arr.getString(it).trim() }.toSet()
-                } catch (_: Exception) { emptySet() }
-                if (allowed.isNotEmpty()) {
-                    val wifiManager = context.getSystemService(Context.WIFI_SERVICE) as? android.net.wifi.WifiManager
-                    val currentSsid = wifiManager?.connectionInfo?.ssid?.trim('"') ?: ""
-                    if (currentSsid !in allowed) {
-                        Log.d("Wallify", "Skipping: SSID '$currentSsid' not in allowed list $allowed")
-                        return
-                    }
-                }
-            }
+            WorkerLogger.i(context, "Wallify", "Sources: $sources")
 
             val imageSources = mutableListOf<String>()
 
@@ -110,11 +197,14 @@ object WallpaperUtils {
                     if (folder.exists() && folder.isDirectory()) {
                         folder.listFiles { f -> f.isFile && f.extension.lowercase() in imageExtensions }
                             ?.forEach { imageSources.add(it.absolutePath) }
+                        WorkerLogger.i(context, "Wallify", "Found ${imageSources.size} images in folder: $folderPath")
                         Log.d("Wallify", "Found ${imageSources.size} images in folder: $folderPath")
                     } else {
+                        WorkerLogger.e(context, "Wallify", "Folder does not exist: $folderPath")
                         Log.e("Wallify", "Folder does not exist: $folderPath")
                     }
                 } else {
+                    WorkerLogger.e(context, "Wallify", "Folder source selected but no folder path set")
                     Log.e("Wallify", "Folder source selected but no folder path set")
                 }
             }
@@ -122,46 +212,39 @@ object WallpaperUtils {
             if (sources.contains("internet") || sources.isEmpty() || sources.contains("folder").not()) {
                 val cachedPaths = getCachedLocalPaths(context)
                 if (cachedPaths.isNotEmpty()) {
+                    WorkerLogger.i(context, "Wallify", "Using ${cachedPaths.size} locally cached wallpapers")
                     Log.d("Wallify", "Using ${cachedPaths.size} locally cached wallpapers")
                     imageSources.addAll(cachedPaths)
                 } else {
-                    var imageJsonString = prefs.getString("flutter.imageUrls", "[]") ?: "[]"
-                    if (imageJsonString.contains("![")) {
-                        imageJsonString = imageJsonString.substringAfter("!")
-                    }
-                    val imageUrls = try {
-                        val jsonArray = org.json.JSONArray(imageJsonString)
-                        val urls = mutableListOf<String>()
-                        for (i in 0 until jsonArray.length()) {
-                            val wallpaperObj = org.json.JSONObject(jsonArray.getString(i))
-                            val url = wallpaperObj.optString("url", "")
-                            if (url.isNotEmpty()) urls.add(url)
-                        }
-                        urls.toMutableList()
-                    } catch (e: Exception) {
-                        Log.e("Wallify", "Error parsing flutter.imageUrls JSON", e)
-                        mutableListOf()
-                    }
+                    val rawJson = prefs.getString("flutter.imageUrls", "[]") ?: "[]"
+                    val imageUrls = parseImageUrlsJson(rawJson)
 
                     if (imageUrls.isEmpty()) {
+                        WorkerLogger.w(context, "Wallify", "No image URLs found, fetching new ones from APIs...")
                         Log.w("Wallify", "No image URLs found, fetching new ones from APIs...")
                         val fetched = fetchImagesFromAllSources(context)
                         if (fetched.isEmpty()) {
+                            WorkerLogger.e(context, "Wallify", "Could not fetch any wallpapers, aborting.")
                             Log.e("Wallify", "Could not fetch any wallpapers, aborting.")
                             return
                         } else {
                             imageUrls.addAll(fetched)
+                            WorkerLogger.i(context, "Wallify", "Added ${fetched.size} new wallpapers from API")
                             Log.d("Wallify", "Added ${fetched.size} new wallpapers from API")
                         }
+                    } else {
+                        WorkerLogger.i(context, "Wallify", "Loaded ${imageUrls.size} image URLs from storage")
                     }
                     imageSources.addAll(imageUrls)
                 }
             }
 
             if (imageSources.isEmpty()) {
+                WorkerLogger.e(context, "Wallify", "No wallpapers from any source, aborting.")
                 Log.e("Wallify", "No wallpapers from any source, aborting.")
                 return
             }
+            WorkerLogger.i(context, "Wallify", "Total image candidates: ${imageSources.size}")
 
             val wallpaperLocationValue = prefs.all["flutter.wallpaperLocation"]
             val wallpaperLocation = when (wallpaperLocationValue) {
@@ -170,74 +253,76 @@ object WallpaperUtils {
                 is String -> wallpaperLocationValue.toIntOrNull() ?: 3
                 else -> 3
             }
-            Log.e("Wallify", wallpaperLocation.toString())
+            WorkerLogger.i(context, "Wallify", "Wallpaper location mode: $wallpaperLocation")
 
             val wallpaperManager = WallpaperManager.getInstance(context)
             val isFolderMode = sources.contains("folder")
 
             when (wallpaperLocation) {
                 1 -> {
-                    val nonFacePath = getNonFaceImagePath(context, imageSources, isFolderMode)
+                    WorkerLogger.i(context, "Wallify", "Setting HOME wallpaper")
+                    val nonFacePath = getOrFetchNonFaceImagePath(context, imageSources, isFolderMode)
                     if (nonFacePath == null) {
-                        Log.e("Wallify", "No suitable wallpapers found (all had faces).")
+                        WorkerLogger.e(context, "Wallify", "No suitable wallpapers found (all had faces or invalid, fetch failed).")
+                        Log.e("Wallify", "No suitable wallpapers found (all had faces or invalid, fetch failed).")
                         return
                     }
+                    WorkerLogger.i(context, "Wallify", "Selected: $nonFacePath")
                     setWallpaper(context, wallpaperManager, nonFacePath, WallpaperManager.FLAG_SYSTEM, isFolderMode)
                 }
 
                 2 -> {
-                    val nonFacePath = getNonFaceImagePath(context, imageSources, isFolderMode)
+                    WorkerLogger.i(context, "Wallify", "Setting LOCK wallpaper")
+                    val nonFacePath = getOrFetchNonFaceImagePath(context, imageSources, isFolderMode)
                     if (nonFacePath == null) {
-                        Log.e("Wallify", "No suitable wallpapers found (all had faces).")
+                        WorkerLogger.e(context, "Wallify", "No suitable wallpapers found (all had faces or invalid, fetch failed).")
+                        Log.e("Wallify", "No suitable wallpapers found (all had faces or invalid, fetch failed).")
                         return
                     }
+                    WorkerLogger.i(context, "Wallify", "Selected: $nonFacePath")
                     setWallpaper(context, wallpaperManager, nonFacePath, WallpaperManager.FLAG_LOCK, isFolderMode)
                 }
 
                 3 -> {
-                    if (imageSources.size < 2) {
-                        Log.w("Wallify", "Not enough wallpapers, using same image for both.")
-                        val nonFacePath = getNonFaceImagePath(context, imageSources, isFolderMode)
-                        if (nonFacePath == null) {
-                            Log.e("Wallify", "No suitable wallpapers found (all had faces).")
-                            return
-                        }
-                        setWallpaper(context, wallpaperManager, nonFacePath, WallpaperManager.FLAG_SYSTEM, isFolderMode)
-                        setWallpaper(context, wallpaperManager, nonFacePath, WallpaperManager.FLAG_LOCK, isFolderMode)
-                    } else {
-                        val nonFacePath = getNonFaceImagePath(context, imageSources, isFolderMode)
-                        if (nonFacePath == null) {
-                            Log.e("Wallify", "No suitable wallpapers found (all had faces).")
-                            return
-                        }
-                        var lockPath = getNonFaceImagePath(context, imageSources, isFolderMode)
-                        if (lockPath == null) {
-                            Log.e("Wallify", "No suitable wallpapers found (all had faces).")
-                            return
-                        }
-                        while (nonFacePath == lockPath && imageSources.size > 1) {
-                            lockPath = imageSources.random()
-                        }
-                        setWallpaper(context, wallpaperManager, nonFacePath, WallpaperManager.FLAG_SYSTEM, isFolderMode)
-                        setWallpaper(context, wallpaperManager, lockPath, WallpaperManager.FLAG_LOCK, isFolderMode)
+                    WorkerLogger.i(context, "Wallify", "Setting BOTH wallpapers")
+                    val homePath = getOrFetchNonFaceImagePath(context, imageSources, isFolderMode)
+                    if (homePath == null) {
+                        WorkerLogger.e(context, "Wallify", "No suitable wallpapers found for home (all had faces or invalid, fetch failed).")
+                        Log.e("Wallify", "No suitable wallpapers found for home (all had faces or invalid, fetch failed).")
+                        return
                     }
+
+                    imageSources.remove(homePath)
+                    var lockPath = getOrFetchNonFaceImagePath(context, imageSources, isFolderMode)
+                    if (lockPath == null) {
+                        lockPath = homePath
+                    }
+                    WorkerLogger.i(context, "Wallify", "Home: $homePath, Lock: $lockPath")
+                    setWallpaper(context, wallpaperManager, homePath, WallpaperManager.FLAG_SYSTEM, isFolderMode)
+                    setWallpaper(context, wallpaperManager, lockPath, WallpaperManager.FLAG_LOCK, isFolderMode)
                 }
 
                 else -> {
-                    val nonFacePath = getNonFaceImagePath(context, imageSources, isFolderMode)
+                    WorkerLogger.i(context, "Wallify", "Setting default (home) wallpaper")
+                    val nonFacePath = getOrFetchNonFaceImagePath(context, imageSources, isFolderMode)
                     if (nonFacePath == null) {
-                        Log.e("Wallify", "No suitable wallpapers found (all had faces).")
+                        WorkerLogger.e(context, "Wallify", "No suitable wallpapers found (all had faces or invalid, fetch failed).")
+                        Log.e("Wallify", "No suitable wallpapers found (all had faces or invalid, fetch failed).")
                         return
                     }
+                    WorkerLogger.i(context, "Wallify", "Selected: $nonFacePath")
                     Log.d("Wallify", "Setting default (home) wallpaper: $nonFacePath")
                     setWallpaper(context, wallpaperManager, nonFacePath, WallpaperManager.FLAG_SYSTEM, isFolderMode)
                 }
             }
 
+            WorkerLogger.i(context, "Wallify", "Wallpaper change completed successfully (mode=$wallpaperLocation, source=$wallpaperSource)")
             Log.d("Wallify", "Wallpaper change completed (mode=$wallpaperLocation, source=$wallpaperSource)")
         } catch (e: Exception) {
+            WorkerLogger.e(context, "Wallify", "Error: ${e.message}")
             Log.e("Wallify", "Error setting wallpaper in background", e)
         } catch (e: Error) {
+            WorkerLogger.e(context, "Wallify", "Fatal error: ${e.message}")
             Log.e("Wallify", "Fatal error setting wallpaper in background: ${e.message}", e)
         }
     }
@@ -249,12 +334,15 @@ object WallpaperUtils {
             val results = detector.detect(mpImage)
             val hasFace = results.detections().isNotEmpty()
             if (hasFace) {
+                WorkerLogger.i(context, "Wallify", "Face detected - skipping")
                 Log.d("Wallify", "Face detected - skipping this wallpaper.")
             } else {
+                WorkerLogger.i(context, "Wallify", "No faces detected - safe")
                 Log.d("Wallify", "No faces detected - safe to use.")
             }
             hasFace
         } catch (e: Exception) {
+            WorkerLogger.e(context, "Wallify", "Face detection error: ${e.message}")
             Log.e("Wallify", "Error detecting faces: ${e.message}", e)
             false
         }
@@ -316,6 +404,10 @@ object WallpaperUtils {
             if (bitmap == null) {
                 Log.w("Wallify", "Skipping invalid image: $path")
                 iterator.remove()
+                if (!isFolderMode) {
+                    removeUsedUrl(context, path, addToHistory = false)
+                    removeUsedCachedPath(context, path)
+                }
                 continue
             }
 
@@ -330,7 +422,7 @@ object WallpaperUtils {
                 Log.d("Wallify", "Discarded face image: $path")
                 iterator.remove()
                 if (!isFolderMode) {
-                    removeUsedUrl(context, path)
+                    removeUsedUrl(context, path, addToHistory = false)
                 }
             }
         }
@@ -338,14 +430,68 @@ object WallpaperUtils {
         return null
     }
 
+    private fun getOrFetchNonFaceImagePath(
+        context: Context,
+        imageSources: MutableList<String>,
+        isFolderMode: Boolean,
+        maxFetchRetries: Int = 2
+    ): String? {
+        var retriesLeft = maxFetchRetries
+        while (true) {
+            val path = getNonFaceImagePath(context, imageSources, isFolderMode)
+            if (path != null) {
+                return path
+            }
+
+            val prefs = context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+            val wallpaperSource = prefs.getString("flutter.wallpaperSource", "internet") ?: "internet"
+            val sources = wallpaperSource.split(",").map { it.trim() }.filter { it.isNotEmpty() }.toSet()
+            val isOnlyFolder = sources.size == 1 && sources.contains("folder")
+            val hasInternet = !isOnlyFolder
+
+            if (!hasInternet || retriesLeft <= 0) {
+                WorkerLogger.w(context, "Wallify", "No suitable wallpaper found (hasInternet=$hasInternet, retriesLeft=$retriesLeft)")
+                Log.w("Wallify", "No suitable wallpaper found (hasInternet=$hasInternet, retriesLeft=$retriesLeft)")
+                return null
+            }
+
+            retriesLeft--
+            WorkerLogger.i(context, "Wallify", "Candidate wallpaper pool exhausted. Fetching fresh wallpapers from APIs...")
+            Log.i("Wallify", "Candidate wallpaper pool exhausted. Fetching fresh wallpapers from APIs...")
+
+            val freshUrls = fetchImagesFromAllSources(context)
+            if (freshUrls.isEmpty()) {
+                WorkerLogger.e(context, "Wallify", "Could not fetch any new wallpapers from APIs.")
+                Log.e("Wallify", "Could not fetch any new wallpapers from APIs.")
+                return null
+            }
+
+            imageSources.addAll(freshUrls)
+        }
+    }
+
     private fun fetchImagesFromAllSources(context: Context): List<String> {
         val urls = mutableListOf<String>()
         try {
             val prefs = context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
-            val tag = prefs.getString("flutter.random_tag", "nature") ?: "nature"
+            val tagsJson = prefs.getString("flutter.tags", null)
+            val savedTags = if (!tagsJson.isNullOrEmpty()) {
+                try {
+                    val arr = org.json.JSONArray(tagsJson)
+                    (0 until arr.length()).map { arr.getString(it) }.filter { it.isNotBlank() }
+                } catch (_: Exception) { emptyList() }
+            } else emptyList()
+
+            val tag = if (savedTags.isNotEmpty()) {
+                savedTags.random()
+            } else {
+                prefs.getString("flutter.random_tag", "nature") ?: "nature"
+            }
+
             val deviceWidth = (prefs.all["flutter.deviceWidth"] as? Int) ?: 1080
             val deviceHeight = (prefs.all["flutter.deviceHeight"] as? Int) ?: 1920
 
+            WorkerLogger.i(context, "Wallify", "Fetching wallpapers tag=$tag, size=${deviceWidth}x$deviceHeight")
             Log.d("Wallify", "Fetching wallpapers with tag=$tag, size=${deviceWidth}x$deviceHeight")
 
             val wallhavenUrl =
@@ -437,8 +583,10 @@ object WallpaperUtils {
     }
 
     private fun setWallpaper(context: Context, manager: WallpaperManager, imagePath: String, flag: Int, isFolderMode: Boolean = false) {
+        WorkerLogger.i(context, "Wallify", "Loading image: $imagePath (flag=$flag)")
         val bitmap = loadBitmapFromSource(context, imagePath)
         if (bitmap == null) {
+            WorkerLogger.e(context, "Wallify", "Failed to load image bitmap: $imagePath")
             Log.e("Wallify", "Failed to load image: $imagePath")
             return
         }
@@ -501,6 +649,12 @@ object WallpaperUtils {
             connection.connectTimeout = 10000
             connection.readTimeout = 10000
             connection.setRequestProperty("User-Agent", "Wallify-App")
+
+            val responseCode = connection.responseCode
+            if (responseCode != HttpURLConnection.HTTP_OK) {
+                Log.e("Wallify", "Failed to download image: HTTP $responseCode for $imageUrl")
+                return null
+            }
 
             val input = connection.inputStream
             val bytes = input.readBytes()
@@ -576,7 +730,7 @@ object WallpaperUtils {
         Log.d("Wallify", "Updated lastWallpaperChange = $now")
     }
 
-    private fun removeUsedUrl(context: Context, usedUrl: String) {
+    private fun removeUsedUrl(context: Context, usedUrl: String, addToHistory: Boolean = true) {
         try {
             val prefs = context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
 
@@ -586,57 +740,86 @@ object WallpaperUtils {
             }
             val imageList = JSONArray(imageJsonString)
 
-            val historyJsonString = prefs.getString("flutter.wallpaperHistory", "[]") ?: "[]"
-            val historyList = JSONArray(historyJsonString)
-
-            Log.d("Wallify", "Removing used wallpaper URL: $usedUrl")
+            Log.d("Wallify", "Removing wallpaper URL (addToHistory=$addToHistory): $usedUrl")
 
             val newImageList = JSONArray()
             var movedObject: JSONObject? = null
 
             for (i in 0 until imageList.length()) {
-                val itemStr = imageList.getString(i)
-                val item = JSONObject(itemStr)
+                val rawItem = imageList.get(i)
+                val item = when (rawItem) {
+                    is JSONObject -> rawItem
+                    is String -> try { JSONObject(rawItem) } catch (_: Exception) { JSONObject().put("url", rawItem) }
+                    else -> JSONObject()
+                }
                 val url = item.optString("url", "")
 
                 if (url == usedUrl && movedObject == null) {
                     movedObject = item
-                    Log.d("Wallify", "Moved to history: $item")
+                    Log.d("Wallify", "Removed from imageUrls: $usedUrl")
                 } else {
-                    newImageList.put(itemStr)
+                    newImageList.put(item)
                 }
             }
 
             prefs.edit().putString("flutter.imageUrls", newImageList.toString()).apply()
 
-            val movedEntry = movedObject ?: JSONObject().put("url", usedUrl)
-            val movedUrl = movedEntry.optString("url", usedUrl)
+            if (addToHistory) {
+                val historyJsonString = prefs.getString("flutter.wallpaperHistory", "[]") ?: "[]"
+                val historyList = JSONArray(historyJsonString)
 
-            val newHistory = JSONArray()
-            newHistory.put(movedEntry)
-            for (i in 0 until historyList.length()) {
-                val existing = historyList.optJSONObject(i) ?: continue
-                if (existing.optString("url", "") == movedUrl) continue
-                newHistory.put(existing)
-            }
+                val movedEntry = movedObject ?: JSONObject().put("url", usedUrl)
+                val movedUrl = movedEntry.optString("url", usedUrl)
 
-            val maxHistory = 100
-            val cappedHistory = if (newHistory.length() > maxHistory) {
-                JSONArray().apply {
-                    for (i in 0 until maxHistory) put(newHistory.get(i))
+                val newHistory = JSONArray()
+                newHistory.put(movedEntry)
+                for (i in 0 until historyList.length()) {
+                    val existing = historyList.optJSONObject(i) ?: continue
+                    if (existing.optString("url", "") == movedUrl) continue
+                    newHistory.put(existing)
                 }
-            } else {
-                newHistory
+
+                val maxHistory = 100
+                val cappedHistory = if (newHistory.length() > maxHistory) {
+                    JSONArray().apply {
+                        for (i in 0 until maxHistory) put(newHistory.get(i))
+                    }
+                } else {
+                    newHistory
+                }
+
+                prefs.edit().putString("flutter.wallpaperHistory", cappedHistory.toString()).apply()
+                Log.d("Wallify", "History size: ${cappedHistory.length()}")
             }
 
-            prefs.edit().putString("flutter.wallpaperHistory", cappedHistory.toString()).apply()
-
-            Log.d("Wallify", "History size: ${cappedHistory.length()}")
             Log.d("Wallify", "Remaining imageUrls: ${newImageList.length()}")
 
         } catch (e: Exception) {
             Log.e("Wallify", "Error updating history: ${e.message}", e)
         }
+    }
+
+    private fun parseImageUrlsJson(jsonStr: String): MutableList<String> {
+        var imageJsonString = jsonStr
+        if (imageJsonString.contains("![")) {
+            imageJsonString = imageJsonString.substringAfter("!")
+        }
+        val urls = mutableListOf<String>()
+        try {
+            val jsonArray = org.json.JSONArray(imageJsonString)
+            for (i in 0 until jsonArray.length()) {
+                val rawObj = jsonArray.get(i)
+                val url = when (rawObj) {
+                    is JSONObject -> rawObj.optString("url", "")
+                    is String -> try { JSONObject(rawObj).optString("url", rawObj) } catch (_: Exception) { rawObj }
+                    else -> ""
+                }
+                if (url.isNotEmpty()) urls.add(url)
+            }
+        } catch (e: Exception) {
+            Log.e("Wallify", "Error parsing imageUrls JSON: ${e.message}")
+        }
+        return urls
     }
 
     private fun removeUsedCachedPath(context: Context, usedPath: String) {
