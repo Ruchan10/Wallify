@@ -1,5 +1,8 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
+import 'dart:ui';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -47,6 +50,7 @@ class _WallpaperPreviewPageState extends ConsumerState<WallpaperPreviewPage>
   bool _isSettingWallpaper = false;
   int? _selectedLocation;
   bool _blurEnabled = false;
+  double _blurRadius = 4.0;
   File? _downloadedImage;
   final TransformationController _transformationController =
       TransformationController();
@@ -122,15 +126,6 @@ class _WallpaperPreviewPageState extends ConsumerState<WallpaperPreviewPage>
                         color: Colors.grey[400],
                         borderRadius: BorderRadius.circular(2),
                       ),
-                    ),
-                    SwitchListTile(
-                      secondary: Icon(Icons.blur_on, color: colorScheme.primary),
-                      title: const Text("Blur wallpaper"),
-                      subtitle: const Text("Applies a soft blur effect"),
-                      value: _blurEnabled,
-                      onChanged: (val) {
-                        setSheetState(() => _blurEnabled = val);
-                      },
                     ),
                     const Divider(height: 1),
                     ListTile(
@@ -355,7 +350,7 @@ class _WallpaperPreviewPageState extends ConsumerState<WallpaperPreviewPage>
     }
 
     if (_blurEnabled) {
-      processed = img.gaussianBlur(processed, radius: 4);
+      processed = img.gaussianBlur(processed, radius: _blurRadius.toInt());
     }
 
     return processed;
@@ -585,7 +580,8 @@ class _WallpaperPreviewPageState extends ConsumerState<WallpaperPreviewPage>
 
   Future<Map<String, dynamic>?> fetchPixabayInfo(String id) async {
     try {
-      const apiKey = "52028006-a7e910370a5d0158c371bb06a";
+      final apiKey = await UserSharedPrefs.getPixabayApiKey();
+      if (apiKey == null || apiKey.isEmpty) return null;
       final res = await http.get(
         Uri.parse("https://pixabay.com/api/?key=$apiKey&id=$id"),
       );
@@ -747,11 +743,23 @@ class _WallpaperPreviewPageState extends ConsumerState<WallpaperPreviewPage>
                 maxScale: 4.0,
                 boundaryMargin: const EdgeInsets.all(double.infinity),
                 constrained: false,
-                child: Image.file(
-                  _downloadedImage!,
-                  fit: BoxFit.contain,
-                  filterQuality: FilterQuality.medium,
-                ),
+                child: _blurEnabled
+                    ? ImageFiltered(
+                        imageFilter: ImageFilter.blur(
+                          sigmaX: _blurRadius,
+                          sigmaY: _blurRadius,
+                        ),
+                        child: Image.file(
+                          _downloadedImage!,
+                          fit: BoxFit.contain,
+                          filterQuality: FilterQuality.medium,
+                        ),
+                      )
+                    : Image.file(
+                        _downloadedImage!,
+                        fit: BoxFit.contain,
+                        filterQuality: FilterQuality.medium,
+                      ),
               ),
             )
           else
@@ -813,14 +821,71 @@ class _WallpaperPreviewPageState extends ConsumerState<WallpaperPreviewPage>
                   color: Colors.black.withValues(alpha: 0.6),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: const Text(
-                  "Pinch to zoom in/out • Drag to position",
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                  ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text(
+                      "Pinch to zoom in/out • Drag to position",
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.blur_on,
+                          color: _blurEnabled ? Colors.blueAccent : Colors.white70,
+                          size: 20,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          "Blur",
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 13,
+                          ),
+                        ),
+                        const Spacer(),
+                        SizedBox(
+                          width: 100,
+                          child: Slider(
+                            value: _blurRadius,
+                            min: 1.0,
+                            max: 10.0,
+                            divisions: 9,
+                            activeColor: Colors.blueAccent,
+                            inactiveColor: Colors.white24,
+                            onChanged: _blurEnabled
+                                ? (v) {
+                                    setState(() => _blurRadius = v);
+                                  }
+                                : null,
+                          ),
+                        ),
+                        SizedBox(
+                          width: 28,
+                          child: Text(
+                            _blurEnabled ? "${_blurRadius.toInt()}" : "",
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                        Switch(
+                          value: _blurEnabled,
+                          activeColor: Colors.blueAccent,
+                          onChanged: (v) {
+                            setState(() => _blurEnabled = v);
+                          },
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
               ),
             ),

@@ -250,6 +250,8 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
       }
 
       Future<List<Wallpaper>> _fetchPixabay() async {
+        final apiKey = await UserSharedPrefs.getPixabayApiKey();
+        if (apiKey == null || apiKey.isEmpty) return [];
         final page = _sourcePages["pixabay"] ?? 1;
         final pixabayQuery = query != null && query.length > 99
             ? query.substring(0, 99)
@@ -258,7 +260,7 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
             .get(
               Uri.parse(
                 "https://pixabay.com/api/"
-                "?key=52028006-a7e910370a5d0158c371bb06a"
+                "?key=$apiKey"
                 "${pixabayQuery == null ? "" : "&q=$pixabayQuery"}"
                 "&image_type=photo"
                 "${_selectedPurity == null ? "" : "&safesearch=${_selectedPurity == "NSFW" ? "false" : "true"}"}"

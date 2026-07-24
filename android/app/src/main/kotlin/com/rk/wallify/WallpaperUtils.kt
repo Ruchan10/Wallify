@@ -500,9 +500,12 @@ object WallpaperUtils {
             val unsplashUrl =
                 "https://api.unsplash.com/photos/random?query=$tag&orientation=portrait&content_filter=high&count=15"
             urls.addAll(fetchFromUnsplash(unsplashUrl))
-            val pixabayUrl =
-                "https://pixabay.com/api/?key=52028006-a7e910370a5d0158c371bb06a&q=$tag&image_type=photo&orientation=vertical&safesearch=true"
-            urls.addAll(fetchFromPixabay(pixabayUrl))
+            val pixabayApiKey = prefs.getString("flutter.pixabay_api_key", null)
+            if (!pixabayApiKey.isNullOrEmpty()) {
+                val pixabayUrl =
+                    "https://pixabay.com/api/?key=$pixabayApiKey&q=$tag&image_type=photo&orientation=vertical&safesearch=true"
+                urls.addAll(fetchFromPixabay(pixabayUrl))
+            }
 
             if (urls.isEmpty()) {
                 Log.w("Wallify", "No wallpapers found from any source")

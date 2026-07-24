@@ -521,4 +521,21 @@ class UserSharedPrefs {
       await prefs.setString(_pexelsApiKeyKey, value);
     }
   }
+
+  /// ---- PIXABAY API KEY ----
+  static const _pixabayApiKeyKey = "pixabay_api_key";
+
+  static Future<String?> getPixabayApiKey() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_pixabayApiKeyKey);
+  }
+
+  static Future<void> setPixabayApiKey(String? value) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (value == null || value.isEmpty) {
+      await prefs.remove(_pixabayApiKeyKey);
+    } else {
+      await prefs.setString(_pixabayApiKeyKey, value);
+    }
+  }
 }

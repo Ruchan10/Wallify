@@ -550,6 +550,15 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
                   save: (v) => UserSharedPrefs.setPexelsApiKey(v),
                   scheme: scheme,
                 ),
+                const SizedBox(height: 12),
+                _ApiKeyField(
+                  label: "Pixabay API Key",
+                  hint: "API key from pixabay.com/api",
+                  isSecret: true,
+                  load: () => UserSharedPrefs.getPixabayApiKey(),
+                  save: (v) => UserSharedPrefs.setPixabayApiKey(v),
+                  scheme: scheme,
+                ),
                 const SizedBox(height: 8),
 
                 const Divider(),
