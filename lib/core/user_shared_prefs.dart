@@ -538,4 +538,21 @@ class UserSharedPrefs {
       await prefs.setString(_pixabayApiKeyKey, value);
     }
   }
+
+  /// ---- GOOGLE GEMINI API KEY ----
+  static const _geminiApiKeyKey = "gemini_api_key";
+
+  static Future<String?> getGeminiApiKey() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_geminiApiKeyKey);
+  }
+
+  static Future<void> setGeminiApiKey(String? value) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (value == null || value.isEmpty) {
+      await prefs.remove(_geminiApiKeyKey);
+    } else {
+      await prefs.setString(_geminiApiKeyKey, value);
+    }
+  }
 }

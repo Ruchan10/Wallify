@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 import 'dart:ui';
 
 import 'package:cached_network_image/cached_network_image.dart';
@@ -20,6 +19,7 @@ import 'package:wallify/functions/wallpaper_cache_manager.dart';
 import 'package:wallify/functions/wallpaper_info_sheet.dart';
 import 'package:wallify/model/wallpaper_model.dart';
 import 'package:wallify/core/wallpaper_theme_provider.dart';
+import 'package:wallify/services/ai_service.dart';
 import 'package:wallpaper_manager_flutter/wallpaper_manager_flutter.dart';
 
 class WallpaperPreviewPage extends ConsumerStatefulWidget {
@@ -52,6 +52,9 @@ class _WallpaperPreviewPageState extends ConsumerState<WallpaperPreviewPage>
   bool _blurEnabled = false;
   double _blurRadius = 4.0;
   File? _downloadedImage;
+  bool _isAiGenerating = false;
+  File? _aiGeneratedFile;
+  bool _isAiMode = false;
   final TransformationController _transformationController =
       TransformationController();
   final GlobalKey _imageKey = GlobalKey();
@@ -86,6 +89,7 @@ class _WallpaperPreviewPageState extends ConsumerState<WallpaperPreviewPage>
     _pageController.dispose();
     _transformationController.dispose();
     _fabAnimController.dispose();
+    try { _aiGeneratedFile?.deleteSync(); } catch (_) {}
     super.dispose();
   }
 
@@ -679,6 +683,53 @@ class _WallpaperPreviewPageState extends ConsumerState<WallpaperPreviewPage>
     return null;
   }
 
+  Future<void> _triggerAiMagic() async {
+    final apiKey = await UserSharedPrefs.getGeminiApiKey();
+    if (apiKey == null || apiKey.isEmpty) {
+      if (mounted) {
+        showSnackBar(
+          context: context,
+          message: "Set your free Gemini API key in Settings first",
+          color: Colors.orange,
+        );
+      }
+      return;
+    }
+
+    try { _aiGeneratedFile?.deleteSync(); } catch (_) {}
+
+    setState(() => _isAiGenerating = true);
+
+    try {
+      final result = await AiWallpaperService.generateCustomWallpaper(
+        _currentWallpaper.url,
+        apiKey,
+      );
+      if (mounted) {
+        setState(() {
+          _aiGeneratedFile = result;
+          _isAiMode = true;
+          _isAiGenerating = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isAiGenerating = false);
+        showSnackBar(
+          context: context,
+          message: "AI Magic failed: $e",
+          color: Colors.red,
+        );
+      }
+    }
+  }
+
+  void _toggleAiView() {
+    setState(() {
+      _isAiMode = !_isAiMode;
+    });
+  }
+
   void _showInfoSheet() {
     if (_info == null) {
       showSnackBar(
@@ -762,6 +813,89 @@ class _WallpaperPreviewPageState extends ConsumerState<WallpaperPreviewPage>
                       ),
               ),
             )
+          else if (_isAiMode && _aiGeneratedFile != null)
+            Stack(
+              children: [
+                Positioned.fill(
+                  child: InteractiveViewer(
+                    minScale: 0.5,
+                    maxScale: 4.0,
+                    child: Image.file(
+                      _aiGeneratedFile!,
+                      fit: BoxFit.contain,
+                    ),
+                  ),
+                ),
+                Positioned(
+                  top: 100,
+                  left: 0,
+                  right: 0,
+                  child: Center(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.purple.withValues(alpha: 0.8),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.auto_awesome, color: Colors.white, size: 18),
+                          SizedBox(width: 6),
+                          Text(
+                            "AI Generated",
+                            style: TextStyle(color: Colors.white, fontSize: 14),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  top: 100,
+                  right: 16,
+                  child: FloatingActionButton.small(
+                    heroTag: "view_original",
+                    backgroundColor: Colors.black.withValues(alpha: 0.6),
+                    foregroundColor: Colors.white,
+                    onPressed: _toggleAiView,
+                    child: const Icon(Icons.image),
+                  ),
+                ),
+                Positioned(
+                  bottom: 24,
+                  left: 0,
+                  right: 0,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      FloatingActionButton.extended(
+                        heroTag: "ai_set_wallpaper",
+                        onPressed: () {
+                          _downloadedImage = _aiGeneratedFile;
+                          _isCropMode = true;
+                          _isAiMode = false;
+                          setState(() {});
+                          WidgetsBinding.instance
+                              .addPostFrameCallback((_) {
+                            _detectAndCenterFocus();
+                          });
+                        },
+                        backgroundColor:
+                            Theme.of(context).colorScheme.primary,
+                        foregroundColor:
+                            Theme.of(context).colorScheme.onPrimary,
+                        icon: const Icon(Icons.wallpaper),
+                        label: const Text("Set as Wallpaper"),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            )
           else
             Positioned.fill(
               child: PageView(
@@ -802,6 +936,24 @@ class _WallpaperPreviewPageState extends ConsumerState<WallpaperPreviewPage>
             const Positioned.fill(
               child: Center(
                 child: CircularProgressIndicator(),
+              ),
+            ),
+
+          if (_isAiGenerating)
+            Container(
+              color: Colors.black54,
+              child: const Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircularProgressIndicator(color: Colors.white),
+                    SizedBox(height: 16),
+                    Text(
+                      "AI is customizing your wallpaper...",
+                      style: TextStyle(color: Colors.white, fontSize: 16),
+                    ),
+                  ],
+                ),
               ),
             ),
 
@@ -890,7 +1042,7 @@ class _WallpaperPreviewPageState extends ConsumerState<WallpaperPreviewPage>
               ),
             ),
 
-          if (!_isCropMode)
+          if (!_isCropMode && !_isAiMode)
             Positioned(
               bottom: 24,
               right: 24,
@@ -951,6 +1103,38 @@ class _WallpaperPreviewPageState extends ConsumerState<WallpaperPreviewPage>
                               : colorScheme.onSurface,
                         ),
                       ),
+                    ),
+                    if (_aiGeneratedFile != null && !_isAiMode)
+                      Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          FloatingActionButton(
+                            heroTag: "show_ai_btn",
+                            backgroundColor: Colors.purple.withValues(alpha: 0.8),
+                            foregroundColor: Colors.white,
+                            onPressed: _toggleAiView,
+                            child: const Icon(Icons.auto_awesome),
+                          ),
+                          const SizedBox(height: 12),
+                        ],
+                      ),
+                    const SizedBox(height: 12),
+                    FloatingActionButton(
+                      heroTag: "ai_magic_btn",
+                      backgroundColor: Colors.purple.withValues(alpha: 0.8),
+                      foregroundColor: Colors.white,
+                      onPressed:
+                          _isAiGenerating ? null : _triggerAiMagic,
+                      child: _isAiGenerating
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Icon(Icons.auto_awesome),
                     ),
                     const SizedBox(height: 12),
                     FloatingActionButton(

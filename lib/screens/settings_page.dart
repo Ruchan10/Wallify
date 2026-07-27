@@ -14,6 +14,7 @@ import 'package:wallify/functions/wallpaper_cache_manager.dart';
 import 'package:wallify/functions/wallpaper_manager.dart';
 import 'package:wallify/core/widget_helper.dart';
 import 'package:wallpaper_manager_flutter/wallpaper_manager_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 class SettingsPage extends ConsumerStatefulWidget {
@@ -534,14 +535,12 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
                 const SizedBox(height: 8),
-                Text(
-                  "Get a free Pexels API key at pexels.com/api",
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: scheme.onSurfaceVariant,
-                  ),
+                _ApiKeyGuideRow(
+                  text: "Get a free Pexels API key at pexels.com/api",
+                  url: "https://www.pexels.com/api/",
+                  scheme: scheme,
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 4),
                 _ApiKeyField(
                   label: "Pexels API Key",
                   hint: "API key from pexels.com/api",
@@ -551,12 +550,33 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
                   scheme: scheme,
                 ),
                 const SizedBox(height: 12),
+                _ApiKeyGuideRow(
+                  text: "Get a free Pixabay API key at pixabay.com/api",
+                  url: "https://pixabay.com/api/docs/",
+                  scheme: scheme,
+                ),
+                const SizedBox(height: 4),
                 _ApiKeyField(
                   label: "Pixabay API Key",
                   hint: "API key from pixabay.com/api",
                   isSecret: true,
                   load: () => UserSharedPrefs.getPixabayApiKey(),
                   save: (v) => UserSharedPrefs.setPixabayApiKey(v),
+                  scheme: scheme,
+                ),
+                const SizedBox(height: 12),
+                _ApiKeyGuideRow(
+                  text: "Get a free Gemini API key at aistudio.google.com",
+                  url: "https://aistudio.google.com/apikey",
+                  scheme: scheme,
+                ),
+                const SizedBox(height: 4),
+                _ApiKeyField(
+                  label: "Google Gemini API Key",
+                  hint: "Free key from aistudio.google.com (vision analysis)",
+                  isSecret: true,
+                  load: () => UserSharedPrefs.getGeminiApiKey(),
+                  save: (v) => UserSharedPrefs.setGeminiApiKey(v),
                   scheme: scheme,
                 ),
                 const SizedBox(height: 8),
@@ -1055,6 +1075,50 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
                 ),
           ),
         ],
+      ],
+    );
+  }
+}
+
+class _ApiKeyGuideRow extends StatelessWidget {
+  final String text;
+  final String url;
+  final ColorScheme scheme;
+
+  const _ApiKeyGuideRow({
+    required this.text,
+    required this.url,
+    required this.scheme,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            text,
+            style: TextStyle(
+              fontSize: 12,
+              color: scheme.onSurfaceVariant,
+            ),
+          ),
+        ),
+        SizedBox(
+          width: 28,
+          height: 28,
+          child: IconButton(
+            padding: EdgeInsets.zero,
+            icon: Icon(Icons.open_in_new, size: 14, color: scheme.primary),
+            onPressed: () async {
+              final uri = Uri.parse(url);
+              if (await canLaunchUrl(uri)) {
+                await launchUrl(uri, mode: LaunchMode.externalApplication);
+              }
+            },
+            tooltip: "Open link",
+          ),
+        ),
       ],
     );
   }
