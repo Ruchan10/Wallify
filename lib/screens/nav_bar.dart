@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:wallify/core/navigation_service.dart';
 import 'package:wallify/screens/discover_page.dart';
 import 'package:wallify/screens/favorites_page.dart';
 import 'package:wallify/screens/recents_page.dart';
@@ -14,6 +15,26 @@ class MainScaffold extends StatefulWidget {
 class _MainScaffoldState extends State<MainScaffold> {
   int _selectedIndex = 0;
   bool _isNavBarVisible = true;
+
+  @override
+  void initState() {
+    super.initState();
+    NavigationService.tabNotifier.addListener(_onNavigationRequest);
+  }
+
+  @override
+  void dispose() {
+    NavigationService.tabNotifier.removeListener(_onNavigationRequest);
+    super.dispose();
+  }
+
+  void _onNavigationRequest() {
+    final tab = NavigationService.tabNotifier.value;
+    if (tab != null && tab != _selectedIndex) {
+      setState(() => _selectedIndex = tab);
+      NavigationService.tabNotifier.value = null;
+    }
+  }
 
   List<Widget> get _pages => [
     const RepaintBoundary(child: DiscoverPage()),

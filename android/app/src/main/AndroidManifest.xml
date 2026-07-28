@@ -38,19 +38,6 @@
             android:name="flutterEmbedding"
             android:value="2" />
 
-        <receiver
-            android:name=".WallifyWidgetProvider"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-                <action android:name="com.rk.wallify.ACTION_SET_LOCATION" />
-                <action android:name="com.rk.wallify.ACTION_CHANGE_NOW" />
-            </intent-filter>
-            <meta-data
-                android:name="android.appwidget.provider"
-                android:resource="@xml/widget_info" />
-        </receiver>
-
         <service
             android:name=".WallifyTileService"
             android:exported="true"
@@ -80,6 +67,70 @@
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
+        </receiver>
+
+        <receiver
+            android:name=".CurrentWallpaperWidget"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_current_wallpaper_info" />
+        </receiver>
+
+        <receiver
+            android:name=".StatsWidget"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_stats_info" />
+        </receiver>
+
+        <receiver
+            android:name=".QuickToggleWidget"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="com.rk.wallify.qt.ACTION_SET_LOCATION" />
+                <action android:name="com.rk.wallify.qt.ACTION_CHANGE_NOW" />
+                <action android:name="com.rk.wallify.qt.ACTION_TOGGLE_AUTO" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_quick_toggle_info" />
+        </receiver>
+
+        <receiver
+            android:name=".RecentStackWidget"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="com.rk.wallify.stack.ACTION_VIEW_ITEM" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_recent_stack_info" />
+        </receiver>
+
+        <service
+            android:name=".RecentStackService"
+            android:exported="true"
+            android:permission="android.permission.BIND_REMOTEVIEWS" />
+
+        <receiver
+            android:name=".ScheduleWidget"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_schedule_info" />
         </receiver>
 
     </application>

@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:wallify/core/app_theme.dart';
 import 'package:wallify/core/error_reporter.dart';
+import 'package:wallify/core/navigation_service.dart';
 import 'package:wallify/core/routes.dart';
 import 'package:wallify/core/theme_provider.dart';
 import 'package:wallify/core/wallpaper_theme_provider.dart';
@@ -11,6 +13,8 @@ void main() {
   runZonedGuarded(
     () {
       WidgetsFlutterBinding.ensureInitialized();
+
+      _setupNavigationListener();
 
       FlutterError.onError = (FlutterErrorDetails details) {
         FlutterError.presentError(details);
@@ -31,6 +35,15 @@ void main() {
       );
     },
   );
+}
+
+void _setupNavigationListener() {
+  const platform = MethodChannel('wallpaper_channel');
+  platform.setMethodCallHandler((call) async {
+    if (call.method == 'navigateToSettings') {
+      NavigationService.tabNotifier.value = 3;
+    }
+  });
 }
 
 class MyApp extends ConsumerWidget {

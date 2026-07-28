@@ -32,132 +32,160 @@ import kotlinx.coroutines.launch
 
 class MainActivity : FlutterActivity() {
     private val CHANNEL = "wallpaper_channel"
+    private var methodChannel: MethodChannel? = null
+    private var pendingNavigation: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // Removed service startup - using WorkManager instead
+        handleIntent(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleIntent(intent)
+    }
+
+    private fun handleIntent(intent: Intent?) {
+        val nav = intent?.getStringExtra("navigate_to")
+        if (nav != null) {
+            pendingNavigation = nav
+            sendNavigationToFlutter()
+        }
+    }
+
+    private fun sendNavigationToFlutter() {
+        val nav = pendingNavigation ?: return
+        methodChannel?.invokeMethod("navigateToSettings", nav)
+        pendingNavigation = null
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
-            when (call.method) {
-                "scheduleBackgroundWallpaperWorker" -> {
-                    scheduleBackgroundWallpaperWorker()
-                    result.success("Scheduled wallpaper background worker from Flutter")
-                }
-                "cancelBackgroundWallpaperWorker" -> {
-                    WorkManagerExt.cancelAutoChange(this)
-                    result.success("Cancelled wallpaper background worker")
-                }
-                "scheduleBackgroundWallpaperWorkerNow" -> {
-                    CoroutineScope(Dispatchers.IO).launch {
-                        try {
-                            WallpaperUtils.downloadAndSetWallpaperBackground(applicationContext)
-                            result.success("✅ Wallpaper changed successfully")
-                        } catch (e: Exception) {
-                            result.error("ERROR", e.message, null)
+        methodChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).apply {
+            setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "scheduleBackgroundWallpaperWorker" -> {
+                        scheduleBackgroundWallpaperWorker()
+                        result.success("Scheduled wallpaper background worker from Flutter")
+                    }
+                    "cancelBackgroundWallpaperWorker" -> {
+                        WorkManagerExt.cancelAutoChange(this@MainActivity)
+                        result.success("Cancelled wallpaper background worker")
+                    }
+                    "scheduleBackgroundWallpaperWorkerNow" -> {
+                        CoroutineScope(Dispatchers.IO).launch {
+                            try {
+                                WallpaperUtils.downloadAndSetWallpaperBackground(applicationContext)
+                                result.success("✅ Wallpaper changed successfully")
+                            } catch (e: Exception) {
+                                result.error("ERROR", e.message, null)
+                            }
                         }
                     }
-                }
-           
-                "downloadAndSetWallpaper" -> {
-                    val imageUrl: String? = call.argument<String>("imageUrl")
-                    val wallpaperLocation: Int = call.argument<Int>("wallpaperLocation") ?: 1
-                    if (imageUrl != null) {
-                        downloadAndSetWallpaper(imageUrl, wallpaperLocation, result)
-                    } else {
-                        result.error("INVALID_URL", "Image URL is required", null)
-                    }
-                }
-                "setDualWallpapers" -> {
-                    val homeFilePath: String? = call.argument<String>("homeFilePath")
-                    val lockFilePath: String? = call.argument<String>("lockFilePath")
-                    if (homeFilePath != null && lockFilePath != null) {
-                        setDualWallpapers(homeFilePath, lockFilePath, result)
-                    } else {
-                        result.error("INVALID_FILES", "Both home and lock file paths are required", null)
-                    }
-                }
-                "extractWallpaperColors" -> {
-                    val filePath: String? = call.argument<String>("filePath")
-                    if (filePath != null) {
-                        val colors = WallpaperUtils.extractColorsFromFile(applicationContext, filePath)
-                        if (colors.isNotEmpty()) {
-                            result.success(colors)
+
+                    "downloadAndSetWallpaper" -> {
+                        val imageUrl: String? = call.argument<String>("imageUrl")
+                        val wallpaperLocation: Int = call.argument<Int>("wallpaperLocation") ?: 1
+                        if (imageUrl != null) {
+                            downloadAndSetWallpaper(imageUrl, wallpaperLocation, result)
                         } else {
-                            result.error("EXTRACT_FAILED", "Could not extract colors from image", null)
+                            result.error("INVALID_URL", "Image URL is required", null)
                         }
-                    } else {
-                        result.error("INVALID_PATH", "File path is required", null)
                     }
-                }
-                "checkImageHasFace" -> {
-                    val filePath: String? = call.argument<String>("filePath")
-                    if (filePath != null) {
-                        val bitmap = BitmapFactory.decodeFile(filePath)
-                        if (bitmap != null) {
-                            val hasFace = WallpaperUtils.imageHasFace(applicationContext, bitmap)
-                            result.success(hasFace)
+                    "setDualWallpapers" -> {
+                        val homeFilePath: String? = call.argument<String>("homeFilePath")
+                        val lockFilePath: String? = call.argument<String>("lockFilePath")
+                        if (homeFilePath != null && lockFilePath != null) {
+                            setDualWallpapers(homeFilePath, lockFilePath, result)
+                        } else {
+                            result.error("INVALID_FILES", "Both home and lock file paths are required", null)
+                        }
+                    }
+                    "extractWallpaperColors" -> {
+                        val filePath: String? = call.argument<String>("filePath")
+                        if (filePath != null) {
+                            val colors = WallpaperUtils.extractColorsFromFile(applicationContext, filePath)
+                            if (colors.isNotEmpty()) {
+                                result.success(colors)
+                            } else {
+                                result.error("EXTRACT_FAILED", "Could not extract colors from image", null)
+                            }
+                        } else {
+                            result.error("INVALID_PATH", "File path is required", null)
+                        }
+                    }
+                    "checkImageHasFace" -> {
+                        val filePath: String? = call.argument<String>("filePath")
+                        if (filePath != null) {
+                            val bitmap = BitmapFactory.decodeFile(filePath)
+                            if (bitmap != null) {
+                                val hasFace = WallpaperUtils.imageHasFace(applicationContext, bitmap)
+                                result.success(hasFace)
+                            } else {
+                                result.success(false)
+                            }
                         } else {
                             result.success(false)
                         }
-                    } else {
-                        result.success(false)
                     }
-                }
-                "detectFocusPoint" -> {
-                    val filePath: String? = call.argument<String>("filePath")
-                    if (filePath != null) {
-                        val bitmap = BitmapFactory.decodeFile(filePath)
-                        if (bitmap != null) {
-                            val focus = WallpaperUtils.detectFocusPoint(applicationContext, bitmap)
-                            result.success(focus)
+                    "detectFocusPoint" -> {
+                        val filePath: String? = call.argument<String>("filePath")
+                        if (filePath != null) {
+                            val bitmap = BitmapFactory.decodeFile(filePath)
+                            if (bitmap != null) {
+                                val focus = WallpaperUtils.detectFocusPoint(applicationContext, bitmap)
+                                result.success(focus)
+                            } else {
+                                result.success(mapOf("x" to 0f, "y" to 0f, "source" to 0f))
+                            }
                         } else {
                             result.success(mapOf("x" to 0f, "y" to 0f, "source" to 0f))
                         }
-                    } else {
-                        result.success(mapOf("x" to 0f, "y" to 0f, "source" to 0f))
                     }
-                }
-                "saveToDownloads" -> {
-                    val filePath: String? = call.argument<String>("filePath")
-                    val fileName: String? = call.argument<String>("fileName")
-                    val subDir: String? = call.argument<String>("subdirectory")
-                    if (filePath != null && fileName != null) {
-                        val savedUri = saveToPublicDownloads(filePath, fileName, subDir)
-                        if (savedUri != null) {
-                            result.success(savedUri)
+                    "saveToDownloads" -> {
+                        val filePath: String? = call.argument<String>("filePath")
+                        val fileName: String? = call.argument<String>("fileName")
+                        val subDir: String? = call.argument<String>("subdirectory")
+                        if (filePath != null && fileName != null) {
+                            val savedUri = saveToPublicDownloads(filePath, fileName, subDir)
+                            if (savedUri != null) {
+                                result.success(savedUri)
+                            } else {
+                                result.error("SAVE_FAILED", "Could not save to public Downloads folder", null)
+                            }
                         } else {
-                            result.error("SAVE_FAILED", "Could not save to public Downloads folder", null)
+                            result.error("INVALID_ARGS", "filePath and fileName are required", null)
                         }
-                    } else {
-                        result.error("INVALID_ARGS", "filePath and fileName are required", null)
                     }
-                }
-                "getWorkerLogs" -> {
-                    val logs = WorkerLogger.getLogs(this)
-                    result.success(logs.map { mapOf(
-                        "ts" to (it["ts"] ?: ""),
-                        "level" to (it["level"] ?: ""),
-                        "tag" to (it["tag"] ?: ""),
-                        "msg" to (it["msg"] ?: "")
-                    ) })
-                }
-                "clearWorkerLogs" -> {
-                    WorkerLogger.clearLogs(this)
-                    result.success("Logs cleared")
-                }
-                "updateWidget" -> {
-                    WallifyWidgetProvider.triggerUpdate(this)
-                    result.success("Widget updated")
-                }
-                else -> {
-                    result.notImplemented()
+                    "getWorkerLogs" -> {
+                        val logs = WorkerLogger.getLogs(this@MainActivity)
+                        result.success(logs.map { mapOf(
+                            "ts" to (it["ts"] ?: ""),
+                            "level" to (it["level"] ?: ""),
+                            "tag" to (it["tag"] ?: ""),
+                            "msg" to (it["msg"] ?: "")
+                        ) })
+                    }
+                    "clearWorkerLogs" -> {
+                        WorkerLogger.clearLogs(this@MainActivity)
+                        result.success("Logs cleared")
+                    }
+                    "updateWidget" -> {
+                        CurrentWallpaperWidget.triggerUpdate(this@MainActivity)
+                        StatsWidget.triggerUpdate(this@MainActivity)
+                        QuickToggleWidget.triggerUpdate(this@MainActivity)
+                        RecentStackWidget.triggerUpdate(this@MainActivity)
+                        ScheduleWidget.triggerUpdate(this@MainActivity)
+                        result.success("All widgets updated")
+                    }
+                    else -> {
+                        result.notImplemented()
+                    }
                 }
             }
         }
+        sendNavigationToFlutter()
     }
 
     private fun scheduleBackgroundWallpaperWorker() {

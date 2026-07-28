@@ -620,8 +620,13 @@ object WallpaperUtils {
             Log.d("Wallify", "Wallpaper set successfully for flag=$flag")
             extractAndSaveWallpaperColors(context, resultBitmap)
             updateLastChangeTime(context)
-            WallifyWidgetProvider.triggerUpdate(context)
+            CurrentWallpaperWidget.triggerUpdate(context)
+            StatsWidget.triggerUpdate(context)
+            QuickToggleWidget.triggerUpdate(context)
+            RecentStackWidget.triggerUpdate(context)
+            ScheduleWidget.triggerUpdate(context)
             saveCurrentWallpaper(context, resultBitmap)
+            trackWallpaperChange(context, imagePath)
             if (!isFolderMode) {
                 removeUsedUrl(context, imagePath)
                 removeUsedCachedPath(context, imagePath)
@@ -949,4 +954,24 @@ object WallpaperUtils {
         return cropped.scale(targetWidth, targetHeight, true)
     }
 
+    private fun trackWallpaperChange(context: Context, imagePath: String) {
+        try {
+            val prefs = context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+
+            val count = prefs.getInt("flutter.totalWallpaperChanges", 0) + 1
+            prefs.edit().putInt("flutter.totalWallpaperChanges", count).apply()
+
+            val recentRaw = prefs.getString("flutter.recentWallpaperInfo", "[]") ?: "[]"
+            val recentArr = JSONArray(recentRaw)
+            val entry = JSONObject().apply {
+                put("path", imagePath)
+                put("time", SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date()))
+            }
+            recentArr.put(entry)
+            while (recentArr.length() > 10) {
+                recentArr.remove(0)
+            }
+            prefs.edit().putString("flutter.recentWallpaperInfo", recentArr.toString()).apply()
+        } catch (_: Exception) { }
+    }
 }

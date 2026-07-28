@@ -8,7 +8,7 @@ on:
 
 env:
   APK_NAME: "Wallify"
-  APP_VERSION: "1.4.4"
+  APP_VERSION: "1.4.5"
   CHANGES: |
     - AI touch up in wallpapers
     - Minor improvements
