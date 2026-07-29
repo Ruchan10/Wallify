@@ -70,17 +70,6 @@
         </receiver>
 
         <receiver
-            android:name=".CurrentWallpaperWidget"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-            </intent-filter>
-            <meta-data
-                android:name="android.appwidget.provider"
-                android:resource="@xml/widget_current_wallpaper_info" />
-        </receiver>
-
-        <receiver
             android:name=".StatsWidget"
             android:exported="true">
             <intent-filter>
@@ -104,23 +93,6 @@
                 android:name="android.appwidget.provider"
                 android:resource="@xml/widget_quick_toggle_info" />
         </receiver>
-
-        <receiver
-            android:name=".RecentStackWidget"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-                <action android:name="com.rk.wallify.stack.ACTION_VIEW_ITEM" />
-            </intent-filter>
-            <meta-data
-                android:name="android.appwidget.provider"
-                android:resource="@xml/widget_recent_stack_info" />
-        </receiver>
-
-        <service
-            android:name=".RecentStackService"
-            android:exported="true"
-            android:permission="android.permission.BIND_REMOTEVIEWS" />
 
         <receiver
             android:name=".ScheduleWidget"

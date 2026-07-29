@@ -27,7 +27,7 @@ class SettingsBackup {
       "errorReportingEnabled": await UserSharedPrefs.getErrorReportingEnabled(),
       "useMonetTheme": await UserSharedPrefs.getUseMonetTheme(),
       "wallpaperSource": prefs.getString("wallpaperSource") ?? "internet",
-      "folderPath": await UserSharedPrefs.getFolderPath(),
+      "folderPath": jsonEncode(await UserSharedPrefs.getFolderPaths()),
 
       // Constraints
       "constraint_charging": await UserSharedPrefs.getConstraintCharging(),

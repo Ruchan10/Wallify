@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
@@ -370,15 +371,31 @@ class UserSharedPrefs {
     await saveWallpaperSources([source]);
   }
 
-  /// ---- FOLDER PATH ----
-  static Future<String?> getFolderPath() async {
+  /// ---- FOLDER PATHS (multi-folder support) ----
+  /// Stored as a JSON array string e.g. `["/path/one","/path/two"]`.
+  static Future<List<String>> getFolderPaths() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_folderPathKey);
+    final stored = prefs.getString(_folderPathKey);
+    if (stored == null) {
+      if (Platform.isAndroid) {
+        return ['/storage/emulated/0/Download/Wallify'];
+      }
+      return [];
+    }
+    // Try JSON array first.
+    try {
+      final parsed = jsonDecode(stored);
+      if (parsed is List) {
+        return parsed.cast<String>();
+      }
+    } catch (_) {}
+    // Legacy: single path string.
+    return [stored];
   }
 
-  static Future<void> setFolderPath(String path) async {
+  static Future<void> setFolderPaths(List<String> paths) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_folderPathKey, path);
+    await prefs.setString(_folderPathKey, jsonEncode(paths));
   }
 
   /// ---- CACHED WALLPAPER PATHS ----
@@ -536,6 +553,25 @@ class UserSharedPrefs {
       await prefs.remove(_pixabayApiKeyKey);
     } else {
       await prefs.setString(_pixabayApiKeyKey, value);
+    }
+  }
+
+  /// ---- UNSPLASH API KEY ----
+  /// Default hardcoded key used as fallback if user hasn't set their own.
+  static const defaultUnsplashKey = "yTBcYNAtnRHbrYMn2p4DrBiqzOAfdH9nyexQQtJWO-E";
+  static const _unsplashApiKeyKey = "unsplash_api_key";
+
+  static Future<String> getUnsplashApiKey() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_unsplashApiKeyKey) ?? defaultUnsplashKey;
+  }
+
+  static Future<void> setUnsplashApiKey(String? value) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (value == null || value.isEmpty) {
+      await prefs.remove(_unsplashApiKeyKey);
+    } else {
+      await prefs.setString(_unsplashApiKeyKey, value);
     }
   }
 

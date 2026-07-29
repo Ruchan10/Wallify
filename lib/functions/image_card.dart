@@ -1,9 +1,16 @@
+import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
+import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
 import 'package:wallify/core/performance_config.dart';
 import 'package:wallify/functions/shimmer_widget.dart';
 import 'package:wallify/model/wallpaper_model.dart';
 import 'package:wallify/screens/wallpaper_preview.dart';
+import 'package:wallify/core/snackbar.dart';
+import 'dart:async';
 
 class ImageTile extends StatefulWidget {
   final Wallpaper wallpaper;
@@ -27,6 +34,76 @@ class ImageTile extends StatefulWidget {
 
 class _ImageTileState extends State<ImageTile> {
   bool _isPressed = false;
+
+  void _showContextMenu(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.copy),
+              title: const Text("Copy URL"),
+              onTap: () {
+                Navigator.pop(ctx);
+                _copyUrl();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.download),
+              title: const Text("Download"),
+              onTap: () {
+                Navigator.pop(ctx);
+                _download();
+              },
+            ),
+            ListTile(
+              leading: const Icon(widget.isFav ? Icons.favorite : Icons.favorite_border),
+              title: Text(widget.isFav ? "Remove from Favorites" : "Add to Favorites"),
+              onTap: () {
+                Navigator.pop(ctx);
+                widget.onFavToggle();
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _copyUrl() {
+    Clipboard.setData(ClipboardData(text: widget.wallpaper.url));
+    if (context.mounted) {
+      showSnackBar(context: context, message: "URL copied to clipboard");
+    }
+  }
+
+  Future<void> _download() async {
+    try {
+      final response = await http.get(Uri.parse(widget.wallpaper.url));
+      if (response.statusCode != 200) {
+        if (context.mounted) {
+          showSnackBar(context: context, message: "Download failed", color: Colors.red);
+        }
+        return;
+      }
+      final dir = await getTemporaryDirectory();
+      final ext = widget.wallpaper.url.split('.').last.split('?').first;
+      final file = File('${dir.path}/wallify_${widget.wallpaper.id}.$ext');
+      await file.writeAsBytes(response.bodyBytes);
+      if (context.mounted) {
+        showSnackBar(context: context, message: "Downloaded to temporary folder");
+      }
+    } catch (e) {
+      if (context.mounted) {
+        showSnackBar(context: context, message: "Download failed: $e", color: Colors.red);
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -65,6 +142,7 @@ class _ImageTileState extends State<ImageTile> {
               );
             },
             onTapCancel: () => setState(() => _isPressed = false),
+            onLongPress: () => _showContextMenu(context),
             child: AnimatedScale(
               scale: _isPressed ? 0.95 : 1.0,
               duration: const Duration(milliseconds: 200),

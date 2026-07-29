@@ -5,8 +5,6 @@
     android:layout_height="match_parent"
     android:orientation="horizontal"
     android:gravity="center"
-    android:paddingHorizontal="4dp"
-    android:paddingVertical="2dp"
     android:background="@drawable/widget_bg">
 
     <LinearLayout
@@ -16,15 +14,14 @@
         android:gravity="center"
         android:orientation="vertical"
         android:background="@drawable/widget_card_bg"
-        android:paddingVertical="3dp"
-        android:layout_marginEnd="2dp">
+        android:layout_marginEnd="1dp">
 
         <TextView
             android:id="@+id/tv_total_changes"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:textColor="#FFFFFF"
-            android:textSize="18sp"
+            android:textSize="13sp"
             android:textStyle="bold"
             android:text="0" />
 
@@ -32,7 +29,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:textColor="#B0FFFFFF"
-            android:textSize="8sp"
+            android:textSize="7sp"
             android:text="Changes" />
     </LinearLayout>
 
@@ -43,15 +40,14 @@
         android:gravity="center"
         android:orientation="vertical"
         android:background="@drawable/widget_card_bg"
-        android:paddingVertical="3dp"
-        android:layout_marginEnd="2dp">
+        android:layout_marginEnd="1dp">
 
         <TextView
             android:id="@+id/tv_interval"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:textColor="#FFFFFF"
-            android:textSize="12sp"
+            android:textSize="10sp"
             android:textStyle="bold"
             android:text="--" />
 
@@ -59,7 +55,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:textColor="#B0FFFFFF"
-            android:textSize="8sp"
+            android:textSize="7sp"
             android:text="Interval" />
     </LinearLayout>
 
@@ -69,15 +65,14 @@
         android:layout_weight="1"
         android:gravity="center"
         android:orientation="vertical"
-        android:background="@drawable/widget_card_bg"
-        android:paddingVertical="3dp">
+        android:background="@drawable/widget_card_bg">
 
         <TextView
             android:id="@+id/tv_auto_status"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:textColor="#FFFFFF"
-            android:textSize="12sp"
+            android:textSize="10sp"
             android:textStyle="bold"
             android:text="OFF" />
 
@@ -85,7 +80,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:textColor="#B0FFFFFF"
-            android:textSize="8sp"
+            android:textSize="7sp"
             android:text="Auto" />
     </LinearLayout>
 

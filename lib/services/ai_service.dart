@@ -99,6 +99,8 @@ class AiWallpaperService {
         "Mobile wallpaper for ${width}x$height device. "
         "Based on this description, recreate the wallpaper keeping the "
         "same artistic style, color palette, and composition. "
+        "Make the wallpaper cool, creative, fun, and customize it "
+        "for this device. "
         "Smart crop and fill to perfectly fit the ${width}x$height screen. "
         "Enhance quality. Description: $description";
 

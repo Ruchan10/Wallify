@@ -1,4 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="live_wallpaper_desc">Wallify Live Wallpaper with parallax effect</string>
+    <string name="widget_stats_desc">Wallpaper change statistics</string>
+    <string name="widget_quick_toggle_desc">Quick toggle for wallpaper settings</string>
+    <string name="widget_schedule_desc">Wallpaper change schedule</string>
 </resources>

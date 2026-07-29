@@ -3,21 +3,22 @@
     android:id="@+id/widget_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:gravity="top"
+    android:gravity="center"
     android:orientation="vertical"
-    android:padding="8dp"
+    android:padding="6dp"
     android:background="@drawable/widget_bg">
 
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="30dp"
+        android:layout_height="wrap_content"
         android:orientation="horizontal"
-        android:weightSum="4">
+        android:weightSum="4"
+        android:layout_marginBottom="6dp">
 
         <TextView
             android:id="@+id/option_home"
             android:layout_width="0dp"
-            android:layout_height="match_parent"
+            android:layout_height="24dp"
             android:layout_weight="1"
             android:text="HOME"
             android:textColor="#70FFFFFF"
@@ -25,12 +26,12 @@
             android:textStyle="bold"
             android:gravity="center"
             android:background="@drawable/change_now_bg"
-            android:layout_marginEnd="2dp" />
+            android:layout_marginEnd="4dp" />
 
         <TextView
             android:id="@+id/option_lock"
             android:layout_width="0dp"
-            android:layout_height="match_parent"
+            android:layout_height="24dp"
             android:layout_weight="1"
             android:text="LOCK"
             android:textColor="#70FFFFFF"
@@ -38,12 +39,12 @@
             android:textStyle="bold"
             android:gravity="center"
             android:background="@drawable/change_now_bg"
-            android:layout_marginEnd="2dp" />
+            android:layout_marginEnd="4dp" />
 
         <TextView
             android:id="@+id/option_both"
             android:layout_width="0dp"
-            android:layout_height="match_parent"
+            android:layout_height="24dp"
             android:layout_weight="1"
             android:text="BOTH"
             android:textColor="#70FFFFFF"
@@ -51,12 +52,12 @@
             android:textStyle="bold"
             android:gravity="center"
             android:background="@drawable/change_now_bg"
-            android:layout_marginEnd="2dp" />
+            android:layout_marginEnd="4dp" />
 
         <TextView
             android:id="@+id/btn_auto_toggle"
             android:layout_width="0dp"
-            android:layout_height="match_parent"
+            android:layout_height="24dp"
             android:layout_weight="1"
             android:text="AUTO"
             android:textColor="#70FFFFFF"
@@ -68,9 +69,8 @@
 
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        android:layout_marginTop="4dp"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="4dp"
         android:gravity="center"
         android:orientation="horizontal">
 
@@ -90,6 +90,7 @@
             android:textColor="#FFFFFF"
             android:textSize="9sp"
             android:textStyle="bold"
+            android:layout_marginStart="4dp"
             android:text="Internet" />
     </LinearLayout>
 
@@ -97,19 +98,18 @@
         android:id="@+id/tv_countdown"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="2dp"
+        android:layout_marginBottom="4dp"
         android:textColor="#B0FFFFFF"
-        android:textSize="10sp"
+        android:textSize="9sp"
         android:text="Next change in -- min" />
 
     <TextView
         android:id="@+id/btn_change_now"
         android:layout_width="match_parent"
-        android:layout_height="32dp"
-        android:layout_marginTop="4dp"
+        android:layout_height="28dp"
         android:text="CHANGE NOW"
         android:textColor="#FFFFFF"
-        android:textSize="11sp"
+        android:textSize="10sp"
         android:textStyle="bold"
         android:gravity="center"
         android:background="@drawable/change_now_bg" />

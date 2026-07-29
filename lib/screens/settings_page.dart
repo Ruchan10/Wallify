@@ -41,7 +41,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
   bool _autoWallpaperEnabled = false;
   List<String> _wallpaperSources = ["internet"];
 
-  String? _folderPath;
+  List<String> _folderPaths = [];
   bool _updateAvailable = false;
   bool _checkingUpdate = true;
 
@@ -93,7 +93,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
     _intervalMinutes = await UserSharedPrefs.getInterval();
     _intervalController.text = _intervalMinutes.toString();
     _wallpaperSources = await UserSharedPrefs.getWallpaperSources();
-    _folderPath = await UserSharedPrefs.getFolderPath();
+    _folderPaths = await UserSharedPrefs.getFolderPaths();
 
     setState(() {});
     if (_autoWallpaperEnabled) {
@@ -204,6 +204,20 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
                           () => wallpaperLocation =
                               WallpaperManagerFlutter.bothScreens,
                         );
+                        UserSharedPrefs.saveWallpaperLocation(
+                          wallpaperLocation,
+                        );
+                        resetAutoWallpaper();
+                        updateWidget();
+                      },
+                      selectedColor: scheme.primary.withValues(alpha: 0.2),
+                      backgroundColor: scheme.surfaceContainerHighest,
+                    ),
+                    ChoiceChip(
+                      label: const Text("Auto"),
+                      selected: wallpaperLocation == 4,
+                      onSelected: (_) {
+                        setState(() => wallpaperLocation = 4);
                         UserSharedPrefs.saveWallpaperLocation(
                           wallpaperLocation,
                         );
@@ -566,6 +580,22 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
                 ),
                 const SizedBox(height: 12),
                 _ApiKeyGuideRow(
+                  text: "Get a free Unsplash API key at unsplash.com/developers",
+                  url: "https://unsplash.com/developers",
+                  scheme: scheme,
+                ),
+                const SizedBox(height: 4),
+                _ApiKeyField(
+                  label: "Unsplash API Key",
+                  hint: "Optional — uses built-in key if left empty",
+                  isSecret: true,
+                  load: () => UserSharedPrefs.getUnsplashApiKey().then((v) =>
+                      v == UserSharedPrefs.defaultUnsplashKey ? null : v),
+                  save: (v) => UserSharedPrefs.setUnsplashApiKey(v),
+                  scheme: scheme,
+                ),
+                const SizedBox(height: 12),
+                _ApiKeyGuideRow(
                   text: "Get a free Gemini API key at aistudio.google.com",
                   url: "https://aistudio.google.com/apikey",
                   scheme: scheme,
@@ -752,7 +782,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
                   await UserSharedPrefs.saveWallpaperSources(_wallpaperSources);
                   resetAutoWallpaper();
                 },
-                selectedColor: scheme.primary,
+                selectedColor: scheme.primaryContainer,
                 backgroundColor: scheme.surfaceContainerHighest,
                 padding: const EdgeInsets.symmetric(
                   horizontal: 14,
@@ -771,7 +801,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
         ),
         if (_wallpaperSources.contains("folder")) ...[
           const SizedBox(height: 12),
-          Container(
+          ..._folderPaths.map((path) => Container(
+            margin: const EdgeInsets.only(bottom: 8),
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
               color: scheme.surfaceContainerHighest,
@@ -781,29 +812,55 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
               children: [
                 Expanded(
                   child: Text(
-                    _folderPath ?? "No folder selected",
+                    path,
                     style: TextStyle(
                       fontSize: 13,
-                      color: _folderPath != null
-                          ? scheme.onSurface
-                          : scheme.onSurfaceVariant,
+                      color: scheme.onSurface,
                     ),
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                TextButton(
+                IconButton(
+                  icon: Icon(Icons.close, size: 18, color: scheme.onSurfaceVariant),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
                   onPressed: () async {
-                    final path = await FilePicker.getDirectoryPath();
-                    if (path != null) {
-                      setState(() => _folderPath = path);
-                      await UserSharedPrefs.setFolderPath(path);
-                      resetAutoWallpaper();
-                    }
+                    setState(() => _folderPaths.remove(path));
+                    await UserSharedPrefs.setFolderPaths(_folderPaths);
+                    resetAutoWallpaper();
                   },
-                  child: const Text("Browse"),
                 ),
               ],
             ),
+          )),
+          if (_folderPaths.isEmpty)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: scheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                "No folders selected",
+                style: TextStyle(
+                  fontSize: 13,
+                  color: scheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+          const SizedBox(height: 4),
+          TextButton.icon(
+            onPressed: () async {
+              final path = await FilePicker.getDirectoryPath();
+              if (path != null && !_folderPaths.contains(path)) {
+                setState(() => _folderPaths.add(path));
+                await UserSharedPrefs.setFolderPaths(_folderPaths);
+                resetAutoWallpaper();
+              }
+            },
+            icon: const Icon(Icons.add, size: 18),
+            label: const Text("Add Folder"),
           ),
         ],
         const SizedBox(height: 8),
@@ -1156,6 +1213,7 @@ class _ApiKeyFieldState extends State<_ApiKeyField> {
     if (!_loaded) {
       _loaded = true;
       widget.load().then((v) {
+        if (!mounted) return;
         if (v != null && v.isNotEmpty) {
           _controller.text = v;
         }

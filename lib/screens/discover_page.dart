@@ -222,7 +222,7 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
               ),
               headers: {
                 "Authorization":
-                    "Client-ID yTBcYNAtnRHbrYMn2p4DrBiqzOAfdH9nyexQQtJWO-E",
+                    "Client-ID ${await UserSharedPrefs.getUnsplashApiKey()}",
               },
             )
             .timeout(const Duration(seconds: 15));
@@ -298,8 +298,9 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
           final res = await http
               .get(
                 Uri.parse(
-                  "https://api.pexels.com/v1/curated"
-                  "?page=$page&per_page=$perSource",
+                  "https://api.pexels.com/${query == null ? "v1/curated" : "v1/search"}"
+                  "?page=$page&per_page=$perSource"
+                  "${query == null ? "" : "&query=${Uri.encodeQueryComponent(query)}"}",
                 ),
                 headers: {"Authorization": apiKey},
               )
@@ -310,9 +311,10 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
           }
           final data = jsonDecode(res.body);
           final list = <Wallpaper>[];
-          if (data["photos"] is List) {
+          final photos = data["photos"];
+          if (photos is List) {
             var count = 0;
-            for (var item in data["photos"]) {
+            for (var item in photos) {
               if (count >= perSource) break;
               final src = item["src"];
               if (src is Map && src["original"] != null) {
@@ -400,12 +402,14 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
           return <Wallpaper>[];
         }),
       );
-      futures.add(
-        _fetchLoremPicsum().catchError((e) {
-          debugPrint("Lorem Picsum failed: $e");
-          return <Wallpaper>[];
-        }),
-      );
+      if (query == null) {
+        futures.add(
+          _fetchLoremPicsum().catchError((e) {
+            debugPrint("Lorem Picsum failed: $e");
+            return <Wallpaper>[];
+          }),
+        );
+      }
 
       final apiResults = await Future.wait(futures);
       for (final apiList in apiResults) {
@@ -589,6 +593,70 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
     _sourcePages.clear();
   }
 
+  Widget _searchSuggestions(ColorScheme colors) {
+    final query = _searchController.text.trim().toLowerCase();
+    if (query.isEmpty) {
+      return SizedBox(
+        height: 36,
+        child: ListView(
+          scrollDirection: Axis.horizontal,
+          children: _popularTags.map((tag) {
+            final isActive = _lastQuery?.toLowerCase() == tag.toLowerCase();
+            return Padding(
+              padding: const EdgeInsets.only(right: 6),
+              child: ChoiceChip(
+                label: Text(tag, style: const TextStyle(fontSize: 12)),
+                selected: isActive,
+                selectedColor: colors.primary.withValues(alpha: 0.25),
+                backgroundColor: colors.surfaceContainerHighest.withValues(alpha: 0.5),
+                labelStyle: TextStyle(
+                  color: isActive ? colors.primary : colors.onSurfaceVariant,
+                  fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
+                ),
+                onSelected: (_) {
+                  _searchController.text = tag;
+                  setState(() => _tagFilterActive = false);
+                  _resetPagination();
+                  _fetchImages(query: tag, isSearch: true);
+                },
+                shape: StadiumBorder(
+                  side: BorderSide(
+                    color: isActive ? colors.primary : colors.outlineVariant,
+                  ),
+                ),
+                visualDensity: VisualDensity.compact,
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+            );
+          }).toList(),
+        ),
+      );
+    }
+
+    final suggestions = [
+      ..._popularTags.where((t) => t.toLowerCase().contains(query)),
+      ..._userTags.where((t) => t.toLowerCase().contains(query)),
+    ].toSet().take(10).toList();
+
+    if (suggestions.isEmpty) return const SizedBox.shrink();
+
+    return Wrap(
+      spacing: 6,
+      runSpacing: 4,
+      children: suggestions.map((tag) => ActionChip(
+        label: Text(tag, style: const TextStyle(fontSize: 12)),
+        onPressed: () {
+          _searchController.text = tag;
+          setState(() => _tagFilterActive = false);
+          _resetPagination();
+          _fetchImages(query: tag, isSearch: true);
+        },
+        visualDensity: VisualDensity.compact,
+        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      )).toList(),
+    );
+  }
+
   Widget _buildFilterSection(
     String title,
     List<String> options,
@@ -701,6 +769,7 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
                                       horizontal: 16,
                                     ),
                                   ),
+                                  onChanged: (value) => setState(() {}),
                                   onSubmitted: (value) {
                                     if (value.isNotEmpty) {
                                       setState(() => _tagFilterActive = false);
@@ -714,61 +783,7 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
                                 ),
                               ),
                               const SizedBox(height: 6),
-                              SizedBox(
-                                height: 36,
-                                child: ListView(
-                                  scrollDirection: Axis.horizontal,
-                                  children: _popularTags.map((tag) {
-                                    final isActive =
-                                        _lastQuery?.toLowerCase() ==
-                                        tag.toLowerCase();
-                                    return Padding(
-                                      padding: const EdgeInsets.only(right: 6),
-                                      child: ChoiceChip(
-                                        label: Text(
-                                          tag,
-                                          style: const TextStyle(fontSize: 12),
-                                        ),
-                                        selected: isActive,
-                                        selectedColor: colorScheme.primary
-                                            .withValues(alpha: 0.25),
-                                        backgroundColor: colorScheme
-                                            .surfaceContainerHighest
-                                            .withValues(alpha: 0.5),
-                                        labelStyle: TextStyle(
-                                          color: isActive
-                                              ? colorScheme.primary
-                                              : colorScheme.onSurfaceVariant,
-                                          fontWeight: isActive
-                                              ? FontWeight.w600
-                                              : FontWeight.normal,
-                                        ),
-                                        onSelected: (_) {
-                                          _searchController.text = tag;
-                                          setState(
-                                            () => _tagFilterActive = false,
-                                          );
-                                          _resetPagination();
-                                          _fetchImages(
-                                            query: tag,
-                                            isSearch: true,
-                                          );
-                                        },
-                                        shape: StadiumBorder(
-                                          side: BorderSide(
-                                            color: isActive
-                                                ? colorScheme.primary
-                                                : colorScheme.outlineVariant,
-                                          ),
-                                        ),
-                                        visualDensity: VisualDensity.compact,
-                                        materialTapTargetSize:
-                                            MaterialTapTargetSize.shrinkWrap,
-                                      ),
-                                    );
-                                  }).toList(),
-                                ),
-                              ),
+                              _searchSuggestions(Theme.of(context).colorScheme),
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.end,
                                 children: [

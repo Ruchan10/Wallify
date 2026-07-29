@@ -1,8 +1,13 @@
 package com.rk.wallify
 
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.app.WallpaperManager
 import android.content.Context
+import android.content.Intent
 import android.graphics.BitmapFactory
+import android.os.Build
 import android.util.Log
 import java.io.File
 import java.net.HttpURLConnection
@@ -191,21 +196,36 @@ object WallpaperUtils {
             val imageSources = mutableListOf<String>()
 
             if (sources.contains("folder")) {
-                val folderPath = prefs.getString("flutter.folderPath", null)
-                if (!folderPath.isNullOrEmpty()) {
-                    val folder = File(folderPath)
-                    if (folder.exists() && folder.isDirectory()) {
-                        folder.listFiles { f -> f.isFile && f.extension.lowercase() in imageExtensions }
-                            ?.forEach { imageSources.add(it.absolutePath) }
-                        WorkerLogger.i(context, "Wallify", "Found ${imageSources.size} images in folder: $folderPath")
-                        Log.d("Wallify", "Found ${imageSources.size} images in folder: $folderPath")
-                    } else {
-                        WorkerLogger.e(context, "Wallify", "Folder does not exist: $folderPath")
-                        Log.e("Wallify", "Folder does not exist: $folderPath")
+                val folderPathsRaw = prefs.getString("flutter.folderPath", "[]") ?: "[]"
+                val folderPaths = try {
+                    JSONArray(folderPathsRaw).let { arr ->
+                        (0 until arr.length()).map { arr.getString(it) }
                     }
+                } catch (_: Exception) {
+                    listOf(folderPathsRaw).filter { it.isNotEmpty() }
+                }
+                if (folderPaths.isNotEmpty()) {
+                    var totalFound = 0
+                    for (folderPath in folderPaths) {
+                        val folder = File(folderPath)
+                        if (folder.exists() && folder.isDirectory()) {
+                            val count = imageSources.size
+                            folder.listFiles { f -> f.isFile && f.extension.lowercase() in imageExtensions }
+                                ?.forEach { imageSources.add(it.absolutePath) }
+                            val found = imageSources.size - count
+                            totalFound += found
+                            WorkerLogger.i(context, "Wallify", "Found $found images in folder: $folderPath")
+                            Log.d("Wallify", "Found $found images in folder: $folderPath")
+                        } else {
+                            WorkerLogger.e(context, "Wallify", "Folder does not exist: $folderPath")
+                            Log.e("Wallify", "Folder does not exist: $folderPath")
+                        }
+                    }
+                    WorkerLogger.i(context, "Wallify", "Total $totalFound images from all folders")
+                    Log.d("Wallify", "Total $totalFound images from all folders")
                 } else {
-                    WorkerLogger.e(context, "Wallify", "Folder source selected but no folder path set")
-                    Log.e("Wallify", "Folder source selected but no folder path set")
+                    WorkerLogger.e(context, "Wallify", "Folder source selected but no folder paths set")
+                    Log.e("Wallify", "Folder source selected but no folder paths set")
                 }
             }
 
@@ -253,12 +273,19 @@ object WallpaperUtils {
                 is String -> wallpaperLocationValue.toIntOrNull() ?: 3
                 else -> 3
             }
-            WorkerLogger.i(context, "Wallify", "Wallpaper location mode: $wallpaperLocation")
+            val resolvedLocation = if (wallpaperLocation == 4) {
+                val pick = (1..3).random()
+                WorkerLogger.i(context, "Wallify", "Auto mode: randomly picked $pick")
+                pick
+            } else {
+                wallpaperLocation
+            }
+            WorkerLogger.i(context, "Wallify", "Wallpaper location mode: $wallpaperLocation (resolved: $resolvedLocation)")
 
             val wallpaperManager = WallpaperManager.getInstance(context)
             val isFolderMode = sources.contains("folder")
 
-            when (wallpaperLocation) {
+            when (resolvedLocation) {
                 1 -> {
                     WorkerLogger.i(context, "Wallify", "Setting HOME wallpaper")
                     val nonFacePath = getOrFetchNonFaceImagePath(context, imageSources, isFolderMode)
@@ -318,6 +345,7 @@ object WallpaperUtils {
 
             WorkerLogger.i(context, "Wallify", "Wallpaper change completed successfully (mode=$wallpaperLocation, source=$wallpaperSource)")
             Log.d("Wallify", "Wallpaper change completed (mode=$wallpaperLocation, source=$wallpaperSource)")
+            showChangeNotification(context)
         } catch (e: Exception) {
             WorkerLogger.e(context, "Wallify", "Error: ${e.message}")
             Log.e("Wallify", "Error setting wallpaper in background", e)
@@ -325,6 +353,51 @@ object WallpaperUtils {
             WorkerLogger.e(context, "Wallify", "Fatal error: ${e.message}")
             Log.e("Wallify", "Fatal error setting wallpaper in background: ${e.message}", e)
         }
+    }
+
+    private fun showChangeNotification(context: Context) {
+        val channelId = "wallpaper_changes"
+        val channelName = "Wallpaper Changes"
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(channelId, channelName, NotificationManager.IMPORTANCE_DEFAULT).apply {
+                description = "Notifications when wallpaper changes automatically"
+            }
+            val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            nm.createNotificationChannel(channel)
+        }
+
+        val openIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)?.apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+
+        val tryAnotherIntent = Intent(context, QuickToggleWidget::class.java).apply {
+            action = QuickToggleWidget.ACTION_CHANGE_NOW
+        }
+        val tryAnotherPending = PendingIntent.getBroadcast(
+            context, 0, tryAnotherIntent,
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE else 0
+        )
+
+        val openPending = openIntent?.let {
+            PendingIntent.getActivity(
+                context, 1, it,
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE else 0
+            )
+        }
+
+        val notification = androidx.core.app.NotificationCompat.Builder(context, channelId)
+            .setSmallIcon(android.R.drawable.ic_menu_gallery)
+            .setContentTitle("Wallpaper Changed")
+            .setContentText("Your wallpaper has been updated")
+            .setContentIntent(openPending)
+            .addAction(android.R.drawable.ic_menu_refresh, "Try Another", tryAnotherPending)
+            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Keep", null)
+            .setAutoCancel(true)
+            .build()
+
+        val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        nm.notify(1001, notification)
     }
 
     internal fun imageHasFace(context: Context, bitmap: Bitmap): Boolean {
@@ -499,7 +572,7 @@ object WallpaperUtils {
             urls.addAll(fetchFromWallhaven(wallhavenUrl))
             val unsplashUrl =
                 "https://api.unsplash.com/photos/random?query=$tag&orientation=portrait&content_filter=high&count=15"
-            urls.addAll(fetchFromUnsplash(unsplashUrl))
+            urls.addAll(fetchFromUnsplash(context, unsplashUrl))
             val pixabayApiKey = prefs.getString("flutter.pixabay_api_key", null)
             if (!pixabayApiKey.isNullOrEmpty()) {
                 val pixabayUrl =
@@ -545,11 +618,13 @@ object WallpaperUtils {
         return urls
     }
 
-    private fun fetchFromUnsplash(apiUrl: String): List<String> {
+    private fun fetchFromUnsplash(context: Context, apiUrl: String): List<String> {
         val urls = mutableListOf<String>()
         try {
+            val prefs = context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+            val key = prefs.getString("flutter.unsplash_api_key", null) ?: "yTBcYNAtnRHbrYMn2p4DrBiqzOAfdH9nyexQQtJWO-E"
             val connection = URL(apiUrl).openConnection() as HttpURLConnection
-            connection.setRequestProperty("Authorization", "Client-ID yTBcYNAtnRHbrYMn2p4DrBiqzOAfdH9nyexQQtJWO-E")
+            connection.setRequestProperty("Authorization", "Client-ID $key")
             connection.connectTimeout = 15000
             connection.readTimeout = 15000
             val response = connection.inputStream.bufferedReader().readText()
@@ -620,10 +695,8 @@ object WallpaperUtils {
             Log.d("Wallify", "Wallpaper set successfully for flag=$flag")
             extractAndSaveWallpaperColors(context, resultBitmap)
             updateLastChangeTime(context)
-            CurrentWallpaperWidget.triggerUpdate(context)
             StatsWidget.triggerUpdate(context)
             QuickToggleWidget.triggerUpdate(context)
-            RecentStackWidget.triggerUpdate(context)
             ScheduleWidget.triggerUpdate(context)
             saveCurrentWallpaper(context, resultBitmap)
             trackWallpaperChange(context, imagePath)
@@ -925,9 +998,9 @@ object WallpaperUtils {
             val stream = java.io.FileOutputStream(file)
             bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 95, stream)
             stream.close()
-            Log.d("Wallify", "Saved live wallpaper bitmap to ${file.absolutePath}")
+            Log.d("Wallify", "Saved wallpaper to ${file.absolutePath}")
         } catch (e: Exception) {
-            Log.e("Wallify", "Failed to save live wallpaper bitmap", e)
+            Log.e("Wallify", "Failed to save wallpaper bitmap", e)
         }
     }
 

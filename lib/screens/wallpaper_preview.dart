@@ -628,7 +628,7 @@ class _WallpaperPreviewPageState extends ConsumerState<WallpaperPreviewPage>
 
   Future<Map<String, dynamic>?> fetchUnsplashInfo(String id) async {
     try {
-      const accessKey = "yTBcYNAtnRHbrYMn2p4DrBiqzOAfdH9nyexQQtJWO-E";
+      final accessKey = await UserSharedPrefs.getUnsplashApiKey();
       final res = await http.get(
         Uri.parse(
           "https://api.unsplash.com/photos/$id?client_id=$accessKey",

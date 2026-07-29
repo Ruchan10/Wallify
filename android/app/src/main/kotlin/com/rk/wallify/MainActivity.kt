@@ -26,9 +26,10 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.ExistingWorkPolicy
 import java.util.concurrent.TimeUnit
-import kotlinx.coroutines.CoroutineScope
+import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class MainActivity : FlutterActivity() {
     private val CHANNEL = "wallpaper_channel"
@@ -172,10 +173,8 @@ class MainActivity : FlutterActivity() {
                         result.success("Logs cleared")
                     }
                     "updateWidget" -> {
-                        CurrentWallpaperWidget.triggerUpdate(this@MainActivity)
                         StatsWidget.triggerUpdate(this@MainActivity)
                         QuickToggleWidget.triggerUpdate(this@MainActivity)
-                        RecentStackWidget.triggerUpdate(this@MainActivity)
                         ScheduleWidget.triggerUpdate(this@MainActivity)
                         result.success("All widgets updated")
                     }
@@ -221,56 +220,52 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun setDualWallpapers(homeFilePath: String, lockFilePath: String, result: MethodChannel.Result) {
-        Thread {
+        lifecycleScope.launch(Dispatchers.IO) {
             try {
                 Log.d("Wallify", "Setting dual wallpapers - Home: $homeFilePath, Lock: $lockFilePath")
 
-                // Check if both files exist
                 val homeFile = File(homeFilePath)
                 val lockFile = File(lockFilePath)
 
                 if (!homeFile.exists()) {
                     Log.e("Wallify", "Home wallpaper file does not exist: $homeFilePath")
-                    runOnUiThread {
+                    withContext(Dispatchers.Main) {
                         result.error("HOME_FILE_NOT_FOUND", "Home wallpaper file not found: $homeFilePath", null)
                     }
-                    return@Thread
+                    return@launch
                 }
 
                 if (!lockFile.exists()) {
                     Log.e("Wallify", "Lock wallpaper file does not exist: $lockFilePath")
-                    runOnUiThread {
+                    withContext(Dispatchers.Main) {
                         result.error("LOCK_FILE_NOT_FOUND", "Lock wallpaper file not found: $lockFilePath", null)
                     }
-                    return@Thread
+                    return@launch
                 }
 
                 Log.d("Wallify", "Home file exists, size: ${homeFile.length()} bytes")
                 Log.d("Wallify", "Lock file exists, size: ${lockFile.length()} bytes")
 
-                // Set wallpaper using Android WallpaperManager
-                val wallpaperManager = WallpaperManager.getInstance(this)
+                val wallpaperManager = WallpaperManager.getInstance(this@MainActivity)
 
-                // Set home screen wallpaper
                 val homeBitmap = BitmapFactory.decodeFile(homeFile.absolutePath)
                 wallpaperManager.setBitmap(homeBitmap, null, true, WallpaperManager.FLAG_SYSTEM)
 
-                // Set lock screen wallpaper
                 val lockBitmap = BitmapFactory.decodeFile(lockFile.absolutePath)
                 wallpaperManager.setBitmap(lockBitmap, null, true, WallpaperManager.FLAG_LOCK)
 
                 Log.d("Wallify", "Dual wallpapers set successfully")
 
-                runOnUiThread {
+                withContext(Dispatchers.Main) {
                     result.success("Dual wallpapers set successfully")
                 }
             } catch (e: Exception) {
                 Log.e("Wallify", "Error setting dual wallpapers", e)
-                runOnUiThread {
+                withContext(Dispatchers.Main) {
                     result.error("SET_DUAL_WALLPAPERS_FAILED", e.message, null)
                 }
             }
-        }.start()
+        }
     }
 
 
@@ -342,56 +337,59 @@ class MainActivity : FlutterActivity() {
     }
 
 fun downloadAndSetWallpaper(imageUrl: String, wallpaperLocation: Int, result: MethodChannel.Result) {
-    Thread {
+    lifecycleScope.launch(Dispatchers.IO) {
         try {
-            Log.d("Wallify", "Starting wallpaper download for location $wallpaperLocation")
+            val resolved = if (wallpaperLocation == 4) {
+                val pick = (1..3).random()
+                Log.d("Wallify", "Auto mode: randomly picked $pick")
+                pick
+            } else {
+                wallpaperLocation
+            }
+            Log.d("Wallify", "Starting wallpaper download for location $wallpaperLocation (resolved: $resolved)")
 
-            val wallpaperManager = WallpaperManager.getInstance(this)
+            val wallpaperManager = WallpaperManager.getInstance(this@MainActivity)
 
-            if (wallpaperLocation == 3) {
+            if (resolved == 3) {
                 val urls = getImageUrlsFromPrefs()
 
                 if (urls.size < 2) {
                     Log.e("Wallify", "Not enough cached URLs for dual wallpapers, using same one")
-                    // fallback to single wallpaper
                     setWallpaperFromSingleUrl(imageUrl, wallpaperManager, WallpaperManager.FLAG_SYSTEM)
                     setWallpaperFromSingleUrl(imageUrl, wallpaperManager, WallpaperManager.FLAG_LOCK)
                 } else {
-                    // pick two different random URLs
                     val shuffled = urls.shuffled()
                     val homeUrl = shuffled[0]
                     val lockUrl = shuffled[1]
 
                     Log.d("Wallify", "Dual wallpaper mode: home=$homeUrl, lock=$lockUrl")
 
-                    // Set each wallpaper separately
                     setWallpaperFromSingleUrl(homeUrl, wallpaperManager, WallpaperManager.FLAG_SYSTEM)
                     setWallpaperFromSingleUrl(lockUrl, wallpaperManager, WallpaperManager.FLAG_LOCK)
                 }
 
-                runOnUiThread {
+                withContext(Dispatchers.Main) {
                     result.success("Dual wallpapers set successfully")
                 }
-                return@Thread
+                return@launch
             }
 
-            // 🧱 Otherwise, just download one wallpaper normally
             setWallpaperFromSingleUrl(imageUrl, wallpaperManager, when (wallpaperLocation) {
                 0 -> WallpaperManager.FLAG_SYSTEM
                 1 -> WallpaperManager.FLAG_LOCK
                 else -> WallpaperManager.FLAG_SYSTEM
             })
 
-            runOnUiThread {
+            withContext(Dispatchers.Main) {
                 result.success("Wallpaper set successfully for location $wallpaperLocation")
             }
 
         } catch (e: Exception) {
             Log.e("Wallify", "Error setting wallpaper", e)
-            runOnUiThread {
+            withContext(Dispatchers.Main) {
                 result.error("DOWNLOAD_FAILED", e.message, null)
             }
         }
-    }.start()
+    }
 }
 }

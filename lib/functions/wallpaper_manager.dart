@@ -46,14 +46,14 @@ class WallpaperManager {
         }
 
         // Unsplash
+        final unsplashKey = await UserSharedPrefs.getUnsplashApiKey();
         final unsplashRes = await http.get(
           Uri.parse(
             "https://api.unsplash.com/search/photos?page=1"
             "&query=$tag&orientation=portrait&content_filter=high",
           ),
           headers: {
-            "Authorization":
-                "Client-ID yTBcYNAtnRHbrYMn2p4DrBiqzOAfdH9nyexQQtJWO-E",
+            "Authorization": "Client-ID $unsplashKey",
           },
         );
         final unsplashData = jsonDecode(unsplashRes.body);
@@ -115,14 +115,14 @@ class WallpaperManager {
 
       // Unsplash
       try {
+        final unsplashKey = await UserSharedPrefs.getUnsplashApiKey();
         final unsplashRes = await http.get(
           Uri.parse(
             "https://api.unsplash.com/search/photos?page=1"
             "&query=$tag&orientation=portrait&content_filter=high",
           ),
           headers: {
-            "Authorization":
-                "Client-ID yTBcYNAtnRHbrYMn2p4DrBiqzOAfdH9nyexQQtJWO-E",
+            "Authorization": "Client-ID $unsplashKey",
           },
         );
         final unsplashData = jsonDecode(unsplashRes.body);

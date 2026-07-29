@@ -5,8 +5,7 @@
     android:layout_height="match_parent"
     android:gravity="center_vertical"
     android:orientation="vertical"
-    android:paddingHorizontal="8dp"
-    android:paddingVertical="3dp"
+    android:paddingHorizontal="6dp"
     android:background="@drawable/widget_bg">
 
     <TextView
@@ -14,16 +13,17 @@
         android:layout_height="wrap_content"
         android:text="Schedule"
         android:textColor="#FFFFFF"
-        android:textSize="9sp"
+        android:textSize="12sp"
         android:textStyle="bold"
-        android:letterSpacing="0.08" />
+        android:letterSpacing="0.06"
+        android:layout_marginBottom="1dp" />
 
     <ProgressBar
         android:id="@+id/progress_bar"
         style="?android:attr/progressBarStyleHorizontal"
         android:layout_width="match_parent"
         android:layout_height="4dp"
-        android:layout_marginTop="2dp"
+        android:layout_marginBottom="1dp"
         android:progress="50"
         android:max="100"
         android:progressTint="#FF6750A4"
@@ -32,7 +32,7 @@
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="2dp"
+        android:layout_marginBottom="1dp"
         android:orientation="horizontal">
 
         <TextView
@@ -41,7 +41,7 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:textColor="#B0FFFFFF"
-            android:textSize="8sp"
+            android:textSize="11sp"
             android:text="--" />
 
         <TextView
@@ -49,10 +49,10 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:textColor="#FFFFFF"
-            android:textSize="8sp"
+            android:textSize="11sp"
             android:textStyle="bold"
             android:text="NOW"
-            android:paddingHorizontal="4dp" />
+            android:paddingHorizontal="3dp" />
 
         <TextView
             android:id="@+id/tv_next_time"
@@ -60,7 +60,7 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:textColor="#B0FFFFFF"
-            android:textSize="8sp"
+            android:textSize="11sp"
             android:gravity="end"
             android:text="--" />
     </LinearLayout>
@@ -69,9 +69,8 @@
         android:id="@+id/tv_status"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="2dp"
         android:textColor="#B0FFFFFF"
-        android:textSize="8sp"
+        android:textSize="10sp"
         android:text="Auto change is off" />
 
 </LinearLayout>
