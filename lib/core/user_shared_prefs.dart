@@ -266,6 +266,59 @@ class UserSharedPrefs {
     return prefs.getInt(_keyInterval) ?? 60;
   }
 
+  /// ---- SCHEDULE DAYS & TIME RANGE ----
+  static const _keyScheduleEnabled = "scheduleEnabled";
+  static const _keyScheduleDays = "scheduleDays";
+  static const _keyScheduleStartHour = "scheduleStartHour";
+  static const _keyScheduleEndHour = "scheduleEndHour";
+
+  static Future<bool> getScheduleEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_keyScheduleEnabled) ?? false;
+  }
+
+  static Future<void> setScheduleEnabled(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyScheduleEnabled, enabled);
+  }
+
+  /// Days of week (1=Monday ... 7=Sunday). Stored as JSON string list.
+  static Future<List<int>> getScheduleDays() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_keyScheduleDays);
+    if (raw == null) return [1, 2, 3, 4, 5, 6, 7];
+    try {
+      return (jsonDecode(raw) as List).cast<int>();
+    } catch (_) {
+      return [1, 2, 3, 4, 5, 6, 7];
+    }
+  }
+
+  static Future<void> setScheduleDays(List<int> days) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keyScheduleDays, jsonEncode(days));
+  }
+
+  static Future<int> getScheduleStartHour() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt(_keyScheduleStartHour) ?? 6;
+  }
+
+  static Future<void> setScheduleStartHour(int hour) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_keyScheduleStartHour, hour.clamp(0, 23));
+  }
+
+  static Future<int> getScheduleEndHour() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt(_keyScheduleEndHour) ?? 22;
+  }
+
+  static Future<void> setScheduleEndHour(int hour) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_keyScheduleEndHour, hour.clamp(0, 23));
+  }
+
   /// ---- ERROR REPORTING ----
   static Future<bool> getErrorReportingEnabled() async {
     final prefs = await SharedPreferences.getInstance();

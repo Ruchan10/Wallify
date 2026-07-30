@@ -1,12 +1,24 @@
-# Wallify ☁️📱  
-A smart wallpaper app built with **Flutter**, featuring automatic wallpaper updates, charging event listeners, and upcoming AI-powered object detection.
+# Wallify ☁️📱
+
+A smart wallpaper app built with **Flutter**, featuring automatic wallpaper updates, charging event triggers, and a rich set of customization options.
 
 ---
 
 ## 🚀 Features
-- 🔄 Automatic wallpaper updates  
-- ⚡ Charging event listener to trigger wallpapers  
-- 🖼️ Planned: Object detection to center objects in wallpapers  
+
+- 🖼️ Browse & set wallpapers from Unsplash with configurable API key
+- ⚡ Automatic wallpaper updates with granular scheduling (days + time range)
+- 🔌 Charging event listener to trigger wallpaper changes
+- 📱 Lock screen wallpaper support via dual wallpaper setup
+- 🔔 Wallpaper change notification with "Try Another" quick action
+- 🆎 Search autocomplete with popular & user tag suggestions
+- 👆 Long-press context menu (Copy URL, Download, Toggle Favorite)
+- ✨ Crossfade animation on wallpaper set
+- 🎨 Dynamic Monet theming on home screen widgets
+- 📶 Offline mode with connectivity-aware UI fallback
+- 📟 Home screen widgets (Quick Toggle, Stats, Schedule) with auto-refresh
+- 🧩 Monochrome adaptive app icon
+- 🔑 All API keys configurable via Settings UI
 
 ---
 
@@ -16,8 +28,8 @@ A smart wallpaper app built with **Flutter**, featuring automatic wallpaper upda
 
 ## Try the app
 
-1. Navigate to the [Releases](https://github.com/Ruchan10/Wallify/releases) section of this repository.  
-2. Download the latest APK.  
+1. Navigate to the [Releases](https://github.com/Ruchan10/Wallify/releases) section of this repository.
+2. Download the latest APK.
 3. Install the APK on your Android device to explore the app.
 
 ## ☕ Support
@@ -36,17 +48,16 @@ Feel free to open a pull request.
    ```bash
    git clone https://github.com/Ruchan10/wallify.git
    cd wallify
-
+   ```
 2. Install dependencies:
    ```bash
    flutter pub get
-
+   ```
 3. Run the app:
    ```bash
    flutter run
-
+   ```
 
 ## 📝 License
 
 MIT License
-✅ This setup avoids raw `<script>` in Markdown (since GitHub README doesn’t render JavaScript). Instead, I used the **BuyMeACoffee image API** which works perfectly inside GitHub README.  

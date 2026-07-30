@@ -64,7 +64,7 @@
             android:textSize="9sp"
             android:textStyle="bold"
             android:gravity="center"
-            android:background="@drawable/widget_card_bg" />
+            android:background="@drawable/change_now_bg" />
     </LinearLayout>
 
     <LinearLayout

@@ -62,7 +62,7 @@ class _ImageTileState extends State<ImageTile> {
               },
             ),
             ListTile(
-              leading: const Icon(widget.isFav ? Icons.favorite : Icons.favorite_border),
+              leading: Icon(widget.isFav ? Icons.favorite : Icons.favorite_border),
               title: Text(widget.isFav ? "Remove from Favorites" : "Add to Favorites"),
               onTap: () {
                 Navigator.pop(ctx);

@@ -40,6 +40,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
   static const platform = MethodChannel('wallpaper_channel');
   bool _autoWallpaperEnabled = false;
   List<String> _wallpaperSources = ["internet"];
+  bool _scheduleEnabled = false;
+  List<int> _scheduleDays = [1, 2, 3, 4, 5, 6, 7];
+  int _scheduleStartHour = 6;
+  int _scheduleEndHour = 22;
 
   List<String> _folderPaths = [];
   bool _updateAvailable = false;
@@ -94,6 +98,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
     _intervalController.text = _intervalMinutes.toString();
     _wallpaperSources = await UserSharedPrefs.getWallpaperSources();
     _folderPaths = await UserSharedPrefs.getFolderPaths();
+    _scheduleEnabled = await UserSharedPrefs.getScheduleEnabled();
+    _scheduleDays = await UserSharedPrefs.getScheduleDays();
+    _scheduleStartHour = await UserSharedPrefs.getScheduleStartHour();
+    _scheduleEndHour = await UserSharedPrefs.getScheduleEndHour();
 
     setState(() {});
     if (_autoWallpaperEnabled) {
@@ -694,6 +702,98 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
   }
 
 
+  static const _dayLabels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+  Widget _buildScheduleSection(ColorScheme scheme) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text("Schedule", style: Theme.of(context).textTheme.titleMedium),
+            const Spacer(),
+            Switch(
+              value: _scheduleEnabled,
+              onChanged: (v) async {
+                setState(() => _scheduleEnabled = v);
+                await UserSharedPrefs.setScheduleEnabled(v);
+              },
+            ),
+          ],
+        ),
+        if (_scheduleEnabled) ...[
+          const SizedBox(height: 8),
+          Text("Active Days", style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 6,
+            runSpacing: 4,
+            children: List.generate(7, (i) {
+              final day = i + 1;
+              final selected = _scheduleDays.contains(day);
+              return ChoiceChip(
+                label: Text(_dayLabels[i], style: const TextStyle(fontSize: 12)),
+                selected: selected,
+                selectedColor: scheme.primary.withValues(alpha: 0.25),
+                backgroundColor: scheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                onSelected: (v) async {
+                  setState(() {
+                    if (v) {
+                      _scheduleDays.add(day);
+                    } else {
+                      _scheduleDays.remove(day);
+                    }
+                    if (_scheduleDays.isEmpty) _scheduleDays.add(day);
+                  });
+                  await UserSharedPrefs.setScheduleDays(_scheduleDays);
+                  resetAutoWallpaper();
+                },
+                visualDensity: VisualDensity.compact,
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              );
+            }),
+          ),
+          const SizedBox(height: 12),
+          Text("Time Range", style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              Text("From", style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant)),
+              const SizedBox(width: 8),
+              SizedBox(
+                width: 80,
+                child: _TimePickerChip(
+                  value: _scheduleStartHour,
+                  onChanged: (v) async {
+                    setState(() => _scheduleStartHour = v);
+                    await UserSharedPrefs.setScheduleStartHour(v);
+                    resetAutoWallpaper();
+                  },
+                  scheme: scheme,
+                ),
+              ),
+              const Spacer(),
+              Text("To", style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant)),
+              const SizedBox(width: 8),
+              SizedBox(
+                width: 80,
+                child: _TimePickerChip(
+                  value: _scheduleEndHour,
+                  onChanged: (v) async {
+                    setState(() => _scheduleEndHour = v);
+                    await UserSharedPrefs.setScheduleEndHour(v);
+                    resetAutoWallpaper();
+                  },
+                  scheme: scheme,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+
   Widget _buildWallpaperSettings(BuildContext context, ColorScheme scheme) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -748,6 +848,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
             ),
           ],
         ),
+        const SizedBox(height: 12),
+        _buildScheduleSection(scheme),
         const SizedBox(height: 16),
         Text(
           "Wallpaper Source",
@@ -1262,6 +1364,41 @@ class _ApiKeyFieldState extends State<_ApiKeyField> {
               visualDensity: VisualDensity.compact,
             ),
         ],
+      ),
+    );
+  }
+}
+
+class _TimePickerChip extends StatelessWidget {
+  final int value;
+  final ValueChanged<int> onChanged;
+  final ColorScheme scheme;
+
+  const _TimePickerChip({
+    required this.value,
+    required this.onChanged,
+    required this.scheme,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () async {
+        final t = TimeOfDay(hour: value, minute: 0);
+        final picked = await showTimePicker(context: context, initialTime: t);
+        if (picked != null) onChanged(picked.hour);
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: scheme.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Text(
+          "${value.toString().padLeft(2, '0')}:00",
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 13, color: scheme.onSurface),
+        ),
       ),
     );
   }

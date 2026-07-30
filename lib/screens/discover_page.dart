@@ -10,7 +10,9 @@ import 'package:wallify/core/update_manager.dart';
 import 'package:wallify/core/user_shared_prefs.dart';
 import 'package:wallify/functions/image_card.dart';
 import 'package:wallify/functions/shimmer_widget.dart';
+import 'package:wallify/main.dart';
 import 'package:wallify/model/wallpaper_model.dart';
+import 'package:wallify/core/navigation_service.dart';
 import 'package:wallify/core/snackbar.dart';
 
 class DiscoverPage extends ConsumerStatefulWidget {
@@ -418,10 +420,13 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
 
       if (!isSearch && !isMore && results.isEmpty) {
         if (mounted) {
+          final online = ref.read(connectivityProvider).value;
           showSnackBar(
             context: context,
-            message: "Could not fetch wallpapers — check your connection",
-            color: Colors.red,
+            message: online
+                ? "Could not fetch wallpapers — try again later"
+                : "You're offline — browse favorites or history",
+            color: online ? Colors.red : Colors.orange,
           );
         }
       }
@@ -437,7 +442,7 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
           results.removeWhere((e) => existingIds.contains(e.url));
           newImages = [..._imagesNotifier.value, ...results];
         } else {
-          newImages = results;
+          newImages = results.isNotEmpty ? results : _imagesNotifier.value;
         }
         if (newImages.length > maxImages) {
           newImages = newImages.sublist(newImages.length - maxImages);
@@ -608,7 +613,9 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
                 label: Text(tag, style: const TextStyle(fontSize: 12)),
                 selected: isActive,
                 selectedColor: colors.primary.withValues(alpha: 0.25),
-                backgroundColor: colors.surfaceContainerHighest.withValues(alpha: 0.5),
+                backgroundColor: colors.surfaceContainerHighest.withValues(
+                  alpha: 0.5,
+                ),
                 labelStyle: TextStyle(
                   color: isActive ? colors.primary : colors.onSurfaceVariant,
                   fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
@@ -643,17 +650,21 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
     return Wrap(
       spacing: 6,
       runSpacing: 4,
-      children: suggestions.map((tag) => ActionChip(
-        label: Text(tag, style: const TextStyle(fontSize: 12)),
-        onPressed: () {
-          _searchController.text = tag;
-          setState(() => _tagFilterActive = false);
-          _resetPagination();
-          _fetchImages(query: tag, isSearch: true);
-        },
-        visualDensity: VisualDensity.compact,
-        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-      )).toList(),
+      children: suggestions
+          .map(
+            (tag) => ActionChip(
+              label: Text(tag, style: const TextStyle(fontSize: 12)),
+              onPressed: () {
+                _searchController.text = tag;
+                setState(() => _tagFilterActive = false);
+                _resetPagination();
+                _fetchImages(query: tag, isSearch: true);
+              },
+              visualDensity: VisualDensity.compact,
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+          )
+          .toList(),
     );
   }
 
@@ -702,6 +713,60 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
           }).toList(),
         ),
       ],
+    );
+  }
+
+  Widget _buildOfflineFallback({required ColorScheme scheme}) {
+    return MasonryGridView.count(
+      crossAxisCount: 2,
+      mainAxisSpacing: 8,
+      crossAxisSpacing: 8,
+      padding: const EdgeInsets.only(top: 8),
+      itemCount: 1,
+      itemBuilder: (_, __) => Container(
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: scheme.surfaceContainerHighest.withValues(alpha: 0.5),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.wifi_off,
+              size: 48,
+              color: scheme.onSurfaceVariant.withValues(alpha: 0.5),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              "You're offline",
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: scheme.onSurface,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              "Browse your favorites or history below",
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant),
+            ),
+            const SizedBox(height: 20),
+            OutlinedButton.icon(
+              onPressed: () => NavigationService.tabNotifier.value = 1,
+              icon: const Icon(Icons.favorite, size: 18),
+              label: const Text("Favorites"),
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: () => NavigationService.tabNotifier.value = 2,
+              icon: const Icon(Icons.history, size: 18),
+              label: const Text("History"),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -877,6 +942,40 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
                   ),
                 ),
 
+              if (!ref.watch(connectivityProvider).value)
+                Container(
+                  width: double.infinity,
+                  margin: const EdgeInsets.only(bottom: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: Colors.orange.withValues(alpha: 0.3),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.wifi_off,
+                        size: 16,
+                        color: Colors.orange.shade700,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        "Offline — showing saved wallpapers",
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.orange.shade700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
               Expanded(
                 child: RefreshIndicator(
                   onRefresh: () async {
@@ -891,7 +990,7 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
                   child: ValueListenableBuilder<List<Wallpaper>>(
                     valueListenable: _imagesNotifier,
                     builder: (context, images, _) {
-                      if (images.isEmpty) {
+                      if (images.isEmpty && _isLoading) {
                         return MasonryGridView.count(
                           crossAxisCount: 2,
                           mainAxisSpacing: 8,
@@ -902,6 +1001,9 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
                             borderRadius: 12,
                           ),
                         );
+                      }
+                      if (images.isEmpty && !_isLoading) {
+                        return _buildOfflineFallback(scheme: colorScheme);
                       }
                       return MasonryGridView.builder(
                         key: const PageStorageKey("discover_grid"),

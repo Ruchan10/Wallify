@@ -75,7 +75,7 @@ class MainActivity : FlutterActivity() {
                         result.success("Cancelled wallpaper background worker")
                     }
                     "scheduleBackgroundWallpaperWorkerNow" -> {
-                        CoroutineScope(Dispatchers.IO).launch {
+                        lifecycleScope.launch(Dispatchers.IO) {
                             try {
                                 WallpaperUtils.downloadAndSetWallpaperBackground(applicationContext)
                                 result.success("✅ Wallpaper changed successfully")

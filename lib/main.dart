@@ -2,12 +2,18 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 import 'package:wallify/core/app_theme.dart';
 import 'package:wallify/core/error_reporter.dart';
 import 'package:wallify/core/navigation_service.dart';
 import 'package:wallify/core/routes.dart';
 import 'package:wallify/core/theme_provider.dart';
 import 'package:wallify/core/wallpaper_theme_provider.dart';
+import 'package:wallify/services/connectivity_service.dart';
+
+final connectivityProvider = ChangeNotifierProvider<ConnectivityService>((ref) {
+  return ConnectivityService();
+});
 
 void main() {
   runZonedGuarded(

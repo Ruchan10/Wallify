@@ -19,6 +19,7 @@ class StatsWidget : AppWidgetProvider() {
     private fun buildRemoteViews(context: Context): RemoteViews {
         val views = RemoteViews(context.packageName, R.layout.widget_stats)
         val prefs = WidgetUtils.getPrefs(context)
+        WidgetUtils.applyDynamicColors(views, prefs)
 
         val totalChanges = prefs.getInt("flutter.totalWallpaperChanges", 0)
         views.setTextViewText(R.id.tv_total_changes, totalChanges.toString())

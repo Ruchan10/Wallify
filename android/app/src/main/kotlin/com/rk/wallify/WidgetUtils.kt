@@ -3,7 +3,9 @@ package com.rk.wallify
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.graphics.Color
 import android.os.Build
+import android.widget.RemoteViews
 
 object WidgetUtils {
     const val PREFS_NAME = "FlutterSharedPreferences"
@@ -27,6 +29,24 @@ object WidgetUtils {
 
     fun getPrefs(context: Context) =
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+
+    fun getSeedColor(prefs: android.content.SharedPreferences): Int {
+        return prefs.getInt("wallpaperSeedColor", -1)
+    }
+
+    fun applyDynamicColors(views: RemoteViews, prefs: android.content.SharedPreferences) {
+        val seed = getSeedColor(prefs)
+        if (seed == -1) return
+        // Use the seed color with some translucency for backgrounds
+        val bgColor = Color.argb(30, Color.red(seed), Color.green(seed), Color.blue(seed))
+        views.setInt(R.id.widget_root, "setBackgroundColor", bgColor)
+    }
+
+    fun applyDynamicProgressTint(views: RemoteViews, prefs: android.content.SharedPreferences, barId: Int) {
+        val seed = getSeedColor(prefs)
+        if (seed == -1) return
+        views.setInt(barId, "setProgressTint", seed)
+    }
 
     fun getLastChangeText(prefs: android.content.SharedPreferences, autoEnabled: Boolean, intervalMinutes: Int): String {
         val lastChangeStr = prefs.getString("flutter.lastWallpaperChange", null)

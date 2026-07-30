@@ -110,6 +110,40 @@ object WallpaperUtils {
             return Pair(false, "Not connected to Wi-Fi")
         }
 
+        val scheduleEnabled = prefs.getBoolean("flutter.scheduleEnabled", false)
+        if (scheduleEnabled) {
+            val calendar = Calendar.getInstance()
+            val today = calendar.get(Calendar.DAY_OF_WEEK)
+            val dayMap = mapOf(
+                Calendar.MONDAY to 1, Calendar.TUESDAY to 2, Calendar.WEDNESDAY to 3,
+                Calendar.THURSDAY to 4, Calendar.FRIDAY to 5, Calendar.SATURDAY to 6,
+                Calendar.SUNDAY to 7
+            )
+            val currentDayNum = dayMap[today] ?: 0
+            val daysJson = prefs.getString("flutter.scheduleDays", null)
+            if (daysJson != null) {
+                val allowedDays = try {
+                    JSONArray(daysJson).let { arr ->
+                        (0 until arr.length()).map { arr.getInt(it) }.toSet()
+                    }
+                } catch (_: Exception) { emptySet() }
+                if (allowedDays.isNotEmpty() && currentDayNum !in allowedDays) {
+                    val dayNames = listOf("", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+                    return Pair(false, "Today (${dayNames.getOrElse(currentDayNum) { "?" }}) is not in schedule")
+                }
+            }
+
+            val startHour = prefs.getInt("flutter.scheduleStartHour", 6)
+            val endHour = prefs.getInt("flutter.scheduleEndHour", 22)
+            val currentHour = calendar.get(Calendar.HOUR_OF_DAY)
+            if (currentHour < startHour) {
+                return Pair(false, "Too early (${currentHour}h) — schedule starts at ${startHour}h")
+            }
+            if (currentHour >= endHour) {
+                return Pair(false, "Too late (${currentHour}h) — schedule ends at ${endHour}h")
+            }
+        }
+
         val allowedSsidsJson = prefs.getString("flutter.allowedSsids", null)
         if (!allowedSsidsJson.isNullOrBlank()) {
             val allowed = try {
@@ -391,7 +425,7 @@ object WallpaperUtils {
             .setContentTitle("Wallpaper Changed")
             .setContentText("Your wallpaper has been updated")
             .setContentIntent(openPending)
-            .addAction(android.R.drawable.ic_menu_refresh, "Try Another", tryAnotherPending)
+            .addAction(android.R.drawable.ic_menu_edit, "Try Another", tryAnotherPending)
             .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Keep", null)
             .setAutoCancel(true)
             .build()

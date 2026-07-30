@@ -46,6 +46,7 @@ class _WallpaperPreviewPageState extends ConsumerState<WallpaperPreviewPage>
   final Map<int, Map<String, dynamic>?> _infoCache = {};
   bool _isCropMode = false;
   bool _isProcessing = false;
+  bool _showLockPreview = false;
   bool _isDownloading = false;
   bool _isSettingWallpaper = false;
   int? _selectedLocation;
@@ -423,6 +424,8 @@ class _WallpaperPreviewPageState extends ConsumerState<WallpaperPreviewPage>
       }
 
       if (mounted) {
+        await _showSetAnimation();
+        if (!mounted) return;
         showSnackBar(
           context: context,
           message: "Wallpaper set successfully",
@@ -443,6 +446,51 @@ class _WallpaperPreviewPageState extends ConsumerState<WallpaperPreviewPage>
         setState(() => _isSettingWallpaper = false);
       }
     }
+  }
+
+  Future<void> _showSetAnimation() async {
+    final completer = Completer<void>();
+    unawaited(showDialog(
+      context: context,
+      barrierDismissible: false,
+      barrierColor: Colors.transparent,
+      builder: (ctx) => PopScope(
+        canPop: false,
+        child: Center(
+          child: TweenAnimationBuilder<double>(
+            tween: Tween(begin: 0.0, end: 1.0),
+            duration: const Duration(milliseconds: 500),
+            curve: Curves.easeOutBack,
+            onEnd: () => completer.complete(),
+            builder: (ctx, value, _) => Transform.scale(
+              scale: value,
+              child: Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: Colors.green.withValues(alpha: 0.9 * value),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(Icons.check, color: Colors.white, size: 48),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ));
+    await completer.future;
+    if (mounted) Navigator.of(context).pop();
+  }
+
+  String _formatTime(DateTime dt) {
+    final h = dt.hour > 12 ? dt.hour - 12 : (dt.hour == 0 ? 12 : dt.hour);
+    final m = dt.minute.toString().padLeft(2, '0');
+    final ampm = dt.hour >= 12 ? "PM" : "AM";
+    return "$h:$m $ampm";
+  }
+
+  String _formatDate(DateTime dt) {
+    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    return "${months[dt.month - 1]} ${dt.day}, ${dt.year}";
   }
 
   String _getLocationText() {
@@ -1035,9 +1083,140 @@ class _WallpaperPreviewPageState extends ConsumerState<WallpaperPreviewPage>
                             setState(() => _blurEnabled = v);
                           },
                         ),
+                        const SizedBox(width: 12),
+                        GestureDetector(
+                          onTap: () => setState(() => _showLockPreview = !_showLockPreview),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: _showLockPreview ? Colors.blueAccent.withValues(alpha: 0.3) : Colors.white24,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.lock,
+                                  size: 14,
+                                  color: _showLockPreview ? Colors.blueAccent : Colors.white70,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  "Preview",
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: _showLockPreview ? Colors.blueAccent : Colors.white70,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
                       ],
                     ),
                   ],
+                ),
+              ),
+            ),
+
+          if (_isCropMode && _showLockPreview)
+            Positioned.fill(
+              child: GestureDetector(
+                onTap: () => setState(() => _showLockPreview = false),
+                child: Container(
+                  color: Colors.black87,
+                  child: Center(
+                    child: Container(
+                      width: 200,
+                      height: 400,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(24),
+                        border: Border.all(color: Colors.white24, width: 2),
+                        image: DecorationImage(
+                          image: _downloadedImage != null
+                              ? FileImage(File(_downloadedImage!.path))
+                              : NetworkImage(_currentWallpaper.url) as ImageProvider,
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                      child: Stack(
+                        children: [
+                          Positioned(
+                            top: 12,
+                            left: 0,
+                            right: 0,
+                            child: Column(
+                              children: [
+                                Text(
+                                  _formatTime(DateTime.now()),
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 28,
+                                    fontWeight: FontWeight.w300,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  _formatDate(DateTime.now()),
+                                  style: TextStyle(
+                                    color: Colors.white.withValues(alpha: 0.7),
+                                    fontSize: 11,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Positioned(
+                            top: 12,
+                            left: 12,
+                            child: Icon(
+                              Icons.wifi,
+                              color: Colors.white.withValues(alpha: 0.8),
+                              size: 16,
+                            ),
+                          ),
+                          Positioned(
+                            top: 12,
+                            right: 12,
+                            child: Icon(
+                              Icons.battery_full,
+                              color: Colors.white.withValues(alpha: 0.8),
+                              size: 16,
+                            ),
+                          ),
+                          Positioned(
+                            bottom: 40,
+                            left: 0,
+                            right: 0,
+                            child: Center(
+                              child: Container(
+                                width: 40,
+                                height: 4,
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withValues(alpha: 0.5),
+                                  borderRadius: BorderRadius.circular(2),
+                                ),
+                              ),
+                            ),
+                          ),
+                          Positioned(
+                            bottom: 12,
+                            left: 0,
+                            right: 0,
+                            child: Center(
+                              child: Text(
+                                "Slide to unlock",
+                                style: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.5),
+                                  fontSize: 11,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ),

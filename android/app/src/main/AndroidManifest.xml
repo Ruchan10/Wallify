@@ -87,7 +87,7 @@
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
                 <action android:name="com.rk.wallify.qt.ACTION_SET_LOCATION" />
                 <action android:name="com.rk.wallify.qt.ACTION_CHANGE_NOW" />
-                <action android:name="com.rk.wallify.qt.ACTION_TOGGLE_AUTO" />
+                <action android:name="com.rk.wallify.qt.ACTION_RANDOM_LOCATION" />
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"

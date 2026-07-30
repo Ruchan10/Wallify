@@ -21,6 +21,8 @@ class ScheduleWidget : AppWidgetProvider() {
     private fun buildRemoteViews(context: Context): RemoteViews {
         val views = RemoteViews(context.packageName, R.layout.widget_schedule)
         val prefs = WidgetUtils.getPrefs(context)
+        WidgetUtils.applyDynamicColors(views, prefs)
+        WidgetUtils.applyDynamicProgressTint(views, prefs, R.id.progress_bar)
 
         val interval = prefs.all["flutter.wallpaper_interval"]?.let {
             when (it) {
