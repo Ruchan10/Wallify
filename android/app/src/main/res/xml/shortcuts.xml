@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="change_now"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_change"
+        android:shortcutShortLabel="@string/shortcut_change_now"
+        android:shortcutLongLabel="@string/shortcut_change_now_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.rk.wallify"
+            android:targetClass="com.rk.wallify.MainActivity">
+            <extra
+                android:name="shortcut_action"
+                android:value="change_now" />
+        </intent>
+    </shortcut>
+    <shortcut
+        android:shortcutId="favorites"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_fav"
+        android:shortcutShortLabel="@string/shortcut_favorites"
+        android:shortcutLongLabel="@string/shortcut_favorites_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.rk.wallify"
+            android:targetClass="com.rk.wallify.MainActivity">
+            <extra
+                android:name="shortcut_action"
+                android:value="favorites" />
+        </intent>
+    </shortcut>
+</shortcuts>

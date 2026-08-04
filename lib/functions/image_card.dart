@@ -83,6 +83,7 @@ class _ImageTileState extends State<ImageTile> {
   }
 
   Future<void> _download() async {
+    File? tempFile;
     try {
       final response = await http.get(Uri.parse(widget.wallpaper.url));
       if (response.statusCode != 200) {
@@ -92,16 +93,33 @@ class _ImageTileState extends State<ImageTile> {
         return;
       }
       final dir = await getTemporaryDirectory();
-      final ext = widget.wallpaper.url.split('.').last.split('?').first;
-      final file = File('${dir.path}/wallify_${widget.wallpaper.id}.$ext');
-      await file.writeAsBytes(response.bodyBytes);
+      final fileName = "Wallify_${widget.wallpaper.id}.jpg";
+      tempFile = File('${dir.path}/$fileName');
+      await tempFile.writeAsBytes(response.bodyBytes);
+      const channel = MethodChannel('wallpaper_channel');
+      final result = await channel.invokeMethod<String>(
+        'saveToDownloads',
+        {
+          'filePath': tempFile.path,
+          'fileName': fileName,
+          'subdirectory': 'Wallify',
+        },
+      );
       if (context.mounted) {
-        showSnackBar(context: context, message: "Downloaded to temporary folder");
+        showSnackBar(
+          context: context,
+          message: result != null
+              ? "Saved to Downloads/Wallify/"
+              : "Download failed",
+          color: result != null ? Colors.green : Colors.red,
+        );
       }
     } catch (e) {
       if (context.mounted) {
         showSnackBar(context: context, message: "Download failed: $e", color: Colors.red);
       }
+    } finally {
+      try { await tempFile?.delete(); } catch (_) {}
     }
   }
 

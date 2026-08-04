@@ -8,9 +8,9 @@ on:
 
 env:
   APK_NAME: "Wallify"
-  APP_VERSION: "1.4.7"
+  APP_VERSION: "1.4.8"
   CHANGES: |
-    - Major improvements
+    - Icon Fixed
 
 jobs:
   build:

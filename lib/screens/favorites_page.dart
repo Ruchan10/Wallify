@@ -1,6 +1,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
+import 'package:wallify/core/performance_config.dart';
 import 'package:wallify/core/user_shared_prefs.dart';
 import 'package:wallify/functions/shimmer_widget.dart';
 import 'package:wallify/model/wallpaper_model.dart';
@@ -157,10 +158,13 @@ class _FavoritesPageState extends State<FavoritesPage> {
                                 tag: 'wallpaper_${wallpaper.url}',
                                 child: CachedNetworkImage(
                                   key: ValueKey(wallpaper.url),
+                                  cacheManager: PerformanceConfig.cacheManager,
                                   imageUrl: wallpaper.url,
                                   fit: BoxFit.cover,
                                   memCacheWidth: 400,
                                   memCacheHeight: 600,
+                                  maxWidthDiskCache: 1080,
+                                  maxHeightDiskCache: 1920,
                                   placeholder: (context, url) => ShimmerLoading(
                                     height: 200,
                                     borderRadius: 12,

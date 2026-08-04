@@ -2,8 +2,11 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart' hide Config;
 import 'package:intl/intl.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:wallify/core/config.dart';
+import 'package:wallify/core/performance_config.dart';
 import 'package:wallify/core/snackbar.dart';
 import 'package:wallify/core/theme_provider.dart';
 import 'package:wallify/core/update_manager.dart';
@@ -52,6 +55,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
   List<Map<String, String>> _workerLogs = [];
   bool _logsExpanded = false;
 
+  int _cacheSize = 0;
+  bool _batteryOptimized = false;
+
   @override
   void initState() {
     super.initState();
@@ -59,6 +65,60 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
     _checkUpdateStatus();
     WidgetsBinding.instance.addObserver(this);
     _loadWorkerLogs();
+    _loadCacheSize();
+    _loadBatteryStatus();
+  }
+
+  Future<int> _dirSize(Directory dir) async {
+    if (!dir.existsSync()) return 0;
+    int total = 0;
+    try {
+      await for (final entity in dir.list(recursive: true)) {
+        if (entity is File) total += entity.statSync().size;
+      }
+    } catch (_) {}
+    return total;
+  }
+
+  Future<void> _loadCacheSize() async {
+    try {
+      final temp = await getTemporaryDirectory();
+      final sizes = await Future.wait([
+        _dirSize(Directory('${temp.path}/libCachedImageData')),
+        _dirSize(Directory('${temp.path}/wallify_cache')),
+        WallpaperCacheManager.getCacheSizeBytes(),
+      ]);
+      if (mounted) {
+        setState(() => _cacheSize = sizes.fold(0, (a, b) => a + b));
+      }
+    } catch (_) {}
+  }
+
+  String _formatBytes(int bytes) {
+    if (bytes >= 1024 * 1024) {
+      return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+    }
+    return '${(bytes / 1024).toStringAsFixed(0)} KB';
+  }
+
+  Future<void> _clearAllCaches() async {
+    try {
+      await DefaultCacheManager().emptyCache();
+      await PerformanceConfig.cacheManager.emptyCache();
+      await WallpaperCacheManager.clearCache();
+      await _loadCacheSize();
+      if (mounted) {
+        showSnackBar(context: context, message: "Cache cleared");
+      }
+    } catch (e) {
+      if (mounted) {
+        showSnackBar(
+          context: context,
+          message: "Failed to clear cache: $e",
+          color: Colors.red,
+        );
+      }
+    }
   }
 
   Future<void> _checkUpdateStatus() async {
@@ -87,6 +147,37 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
       await platform.invokeMethod("clearWorkerLogs");
       setState(() => _workerLogs.clear());
     } catch (_) {}
+  }
+
+  Future<void> _loadBatteryStatus() async {
+    try {
+      final ignoring =
+          await platform.invokeMethod<bool>("isIgnoringBatteryOptimizations");
+      if (mounted) {
+        setState(() => _batteryOptimized = ignoring ?? false);
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _requestBatteryOptimization() async {
+    try {
+      await platform.invokeMethod("requestIgnoreBatteryOptimizations");
+      if (!mounted) return;
+      showSnackBar(
+        context: context,
+        message: "Allow 'Don't restrict' in the battery settings",
+      );
+      await Future.delayed(const Duration(seconds: 2));
+      await _loadBatteryStatus();
+    } catch (e) {
+      if (mounted) {
+        showSnackBar(
+          context: context,
+          message: "Failed to open battery settings: $e",
+          color: Colors.red,
+        );
+      }
+    }
   }
 
   Future<void> _initialize() async {
@@ -415,6 +506,23 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
                 const SizedBox(height: 12),
                 if (_autoWallpaperEnabled)
                   _buildWallpaperSettings(context, scheme),
+                const SizedBox(height: 8),
+                ListTile(
+                  leading: Icon(
+                    Icons.battery_saver,
+                    color: _batteryOptimized ? Colors.green : Colors.orange,
+                  ),
+                  title: const Text("Battery Optimization"),
+                  subtitle: Text(
+                    _batteryOptimized
+                        ? "Wallify is exempt from battery restrictions"
+                        : "Exempt the app so auto wallpaper changes run reliably",
+                  ),
+                  trailing: FilledButton.tonal(
+                    onPressed: _requestBatteryOptimization,
+                    child: Text(_batteryOptimized ? "Exempted" : "Exempt"),
+                  ),
+                ),
                 const Divider(),
                 // ========== THEME TOGGLE ==========
                 Text(
@@ -676,6 +784,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
                 ),
                 const SizedBox(height: 24),
                 const Divider(),
+                _buildStorageSection(scheme),
+                const SizedBox(height: 16),
                 _buildLogViewer(scheme),
                 const SizedBox(height: 80),
               ],
@@ -1119,6 +1229,50 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
           ],
         );
       },
+    );
+  }
+
+  Widget _buildStorageSection(ColorScheme scheme) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.cleaning_services_outlined,
+                size: 18,
+                color: scheme.onSurfaceVariant,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                "Storage",
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  "Cached wallpapers & images: ${_cacheSize > 0 ? _formatBytes(_cacheSize) : "…"}",
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+              TextButton.icon(
+                onPressed: _clearAllCaches,
+                icon: const Icon(Icons.delete_sweep_outlined, size: 18),
+                label: const Text("Clear Cache"),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 

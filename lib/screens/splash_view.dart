@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:wallify/core/config.dart';
 import 'package:wallify/core/routes.dart';
 import 'package:wallify/core/update_manager.dart';
-import 'package:wallify/core/user_shared_prefs.dart';
+import 'package:wallify/functions/wallpaper_prefetcher.dart';
 import 'package:flutter/material.dart';
 
 class SplashView extends StatefulWidget {
@@ -26,6 +26,7 @@ class _SplashViewState extends State<SplashView>
     _navigationCompleter.complete();
     await UpdateManager.checkForUpdates();
     if (!mounted) return;
+    unawaited(WallpaperPrefetcher.prefetchNext());
     Navigator.popAndPushNamed(context, AppRoute.navRoute);
   }
 

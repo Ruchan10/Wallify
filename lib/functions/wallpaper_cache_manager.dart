@@ -1,7 +1,9 @@
 import 'dart:io';
+import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:image/image.dart' as img;
 import 'package:path_provider/path_provider.dart';
 import 'package:wallify/core/user_shared_prefs.dart';
 import 'package:wallify/model/wallpaper_model.dart';
@@ -9,6 +11,7 @@ import 'package:wallify/model/wallpaper_model.dart';
 class WallpaperCacheManager {
   static const _maxCached = 50;
   static const _concurrency = 4;
+  static const _maxDimension = 2160;
 
   static Future<Directory> _cacheDir() async {
     final appDir = await getApplicationDocumentsDirectory();
@@ -20,18 +23,46 @@ class WallpaperCacheManager {
   static Future<String?> downloadAndCache(Wallpaper wallpaper) async {
     try {
       final dir = await _cacheDir();
-      final ext = _extensionFromUrl(wallpaper.url);
-      final file = File('${dir.path}/${wallpaper.id}$ext');
+      final file = File('${dir.path}/${wallpaper.id}.jpg');
 
       if (file.existsSync()) return file.path;
 
       final response = await http.get(Uri.parse(wallpaper.url));
       if (response.statusCode != 200) return null;
 
-      await file.writeAsBytes(response.bodyBytes);
+      final bytes = response.bodyBytes;
+      final resized = await _resizeImage(bytes);
+      if (resized == null) return null;
+
+      await file.writeAsBytes(resized);
       return file.path;
     } catch (e) {
       debugPrint("Failed to cache ${wallpaper.id}: $e");
+      return null;
+    }
+  }
+
+  static Future<Uint8List?> _resizeImage(Uint8List bytes) async {
+    try {
+      final codec = await ui.instantiateImageCodec(
+        bytes,
+        targetWidth: _maxDimension,
+        targetHeight: _maxDimension,
+        allowUpscaling: false,
+      );
+      final frame = await codec.getNextFrame();
+      final resized = frame.image;
+      final data = await resized.toByteData(format: ui.ImageByteFormat.rawRgba);
+      if (data == null) return null;
+      final processed = img.Image.fromBytes(
+        width: resized.width,
+        height: resized.height,
+        bytes: data.buffer,
+        numChannels: 4,
+      );
+      return Uint8List.fromList(img.encodeJpg(processed, quality: 85));
+    } catch (e) {
+      debugPrint("Failed to resize cached image: $e");
       return null;
     }
   }
@@ -68,6 +99,9 @@ class WallpaperCacheManager {
       final oldest = files.removeAt(0);
       oldest.deleteSync();
     }
+
+    final kept = files.map((f) => f.path).toList();
+    await UserSharedPrefs.saveCachedWallpaperPaths(kept);
   }
 
   static Future<List<String>> getCachedPaths() async {
@@ -87,16 +121,13 @@ class WallpaperCacheManager {
     return count;
   }
 
-  static String _extensionFromUrl(String url) {
-    try {
-      final path = Uri.parse(url).path;
-      final dot = path.lastIndexOf('.');
-      if (dot >= 0) {
-        final ext = path.substring(dot);
-        if (ext.contains('/')) return '.jpg';
-        return ext;
-      }
-    } catch (_) {}
-    return '.jpg';
+  static Future<int> getCacheSizeBytes() async {
+    final dir = await _cacheDir();
+    if (!dir.existsSync()) return 0;
+    int total = 0;
+    for (final f in dir.listSync()) {
+      total += f.statSync().size;
+    }
+    return total;
   }
 }

@@ -366,7 +366,7 @@ class _WallpaperPreviewPageState extends ConsumerState<WallpaperPreviewPage>
     final file = File(
       "${dir.path}/wallpaper_cropped_${DateTime.now().millisecondsSinceEpoch}.jpg",
     );
-    await file.writeAsBytes(img.encodeJpg(processImage, quality: 100));
+    await file.writeAsBytes(img.encodeJpg(processImage, quality: 90));
     return file;
   }
 
@@ -375,11 +375,12 @@ class _WallpaperPreviewPageState extends ConsumerState<WallpaperPreviewPage>
 
     setState(() => _isSettingWallpaper = true);
 
+    File? croppedFile;
     try {
       final processImage = await _processImage();
       if (processImage == null) throw Exception("Failed to process image");
 
-      final croppedFile = await _saveProcessedToTemp(processImage);
+      croppedFile = await _saveProcessedToTemp(processImage);
 
       final noFacesEnabled = await UserSharedPrefs.getConstraintNoFaces();
       if (noFacesEnabled) {
@@ -442,6 +443,7 @@ class _WallpaperPreviewPageState extends ConsumerState<WallpaperPreviewPage>
         );
       }
     } finally {
+      try { await croppedFile?.delete(); } catch (_) {}
       if (mounted) {
         setState(() => _isSettingWallpaper = false);
       }

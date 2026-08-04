@@ -1,3 +1,4 @@
+import 'package:flutter/painting.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 
 class PerformanceConfig {
@@ -11,6 +12,13 @@ class PerformanceConfig {
   static const Duration fadeInDuration = Duration(milliseconds: 150);
 
   static const int maxImagesInMemory = 200;
+  static const int imageCacheMaximumSizeBytes = 100 * 1024 * 1024;
+
+  static void applyImageCacheLimits() {
+    PaintingBinding.instance.imageCache.maximumSize = maxImagesInMemory;
+    PaintingBinding.instance.imageCache.maximumSizeBytes =
+        imageCacheMaximumSizeBytes;
+  }
 
   static WallifyCacheManager? _cacheManager;
   static WallifyCacheManager get cacheManager {
@@ -23,8 +31,8 @@ class WallifyCacheManager extends CacheManager with ImageCacheManager {
   WallifyCacheManager._()
       : super(Config(
           'wallify_cache',
-          stalePeriod: const Duration(days: 30),
-          maxNrOfCacheObjects: 500,
+          stalePeriod: const Duration(days: 14),
+          maxNrOfCacheObjects: 100,
           repo: JsonCacheInfoRepository(databaseName: 'wallify_cache'),
           fileService: HttpFileService(),
         ));

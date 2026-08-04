@@ -7,6 +7,7 @@
     android:updatePeriodMillis="1800000"
     android:resizeMode="horizontal|vertical"
     android:widgetCategory="home_screen"
+    android:configure="com.rk.wallify.WidgetConfigActivity"
     android:initialLayout="@layout/widget_quick_toggle"
     android:previewLayout="@layout/widget_quick_toggle"
     android:description="@string/widget_quick_toggle_desc" />

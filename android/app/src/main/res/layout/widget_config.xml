@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="20dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Wallpaper Location"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+
+        <RadioGroup
+            android:id="@+id/location_group"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_marginTop="8dp">
+
+            <RadioButton
+                android:id="@+id/radio_home"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Home Screen" />
+
+            <RadioButton
+                android:id="@+id/radio_lock"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Lock Screen" />
+
+            <RadioButton
+                android:id="@+id/radio_both"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Both Screens" />
+        </RadioGroup>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Wallpaper Source"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:layout_marginTop="20dp" />
+
+        <CheckBox
+            android:id="@+id/chk_internet"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Internet" />
+
+        <CheckBox
+            android:id="@+id/chk_favorites"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Favorites" />
+
+        <CheckBox
+            android:id="@+id/chk_folder"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Folder" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginTop="24dp">
+
+            <Button
+                android:id="@+id/btn_cancel"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Cancel"
+                style="?android:attr/buttonBarButtonStyle" />
+
+            <Button
+                android:id="@+id/btn_save"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Save"
+                style="?android:attr/buttonBarButtonStyle" />
+        </LinearLayout>
+    </LinearLayout>
+</ScrollView>

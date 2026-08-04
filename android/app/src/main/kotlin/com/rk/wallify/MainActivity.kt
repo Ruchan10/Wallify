@@ -14,9 +14,12 @@ import java.net.HttpURLConnection
 import android.graphics.Bitmap
 import android.content.Context
 import android.content.ContentValues
+import android.net.Uri
 import android.os.Build
 import android.os.Environment
+import android.os.PowerManager
 import android.provider.MediaStore
+import android.provider.Settings
 import androidx.work.*
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
@@ -47,6 +50,20 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun handleIntent(intent: Intent?) {
+        val shortcutAction = intent?.getStringExtra("shortcut_action")
+        if (shortcutAction != null) {
+            when (shortcutAction) {
+                "change_now" -> {
+                    Thread {
+                        WallpaperUtils.downloadAndSetWallpaperBackground(applicationContext)
+                    }.start()
+                }
+                "favorites" -> {
+                    pendingNavigation = "favorites"
+                    sendNavigationToFlutter()
+                }
+            }
+        }
         val nav = intent?.getStringExtra("navigate_to")
         if (nav != null) {
             pendingNavigation = nav
@@ -56,7 +73,13 @@ class MainActivity : FlutterActivity() {
 
     private fun sendNavigationToFlutter() {
         val nav = pendingNavigation ?: return
-        methodChannel?.invokeMethod("navigateToSettings", nav)
+        val tab = when (nav) {
+            "favorites" -> 1
+            "history" -> 2
+            "settings" -> 3
+            else -> 0
+        }
+        methodChannel?.invokeMethod("navigateTo", tab)
         pendingNavigation = null
     }
 
@@ -177,6 +200,27 @@ class MainActivity : FlutterActivity() {
                         QuickToggleWidget.triggerUpdate(this@MainActivity)
                         ScheduleWidget.triggerUpdate(this@MainActivity)
                         result.success("All widgets updated")
+                    }
+                    "isIgnoringBatteryOptimizations" -> {
+                        val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+                        result.success(pm.isIgnoringBatteryOptimizations(packageName))
+                    }
+                    "requestIgnoreBatteryOptimizations" -> {
+                        val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+                        if (!pm.isIgnoringBatteryOptimizations(packageName)) {
+                            try {
+                                startActivity(
+                                    Intent(
+                                        Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                                        Uri.parse("package:$packageName")
+                                    )
+                                )
+                            } catch (e: Exception) {
+                                result.error("REQUEST_FAILED", e.message, null)
+                                return@setMethodCallHandler
+                            }
+                        }
+                        result.success(true)
                     }
                     else -> {
                         result.notImplemented()
