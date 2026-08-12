@@ -213,8 +213,17 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
       }
       await platform.invokeMethod("scheduleBackgroundWallpaperWorkerNow");
       await updateWidget();
+      if (mounted) {
+        showSnackBar(
+          context: context,
+          color: Colors.green,
+          message: "Wallpaper changed",
+        );
+      }
     } catch (e) {
-      showSnackBar(context: context, color: Colors.red, message: "Error: $e");
+      if (mounted) {
+        showSnackBar(context: context, color: Colors.red, message: "Error: $e");
+      }
     }
   }
 
@@ -696,19 +705,32 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
                 ),
                 const SizedBox(height: 12),
                 _ApiKeyGuideRow(
-                  text: "Get a free Unsplash API key at unsplash.com/developers",
-                  url: "https://unsplash.com/developers",
+                  text: "Get a free Unsplash API key at unsplash.com/oauth/applications",
+                  url: "https://unsplash.com/oauth/applications",
                   scheme: scheme,
                 ),
                 const SizedBox(height: 4),
                 _ApiKeyField(
-                  label: "Unsplash API Key",
-                  hint: "Optional — uses built-in key if left empty",
+                  label: "Unsplash Access Key",
+                  hint: "Use the Access Key, not the Secret Key",
                   isSecret: true,
                   load: () => UserSharedPrefs.getUnsplashApiKey().then((v) =>
                       v == UserSharedPrefs.defaultUnsplashKey ? null : v),
                   save: (v) => UserSharedPrefs.setUnsplashApiKey(v),
                   scheme: scheme,
+                ),
+                const SizedBox(height: 4),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: Text(
+                    "Paste the Access Key from your Unsplash app "
+                    "(under the \"Keys\" tab). The Secret Key is only for "
+                    "OAuth login and should never be shared.",
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
                 ),
                 const SizedBox(height: 12),
                 _ApiKeyGuideRow(

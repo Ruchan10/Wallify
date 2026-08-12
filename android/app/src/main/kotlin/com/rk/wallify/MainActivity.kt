@@ -55,7 +55,7 @@ class MainActivity : FlutterActivity() {
             when (shortcutAction) {
                 "change_now" -> {
                     Thread {
-                        WallpaperUtils.downloadAndSetWallpaperBackground(applicationContext)
+                        WallpaperUtils.downloadAndSetWallpaperBackground(applicationContext, isManual = true)
                     }.start()
                 }
                 "favorites" -> {
@@ -100,8 +100,12 @@ class MainActivity : FlutterActivity() {
                     "scheduleBackgroundWallpaperWorkerNow" -> {
                         lifecycleScope.launch(Dispatchers.IO) {
                             try {
-                                WallpaperUtils.downloadAndSetWallpaperBackground(applicationContext)
-                                result.success("✅ Wallpaper changed successfully")
+                                val changed = WallpaperUtils.downloadAndSetWallpaperBackground(applicationContext, isManual = true)
+                                if (changed) {
+                                    result.success("✅ Wallpaper changed successfully")
+                                } else {
+                                    result.error("CHANGE_FAILED", "Could not change wallpaper", null)
+                                }
                             } catch (e: Exception) {
                                 result.error("ERROR", e.message, null)
                             }

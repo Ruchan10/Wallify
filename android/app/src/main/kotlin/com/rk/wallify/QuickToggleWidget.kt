@@ -30,7 +30,7 @@ class QuickToggleWidget : AppWidgetProvider() {
             }
             ACTION_CHANGE_NOW -> {
                 Thread {
-                    WallpaperUtils.downloadAndSetWallpaperBackground(context)
+                    WallpaperUtils.downloadAndSetWallpaperBackground(context, isManual = true)
                     triggerUpdate(context)
                 }.start()
             }

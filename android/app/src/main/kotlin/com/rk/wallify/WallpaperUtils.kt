@@ -210,16 +210,18 @@ object WallpaperUtils {
         }
     }
 
-    fun downloadAndSetWallpaperBackground(context: Context) {
+    fun downloadAndSetWallpaperBackground(context: Context, isManual: Boolean = false): Boolean {
         try {
             WorkerLogger.i(context, "Wallify", "Starting background wallpaper change check")
             Log.d("Wallify", "Starting background wallpaper change (no Activity)")
 
-            val (met, reason) = checkConstraints(context)
-            if (!met) {
-                WorkerLogger.w(context, "Wallify", "Skipping wallpaper change: $reason")
-                Log.d("Wallify", "Skipping wallpaper change: $reason")
-                return
+            if (!isManual) {
+                val (met, reason) = checkConstraints(context)
+                if (!met) {
+                    WorkerLogger.w(context, "Wallify", "Skipping wallpaper change: $reason")
+                    Log.d("Wallify", "Skipping wallpaper change: $reason")
+                    return false
+                }
             }
 
             val prefs = context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
@@ -280,7 +282,7 @@ object WallpaperUtils {
                         if (fetched.isEmpty()) {
                             WorkerLogger.e(context, "Wallify", "Could not fetch any wallpapers, aborting.")
                             Log.e("Wallify", "Could not fetch any wallpapers, aborting.")
-                            return
+                            return false
                         } else {
                             imageUrls.addAll(fetched)
                             WorkerLogger.i(context, "Wallify", "Added ${fetched.size} new wallpapers from API")
@@ -296,7 +298,7 @@ object WallpaperUtils {
             if (imageSources.isEmpty()) {
                 WorkerLogger.e(context, "Wallify", "No wallpapers from any source, aborting.")
                 Log.e("Wallify", "No wallpapers from any source, aborting.")
-                return
+                return false
             }
             WorkerLogger.i(context, "Wallify", "Total image candidates: ${imageSources.size}")
 
@@ -326,7 +328,7 @@ object WallpaperUtils {
                     if (nonFacePath == null) {
                         WorkerLogger.e(context, "Wallify", "No suitable wallpapers found (all had faces or invalid, fetch failed).")
                         Log.e("Wallify", "No suitable wallpapers found (all had faces or invalid, fetch failed).")
-                        return
+                        return false
                     }
                     WorkerLogger.i(context, "Wallify", "Selected: $nonFacePath")
                     setWallpaper(context, wallpaperManager, nonFacePath, WallpaperManager.FLAG_SYSTEM, isFolderMode)
@@ -338,7 +340,7 @@ object WallpaperUtils {
                     if (nonFacePath == null) {
                         WorkerLogger.e(context, "Wallify", "No suitable wallpapers found (all had faces or invalid, fetch failed).")
                         Log.e("Wallify", "No suitable wallpapers found (all had faces or invalid, fetch failed).")
-                        return
+                        return false
                     }
                     WorkerLogger.i(context, "Wallify", "Selected: $nonFacePath")
                     setWallpaper(context, wallpaperManager, nonFacePath, WallpaperManager.FLAG_LOCK, isFolderMode)
@@ -350,7 +352,7 @@ object WallpaperUtils {
                     if (homePath == null) {
                         WorkerLogger.e(context, "Wallify", "No suitable wallpapers found for home (all had faces or invalid, fetch failed).")
                         Log.e("Wallify", "No suitable wallpapers found for home (all had faces or invalid, fetch failed).")
-                        return
+                        return false
                     }
 
                     imageSources.remove(homePath)
@@ -369,7 +371,7 @@ object WallpaperUtils {
                     if (nonFacePath == null) {
                         WorkerLogger.e(context, "Wallify", "No suitable wallpapers found (all had faces or invalid, fetch failed).")
                         Log.e("Wallify", "No suitable wallpapers found (all had faces or invalid, fetch failed).")
-                        return
+                        return false
                     }
                     WorkerLogger.i(context, "Wallify", "Selected: $nonFacePath")
                     Log.d("Wallify", "Setting default (home) wallpaper: $nonFacePath")
@@ -380,12 +382,15 @@ object WallpaperUtils {
             WorkerLogger.i(context, "Wallify", "Wallpaper change completed successfully (mode=$wallpaperLocation, source=$wallpaperSource)")
             Log.d("Wallify", "Wallpaper change completed (mode=$wallpaperLocation, source=$wallpaperSource)")
             showChangeNotification(context)
+            return true
         } catch (e: Exception) {
             WorkerLogger.e(context, "Wallify", "Error: ${e.message}")
             Log.e("Wallify", "Error setting wallpaper in background", e)
+            return false
         } catch (e: Error) {
             WorkerLogger.e(context, "Wallify", "Fatal error: ${e.message}")
             Log.e("Wallify", "Fatal error setting wallpaper in background: ${e.message}", e)
+            return false
         }
     }
 
