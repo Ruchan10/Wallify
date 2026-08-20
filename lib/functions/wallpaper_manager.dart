@@ -34,7 +34,7 @@ class WallpaperManager {
             "https://wallhaven.cc/api/v1/search?q=$tag"
             "&categories=100&purity=100"
             "&ratios=portrait"
-            "&sorting=relevance",
+            "&sorting=random",
           ),
         );
         final wallData = jsonDecode(wallRes.body);

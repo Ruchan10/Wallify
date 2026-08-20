@@ -8,10 +8,10 @@ on:
 
 env:
   APK_NAME: "Wallify"
-  APP_VERSION: "1.4.9"
+  APP_VERSION: "1.5.0"
   CHANGES: |
-    - Icon Fixed
     - Change Now not working fixed
+    - Test entered API Key
 
 jobs:
   build:

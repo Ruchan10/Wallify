@@ -1,8 +1,10 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart' hide Config;
+import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:wallify/core/config.dart';
@@ -686,6 +688,11 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
                   isSecret: true,
                   load: () => UserSharedPrefs.getPexelsApiKey(),
                   save: (v) => UserSharedPrefs.setPexelsApiKey(v),
+                  test: _testPexelsKey,
+                  scheme: scheme,
+                ),
+                _ApiKeyCaption(
+                  text: "Adds Pexels photos to the Discover tab.",
                   scheme: scheme,
                 ),
                 const SizedBox(height: 12),
@@ -701,6 +708,13 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
                   isSecret: true,
                   load: () => UserSharedPrefs.getPixabayApiKey(),
                   save: (v) => UserSharedPrefs.setPixabayApiKey(v),
+                  test: _testPixabayKey,
+                  scheme: scheme,
+                ),
+                _ApiKeyCaption(
+                  text:
+                      "Provides wallpapers for Discover, automatic wallpaper "
+                      "changes, and image info.",
                   scheme: scheme,
                 ),
                 const SizedBox(height: 12),
@@ -717,6 +731,14 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
                   load: () => UserSharedPrefs.getUnsplashApiKey().then((v) =>
                       v == UserSharedPrefs.defaultUnsplashKey ? null : v),
                   save: (v) => UserSharedPrefs.setUnsplashApiKey(v),
+                  test: _testUnsplashKey,
+                  scheme: scheme,
+                ),
+                _ApiKeyCaption(
+                  text:
+                      "Provides wallpapers for Discover, automatic wallpaper "
+                      "changes, and image info. A built-in demo key works, "
+                      "but adding your own is unlimited.",
                   scheme: scheme,
                 ),
                 const SizedBox(height: 4),
@@ -745,6 +767,13 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
                   isSecret: true,
                   load: () => UserSharedPrefs.getGeminiApiKey(),
                   save: (v) => UserSharedPrefs.setGeminiApiKey(v),
+                  test: _testGeminiKey,
+                  scheme: scheme,
+                ),
+                _ApiKeyCaption(
+                  text:
+                      "Enables AI Magic in the wallpaper preview to redesign "
+                      "wallpapers with Gemini.",
                   scheme: scheme,
                 ),
                 const SizedBox(height: 8),
@@ -1415,6 +1444,91 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
   }
 }
 
+Future<bool> _testPexelsKey(String key) async {
+  try {
+    final res = await http
+        .get(
+          Uri.parse(
+            "https://api.pexels.com/v1/search?query=nature&per_page=1&orientation=portrait",
+          ),
+          headers: {"Authorization": key},
+        )
+        .timeout(const Duration(seconds: 12));
+    return res.statusCode == 200;
+  } catch (_) {
+    return false;
+  }
+}
+
+Future<bool> _testPixabayKey(String key) async {
+  try {
+    final res = await http
+        .get(
+          Uri.parse(
+            "https://pixabay.com/api/?key=$key&q=nature&per_page=3&orientation=vertical",
+          ),
+        )
+        .timeout(const Duration(seconds: 12));
+    if (res.statusCode != 200) return false;
+    final body = jsonDecode(res.body);
+    return body is Map && body["hits"] is List;
+  } catch (_) {
+    return false;
+  }
+}
+
+Future<bool> _testUnsplashKey(String key) async {
+  try {
+    final res = await http
+        .get(
+          Uri.parse(
+            "https://api.unsplash.com/search/photos?query=nature&per_page=1&orientation=portrait",
+          ),
+          headers: {"Authorization": "Client-ID $key"},
+        )
+        .timeout(const Duration(seconds: 12));
+    return res.statusCode == 200;
+  } catch (_) {
+    return false;
+  }
+}
+
+Future<bool> _testGeminiKey(String key) async {
+  try {
+    final res = await http
+        .get(
+          Uri.parse(
+            "https://generativelanguage.googleapis.com/v1beta/models?key=$key",
+          ),
+        )
+        .timeout(const Duration(seconds: 12));
+    return res.statusCode == 200;
+  } catch (_) {
+    return false;
+  }
+}
+
+class _ApiKeyCaption extends StatelessWidget {
+  final String text;
+  final ColorScheme scheme;
+
+  const _ApiKeyCaption({required this.text, required this.scheme});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 3, left: 12, right: 12),
+      child: Text(
+        text,
+        style: TextStyle(
+          fontSize: 12,
+          color: scheme.onSurfaceVariant,
+        ),
+      ),
+    );
+  }
+}
+
 class _ApiKeyGuideRow extends StatelessWidget {
   final String text;
   final String url;
@@ -1465,6 +1579,7 @@ class _ApiKeyField extends StatefulWidget {
   final bool isSecret;
   final Future<String?> Function() load;
   final Future<void> Function(String?) save;
+  final Future<bool> Function(String key) test;
   final ColorScheme scheme;
 
   const _ApiKeyField({
@@ -1473,6 +1588,7 @@ class _ApiKeyField extends StatefulWidget {
     required this.isSecret,
     required this.load,
     required this.save,
+    required this.test,
     required this.scheme,
   });
 
@@ -1484,6 +1600,10 @@ class _ApiKeyFieldState extends State<_ApiKeyField> {
   final TextEditingController _controller = TextEditingController();
   bool _obscured = true;
   bool _loaded = false;
+
+  bool _testing = false;
+  bool? _testPassed;
+  String? _testMessage;
 
   @override
   void didChangeDependencies() {
@@ -1505,13 +1625,54 @@ class _ApiKeyFieldState extends State<_ApiKeyField> {
     super.dispose();
   }
 
+  Future<void> _runTest() async {
+    final key = _controller.text.trim();
+    if (key.isEmpty) {
+      setState(() {
+        _testPassed = false;
+        _testMessage = "Enter an API key first";
+      });
+      return;
+    }
+    setState(() {
+      _testing = true;
+      _testPassed = null;
+      _testMessage = null;
+    });
+    bool ok = false;
+    String message = "Request failed";
+    try {
+      ok = await widget.test(key);
+      message = ok ? "Key is working" : "Invalid key or API rejected it";
+    } catch (e) {
+      message = "Request failed: $e";
+    }
+    if (!mounted) return;
+    setState(() {
+      _testing = false;
+      _testPassed = ok;
+      _testMessage = message;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
+    final Color? tintColor = _testPassed == true
+        ? Colors.green
+        : _testPassed == false
+            ? Colors.red
+            : null;
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       decoration: BoxDecoration(
-        color: widget.scheme.surfaceContainerHighest,
+        color: tintColor == null
+            ? widget.scheme.surfaceContainerHighest
+            : tintColor.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(12),
+        border: tintColor == null
+            ? null
+            : Border.all(color: tintColor.withValues(alpha: 0.7), width: 1.5),
       ),
       child: Row(
         children: [
@@ -1527,8 +1688,44 @@ class _ApiKeyFieldState extends State<_ApiKeyField> {
                 contentPadding: EdgeInsets.zero,
               ),
               style: TextStyle(fontSize: 14),
-              onChanged: (v) => widget.save(v.trim()),
+              onChanged: (v) {
+                if (_testPassed != null || _testing) {
+                  setState(() {
+                    _testPassed = null;
+                    _testing = false;
+                    _testMessage = null;
+                  });
+                }
+                widget.save(v.trim());
+              },
             ),
+          ),
+          IconButton(
+            icon: _testing
+                ? SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: widget.scheme.primary,
+                    ),
+                  )
+                : Icon(
+                    _testPassed == true
+                        ? Icons.check_circle
+                        : _testPassed == false
+                            ? Icons.cancel
+                            : Icons.bolt,
+                    size: 20,
+                    color: _testPassed == true
+                        ? Colors.green
+                        : _testPassed == false
+                            ? Colors.red
+                            : widget.scheme.primary,
+                  ),
+            tooltip: _testMessage ?? "Test API key",
+            onPressed: _testing ? null : _runTest,
+            visualDensity: VisualDensity.compact,
           ),
           if (widget.isSecret)
             IconButton(
