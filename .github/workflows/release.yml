@@ -8,10 +8,9 @@ on:
 
 env:
   APK_NAME: "Wallify"
-  APP_VERSION: "1.5.0"
+  APP_VERSION: "1.5.1"
   CHANGES: |
-    - Change Now not working fixed
-    - Test entered API Key
+    - Minor fixes
 
 jobs:
   build:
