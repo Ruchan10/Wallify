@@ -1,8 +1,6 @@
 import 'dart:async';
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:http/http.dart' as http;
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import 'package:wallify/core/config.dart' as app_config;
 import 'package:wallify/core/performance_config.dart';
@@ -14,6 +12,7 @@ import 'package:wallify/main.dart';
 import 'package:wallify/model/wallpaper_model.dart';
 import 'package:wallify/core/navigation_service.dart';
 import 'package:wallify/core/snackbar.dart';
+import 'package:wallify/services/wallpaper_api_service.dart';
 
 class DiscoverPage extends ConsumerStatefulWidget {
   const DiscoverPage({super.key});
@@ -160,263 +159,27 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
       final int perSource = _imagesNotifier.value.isEmpty
           ? _initialPerSource
           : _scrollPerSource;
-      final List<Wallpaper> results = [];
 
-      Future<List<Wallpaper>> _fetchWallhaven() async {
-        final page = _sourcePages["wallhaven"] ?? 1;
-        final res = await http
-            .get(
-              Uri.parse(
-                "https://wallhaven.cc/api/v1/search?"
-                "page=$page"
-                "${"&topRange=$_selectedRange"}"
-                "${_selectedCategory == null ? "" : "&categories=${_selectedCategory == "general"
-                          ? "100"
-                          : _selectedCategory == "anime"
-                          ? "101"
-                          : "110"}"}"
-                "${_selectedPurity == null ? "" : "&purity=${_selectedPurity == "SFW"
-                          ? "100"
-                          : _selectedPurity == "Sketchy"
-                          ? "110"
-                          : "111"}"}"
-                "&sorting=${_selectedSorting == null ? "toplist" : "${_selectedRange == "1M" ? _selectedSorting : "toplist"}"}"
-                "${query == null ? "" : "&q=$query"}"
-                "&order=asc",
-              ),
-            )
-            .timeout(const Duration(seconds: 15));
-        final data = jsonDecode(res.body);
-        final list = <Wallpaper>[];
-        if (data["data"] is List) {
-          var count = 0;
-          for (var item in data["data"]) {
-            if (count >= perSource) break;
-            list.add(
-              Wallpaper(
-                id: item["id"],
-                url: item["path"],
-                timestamp: DateTime.now(),
-              ),
-            );
-            count++;
-          }
-        }
-        _sourcePages["wallhaven"] = page + 1;
-        return list;
-      }
+      final sources = ["wallhaven", "unsplash", "pixabay", "pexels"];
+      if (query == null) sources.add("lorempicsum");
 
-      Future<List<Wallpaper>> _fetchUnsplash() async {
-        final page = _sourcePages["unsplash"] ?? 1;
-        final res = await http
-            .get(
-              Uri.parse(
-                "${query == null ? "https://api.unsplash.com/photos" : "https://api.unsplash.com/search/photos"}"
-                "${query == null ? "" : "&query=$query"}"
-                "${query == null
-                    ? "?order_by=popular"
-                    : _selectedSorting == null
-                    ? ""
-                    : "&order_by=${_selectedSorting == "dater_added" ? "latest" : "relevant"}"}"
-                "${_selectedPurity == null ? "" : "&content_filter=${_selectedPurity == "NSFW" ? "high" : "low"}"}"
-                "${_selectedOrientation == null ? "" : "&orientation=$_selectedOrientation"}"
-                "&page=$page&per_page=$perSource",
-              ),
-              headers: {
-                "Authorization":
-                    "Client-ID ${await UserSharedPrefs.getUnsplashApiKey()}",
-              },
-            )
-            .timeout(const Duration(seconds: 15));
-        final unsplashData = jsonDecode(res.body);
-        final list = <Wallpaper>[];
-        final items = query == null
-            ? (unsplashData is List ? unsplashData : <dynamic>[])
-            : (unsplashData["results"] is List
-                  ? unsplashData["results"]
-                  : <dynamic>[]);
-        var count = 0;
-        for (var item in items) {
-          if (count >= perSource) break;
-          list.add(
-            Wallpaper(
-              id: item["id"],
-              url: item["urls"]["regular"],
-              timestamp: DateTime.now(),
-            ),
+      final results = await WallpaperApiService.fetchAll(
+        sources: sources,
+        optionsFor: (source) {
+          final page = _sourcePages[source] ?? 1;
+          _sourcePages[source] = page + 1;
+          return FetchOptions(
+            query: query,
+            page: page,
+            perPage: perSource,
+            sorting: _selectedSorting,
+            purity: _selectedPurity,
+            orientation: _selectedOrientation,
+            category: _selectedCategory,
+            range: _selectedRange,
           );
-          count++;
-        }
-        _sourcePages["unsplash"] = page + 1;
-        return list;
-      }
-
-      Future<List<Wallpaper>> _fetchPixabay() async {
-        final apiKey = await UserSharedPrefs.getPixabayApiKey();
-        if (apiKey == null || apiKey.isEmpty) return [];
-        final page = _sourcePages["pixabay"] ?? 1;
-        final pixabayQuery = query != null && query.length > 99
-            ? query.substring(0, 99)
-            : query;
-        final res = await http
-            .get(
-              Uri.parse(
-                "https://pixabay.com/api/"
-                "?key=$apiKey"
-                "${pixabayQuery == null ? "" : "&q=$pixabayQuery"}"
-                "&image_type=photo"
-                "${_selectedPurity == null ? "" : "&safesearch=${_selectedPurity == "NSFW" ? "false" : "true"}"}"
-                "${_selectedSorting == null ? "&order=popular" : "&order=${_selectedSorting == "dater_added" ? "latest" : "popular"}"}"
-                "${_selectedOrientation == null ? "" : "&orientation=$_selectedOrientation"}"
-                "&page=$page&per_page=$perSource",
-              ),
-            )
-            .timeout(const Duration(seconds: 15));
-        final pixabayData = jsonDecode(res.body);
-        final list = <Wallpaper>[];
-        if (pixabayData["hits"] is List) {
-          var count = 0;
-          for (var item in pixabayData["hits"]) {
-            if (count >= perSource) break;
-            list.add(
-              Wallpaper(
-                id: item["id"].toString(),
-                url: item["largeImageURL"],
-                timestamp: DateTime.now(),
-              ),
-            );
-            count++;
-          }
-        }
-        _sourcePages["pixabay"] = page + 1;
-        return list;
-      }
-
-      Future<List<Wallpaper>> _fetchPexels() async {
-        final apiKey = await UserSharedPrefs.getPexelsApiKey();
-        if (apiKey == null || apiKey.isEmpty) return [];
-        final page = _sourcePages["pexels"] ?? 1;
-        try {
-          final res = await http
-              .get(
-                Uri.parse(
-                  "https://api.pexels.com/${query == null ? "v1/curated" : "v1/search"}"
-                  "?page=$page&per_page=$perSource"
-                  "${query == null ? "" : "&query=${Uri.encodeQueryComponent(query)}"}",
-                ),
-                headers: {"Authorization": apiKey},
-              )
-              .timeout(const Duration(seconds: 15));
-          if (res.statusCode != 200) {
-            debugPrint("Pexels HTTP ${res.statusCode}");
-            return [];
-          }
-          final data = jsonDecode(res.body);
-          final list = <Wallpaper>[];
-          final photos = data["photos"];
-          if (photos is List) {
-            var count = 0;
-            for (var item in photos) {
-              if (count >= perSource) break;
-              final src = item["src"];
-              if (src is Map && src["original"] != null) {
-                list.add(
-                  Wallpaper(
-                    id: item["id"].toString(),
-                    url: src["original"],
-                    timestamp: DateTime.now(),
-                  ),
-                );
-                count++;
-              }
-            }
-          }
-          _sourcePages["pexels"] = page + 1;
-          return list;
-        } catch (e) {
-          debugPrint("Pexels failed: $e");
-          return [];
-        }
-      }
-
-      Future<List<Wallpaper>> _fetchLoremPicsum() async {
-        final page = _sourcePages["lorempicsum"] ?? 1;
-        try {
-          final res = await http
-              .get(
-                Uri.parse(
-                  "https://picsum.photos/v2/list"
-                  "?page=$page&limit=$perSource",
-                ),
-              )
-              .timeout(const Duration(seconds: 15));
-          if (res.statusCode != 200) return [];
-          final data = jsonDecode(res.body);
-          final list = <Wallpaper>[];
-          if (data is List) {
-            var count = 0;
-            for (var item in data) {
-              if (count >= perSource) break;
-              final downloadUrl = item["download_url"] as String?;
-              if (downloadUrl != null) {
-                list.add(
-                  Wallpaper(
-                    id: item["id"].toString(),
-                    url: downloadUrl,
-                    timestamp: DateTime.now(),
-                  ),
-                );
-                count++;
-              }
-            }
-          }
-          _sourcePages["lorempicsum"] = page + 1;
-          return list;
-        } catch (e) {
-          debugPrint("Lorem Picsum failed: $e");
-          return [];
-        }
-      }
-
-      final List<Future<List<Wallpaper>>> futures = [];
-
-      futures.add(
-        _fetchWallhaven().catchError((e) {
-          debugPrint("Wallhaven failed: $e");
-          return <Wallpaper>[];
-        }),
+        },
       );
-      futures.add(
-        _fetchUnsplash().catchError((e) {
-          debugPrint("Unsplash failed: $e");
-          return <Wallpaper>[];
-        }),
-      );
-      futures.add(
-        _fetchPixabay().catchError((e) {
-          debugPrint("Pixabay failed: $e");
-          return <Wallpaper>[];
-        }),
-      );
-      futures.add(
-        _fetchPexels().catchError((e) {
-          debugPrint("Pexels failed: $e");
-          return <Wallpaper>[];
-        }),
-      );
-      if (query == null) {
-        futures.add(
-          _fetchLoremPicsum().catchError((e) {
-            debugPrint("Lorem Picsum failed: $e");
-            return <Wallpaper>[];
-          }),
-        );
-      }
-
-      final apiResults = await Future.wait(futures);
-      for (final apiList in apiResults) {
-        results.addAll(apiList);
-      }
 
       if (!isSearch && !isMore && results.isEmpty) {
         if (mounted) {

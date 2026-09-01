@@ -1,9 +1,9 @@
 import 'package:wallify/model/wallpaper_model.dart';
 
 class Config {
-  static bool _updateAvaliable = false;
+  static bool _updateAvailable = false;
   static bool _isUpdateDialogOpen = false;
-  static String _appVersion = '1.5.1';
+  static String _appVersion = '1.5.2';
   static String _appName = 'Wallify';
   static Map<String, dynamic> _versionData = {};
   static String _cachedLatestVersion = '';
@@ -26,12 +26,12 @@ class Config {
     return _appName;
   }
 
-  static void setupdateAvailable(bool update) {
-    _updateAvaliable = update;
+  static void setUpdateAvailable(bool update) {
+    _updateAvailable = update;
   }
 
   static bool getUpdateAvailable() {
-    return _updateAvaliable;
+    return _updateAvailable;
   }
 
   static void setIsUpdateDialogopen(bool update) {

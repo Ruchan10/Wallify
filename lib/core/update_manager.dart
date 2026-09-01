@@ -42,11 +42,11 @@ class UpdateManager {
 
       final releasesData =
           json.decode(releasesResponse.body) as Map<String, dynamic>;
-      Config.setupdateAvailable(true);
+      Config.setUpdateAvailable(true);
 
       _cacheUpdateInfo(versionData, releasesData);
     } catch (e) {
-      Config.setupdateAvailable(false);
+      Config.setUpdateAvailable(false);
     } finally {
       _isChecking = false;
     }

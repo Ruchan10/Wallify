@@ -1,7 +1,9 @@
 package com.rk.wallify
 
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
@@ -13,6 +15,7 @@ import android.hardware.SensorManager
 import android.os.Handler
 import android.os.Looper
 import android.service.wallpaper.WallpaperService
+import android.util.Log
 import android.view.MotionEvent
 import android.view.SurfaceHolder
 import java.io.File
@@ -32,6 +35,14 @@ class WallifyLiveWallpaper : WallpaperService() {
         private var tiltY = 0f
         private val parallaxStrength = 0.04f
 
+        private val wallpaperReceiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                if (intent?.action == "com.rk.wallify.LIVE_WALLPAPER_UPDATED") {
+                    loadBitmap()
+                }
+            }
+        }
+
         private val renderRunnable = object : Runnable {
             override fun run() {
                 drawFrame()
@@ -43,6 +54,8 @@ class WallifyLiveWallpaper : WallpaperService() {
             super.onCreate(surfaceHolder)
             sensorManager = applicationContext.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
             loadBitmap()
+            val filter = IntentFilter("com.rk.wallify.LIVE_WALLPAPER_UPDATED")
+            applicationContext.registerReceiver(wallpaperReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
         }
 
         override fun onVisibilityChanged(visible: Boolean) {
@@ -92,9 +105,17 @@ class WallifyLiveWallpaper : WallpaperService() {
         override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
 
         private fun loadBitmap() {
-            val file = File(applicationContext.filesDir, "live_wallpaper.jpg")
-            if (file.exists()) {
-                bitmap = BitmapFactory.decodeFile(file.absolutePath)
+            try {
+                val file = File(applicationContext.filesDir, "live_wallpaper.jpg")
+                if (file.exists()) {
+                    val decoded = BitmapFactory.decodeFile(file.absolutePath)
+                    if (decoded != null) {
+                        bitmap = decoded
+                        return
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("Wallify", "Failed to load live wallpaper bitmap", e)
             }
             if (bitmap == null) {
                 bitmap = BitmapFactory.decodeResource(resources, android.R.drawable.ic_menu_gallery)
@@ -131,6 +152,9 @@ class WallifyLiveWallpaper : WallpaperService() {
         override fun onDestroy() {
             handler.removeCallbacks(renderRunnable)
             sensorManager?.unregisterListener(this)
+            try {
+                applicationContext.unregisterReceiver(wallpaperReceiver)
+            } catch (_: Exception) {}
             super.onDestroy()
         }
     }

@@ -33,6 +33,22 @@ void main() {
         );
       };
 
+      ErrorWidget.builder = (FlutterErrorDetails details) {
+        return Material(
+          color: Colors.black,
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text(
+                'Something went wrong.\n${details.exceptionAsString()}',
+                style: const TextStyle(color: Colors.white70, fontSize: 14),
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ),
+        );
+      };
+
       runApp(const ProviderScope(child: MyApp()));
     },
     (error, stack) {

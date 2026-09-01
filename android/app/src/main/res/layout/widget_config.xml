@@ -1,93 +1,135 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    android:background="?android:attr/colorBackground">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="20dp">
+        android:padding="24dp">
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Wallpaper Location"
+            android:text="Widget Settings"
+            android:textSize="22sp"
+            android:textStyle="bold"
+            android:textColor="?android:attr/textColorPrimary" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Configure wallpaper behavior for this widget"
             android:textSize="14sp"
-            android:textStyle="bold" />
+            android:textColor="?android:attr/textColorSecondary"
+            android:layout_marginTop="4dp"
+            android:layout_marginBottom="20dp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="WALLPAPER LOCATION"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            android:textColor="?android:attr/textColorSecondary"
+            android:letterSpacing="0.1"
+            android:layout_marginBottom="8dp" />
 
         <RadioGroup
             android:id="@+id/location_group"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:layout_marginTop="8dp">
+            android:orientation="vertical">
 
             <RadioButton
                 android:id="@+id/radio_home"
-                android:layout_width="wrap_content"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Home Screen" />
+                android:text="Home Screen"
+                android:padding="12dp"
+                android:textSize="16sp" />
 
             <RadioButton
                 android:id="@+id/radio_lock"
-                android:layout_width="wrap_content"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Lock Screen" />
+                android:text="Lock Screen"
+                android:padding="12dp"
+                android:textSize="16sp" />
 
             <RadioButton
                 android:id="@+id/radio_both"
-                android:layout_width="wrap_content"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Both Screens" />
+                android:text="Both Screens"
+                android:padding="12dp"
+                android:textSize="16sp" />
         </RadioGroup>
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="?android:attr/listDivider"
+            android:layout_marginVertical="16dp" />
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Wallpaper Source"
-            android:textSize="14sp"
+            android:text="WALLPAPER SOURCE"
+            android:textSize="12sp"
             android:textStyle="bold"
-            android:layout_marginTop="20dp" />
+            android:textColor="?android:attr/textColorSecondary"
+            android:letterSpacing="0.1"
+            android:layout_marginBottom="8dp" />
 
         <CheckBox
             android:id="@+id/chk_internet"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Internet" />
+            android:text="Internet"
+            android:padding="12dp"
+            android:textSize="16sp" />
 
         <CheckBox
             android:id="@+id/chk_favorites"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Favorites" />
+            android:text="Favorites"
+            android:padding="12dp"
+            android:textSize="16sp" />
 
         <CheckBox
             android:id="@+id/chk_folder"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Folder" />
+            android:text="Folder"
+            android:padding="12dp"
+            android:textSize="16sp" />
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
-            android:layout_marginTop="24dp">
+            android:layout_marginTop="24dp"
+            android:gravity="end">
 
             <Button
                 android:id="@+id/btn_cancel"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
+                android:layout_width="wrap_content"
+                android:layout_height="48dp"
                 android:text="Cancel"
+                android:textAllCaps="false"
                 style="?android:attr/buttonBarButtonStyle" />
 
             <Button
                 android:id="@+id/btn_save"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
+                android:layout_width="wrap_content"
+                android:layout_height="48dp"
                 android:text="Save"
+                android:textAllCaps="false"
+                android:layout_marginStart="8dp"
                 style="?android:attr/buttonBarButtonStyle" />
         </LinearLayout>
     </LinearLayout>

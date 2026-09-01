@@ -1,10 +1,8 @@
-import 'dart:convert';
 import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart' hide Config;
-import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:wallify/core/config.dart';
@@ -18,6 +16,7 @@ import 'package:wallify/functions/backup_function.dart';
 import 'package:wallify/functions/wallpaper_cache_manager.dart';
 import 'package:wallify/functions/wallpaper_manager.dart';
 import 'package:wallify/core/widget_helper.dart';
+import 'package:wallify/services/wallpaper_api_service.dart';
 import 'package:wallpaper_manager_flutter/wallpaper_manager_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -30,8 +29,7 @@ class SettingsPage extends ConsumerStatefulWidget {
   ConsumerState<SettingsPage> createState() => _SettingsPageState();
 }
 
-class _SettingsPageState extends ConsumerState<SettingsPage>
-    with WidgetsBindingObserver {
+class _SettingsPageState extends ConsumerState<SettingsPage> {
   final TextEditingController _tagController = TextEditingController();
 
   List<String> savedTags = [];
@@ -45,11 +43,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
   static const platform = MethodChannel('wallpaper_channel');
   bool _autoWallpaperEnabled = false;
   List<String> _wallpaperSources = ["internet"];
-  bool _scheduleEnabled = false;
-  List<int> _scheduleDays = [1, 2, 3, 4, 5, 6, 7];
-  int _scheduleStartHour = 6;
-  int _scheduleEndHour = 22;
-
   List<String> _folderPaths = [];
   bool _updateAvailable = false;
   bool _checkingUpdate = true;
@@ -65,7 +58,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
     super.initState();
     _initialize();
     _checkUpdateStatus();
-    WidgetsBinding.instance.addObserver(this);
     _loadWorkerLogs();
     _loadCacheSize();
     _loadBatteryStatus();
@@ -191,10 +183,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
     _intervalController.text = _intervalMinutes.toString();
     _wallpaperSources = await UserSharedPrefs.getWallpaperSources();
     _folderPaths = await UserSharedPrefs.getFolderPaths();
-    _scheduleEnabled = await UserSharedPrefs.getScheduleEnabled();
-    _scheduleDays = await UserSharedPrefs.getScheduleDays();
-    _scheduleStartHour = await UserSharedPrefs.getScheduleStartHour();
-    _scheduleEndHour = await UserSharedPrefs.getScheduleEndHour();
 
     setState(() {});
     if (_autoWallpaperEnabled) {
@@ -227,12 +215,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
         showSnackBar(context: context, color: Colors.red, message: "Error: $e");
       }
     }
-  }
-
-  @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    super.dispose();
   }
 
   void resetAutoWallpaper() async {
@@ -863,98 +845,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
   }
 
 
-  static const _dayLabels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-
-  Widget _buildScheduleSection(ColorScheme scheme) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Text("Schedule", style: Theme.of(context).textTheme.titleMedium),
-            const Spacer(),
-            Switch(
-              value: _scheduleEnabled,
-              onChanged: (v) async {
-                setState(() => _scheduleEnabled = v);
-                await UserSharedPrefs.setScheduleEnabled(v);
-              },
-            ),
-          ],
-        ),
-        if (_scheduleEnabled) ...[
-          const SizedBox(height: 8),
-          Text("Active Days", style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
-          const SizedBox(height: 6),
-          Wrap(
-            spacing: 6,
-            runSpacing: 4,
-            children: List.generate(7, (i) {
-              final day = i + 1;
-              final selected = _scheduleDays.contains(day);
-              return ChoiceChip(
-                label: Text(_dayLabels[i], style: const TextStyle(fontSize: 12)),
-                selected: selected,
-                selectedColor: scheme.primary.withValues(alpha: 0.25),
-                backgroundColor: scheme.surfaceContainerHighest.withValues(alpha: 0.5),
-                onSelected: (v) async {
-                  setState(() {
-                    if (v) {
-                      _scheduleDays.add(day);
-                    } else {
-                      _scheduleDays.remove(day);
-                    }
-                    if (_scheduleDays.isEmpty) _scheduleDays.add(day);
-                  });
-                  await UserSharedPrefs.setScheduleDays(_scheduleDays);
-                  resetAutoWallpaper();
-                },
-                visualDensity: VisualDensity.compact,
-                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              );
-            }),
-          ),
-          const SizedBox(height: 12),
-          Text("Time Range", style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
-          const SizedBox(height: 6),
-          Row(
-            children: [
-              Text("From", style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant)),
-              const SizedBox(width: 8),
-              SizedBox(
-                width: 80,
-                child: _TimePickerChip(
-                  value: _scheduleStartHour,
-                  onChanged: (v) async {
-                    setState(() => _scheduleStartHour = v);
-                    await UserSharedPrefs.setScheduleStartHour(v);
-                    resetAutoWallpaper();
-                  },
-                  scheme: scheme,
-                ),
-              ),
-              const Spacer(),
-              Text("To", style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant)),
-              const SizedBox(width: 8),
-              SizedBox(
-                width: 80,
-                child: _TimePickerChip(
-                  value: _scheduleEndHour,
-                  onChanged: (v) async {
-                    setState(() => _scheduleEndHour = v);
-                    await UserSharedPrefs.setScheduleEndHour(v);
-                    resetAutoWallpaper();
-                  },
-                  scheme: scheme,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ],
-    );
-  }
-
   Widget _buildWallpaperSettings(BuildContext context, ColorScheme scheme) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1010,8 +900,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
           ],
         ),
         const SizedBox(height: 12),
-        _buildScheduleSection(scheme),
-        const SizedBox(height: 16),
         Text(
           "Wallpaper Source",
           style: Theme.of(context).textTheme.titleMedium,
@@ -1444,69 +1332,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage>
   }
 }
 
-Future<bool> _testPexelsKey(String key) async {
-  try {
-    final res = await http
-        .get(
-          Uri.parse(
-            "https://api.pexels.com/v1/search?query=nature&per_page=1&orientation=portrait",
-          ),
-          headers: {"Authorization": key},
-        )
-        .timeout(const Duration(seconds: 12));
-    return res.statusCode == 200;
-  } catch (_) {
-    return false;
-  }
-}
-
-Future<bool> _testPixabayKey(String key) async {
-  try {
-    final res = await http
-        .get(
-          Uri.parse(
-            "https://pixabay.com/api/?key=$key&q=nature&per_page=3&orientation=vertical",
-          ),
-        )
-        .timeout(const Duration(seconds: 12));
-    if (res.statusCode != 200) return false;
-    final body = jsonDecode(res.body);
-    return body is Map && body["hits"] is List;
-  } catch (_) {
-    return false;
-  }
-}
-
-Future<bool> _testUnsplashKey(String key) async {
-  try {
-    final res = await http
-        .get(
-          Uri.parse(
-            "https://api.unsplash.com/search/photos?query=nature&per_page=1&orientation=portrait",
-          ),
-          headers: {"Authorization": "Client-ID $key"},
-        )
-        .timeout(const Duration(seconds: 12));
-    return res.statusCode == 200;
-  } catch (_) {
-    return false;
-  }
-}
-
-Future<bool> _testGeminiKey(String key) async {
-  try {
-    final res = await http
-        .get(
-          Uri.parse(
-            "https://generativelanguage.googleapis.com/v1beta/models?key=$key",
-          ),
-        )
-        .timeout(const Duration(seconds: 12));
-    return res.statusCode == 200;
-  } catch (_) {
-    return false;
-  }
-}
+final _testPexelsKey = WallpaperApiService.testPexelsKey;
+final _testPixabayKey = WallpaperApiService.testPixabayKey;
+final _testUnsplashKey = WallpaperApiService.testUnsplashKey;
+final _testGeminiKey = WallpaperApiService.testGeminiKey;
 
 class _ApiKeyCaption extends StatelessWidget {
   final String text;
@@ -1742,37 +1571,3 @@ class _ApiKeyFieldState extends State<_ApiKeyField> {
   }
 }
 
-class _TimePickerChip extends StatelessWidget {
-  final int value;
-  final ValueChanged<int> onChanged;
-  final ColorScheme scheme;
-
-  const _TimePickerChip({
-    required this.value,
-    required this.onChanged,
-    required this.scheme,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () async {
-        final t = TimeOfDay(hour: value, minute: 0);
-        final picked = await showTimePicker(context: context, initialTime: t);
-        if (picked != null) onChanged(picked.hour);
-      },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: scheme.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Text(
-          "${value.toString().padLeft(2, '0')}:00",
-          textAlign: TextAlign.center,
-          style: TextStyle(fontSize: 13, color: scheme.onSurface),
-        ),
-      ),
-    );
-  }
-}

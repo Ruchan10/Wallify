@@ -148,7 +148,7 @@ class CustomBottomNavBar extends StatelessWidget {
                           ),
                           decoration: BoxDecoration(
                             color: selected
-                                ? colorScheme.primary.withOpacity(.18)
+                                ? colorScheme.primary.withValues(alpha: .18)
                                 : Colors.transparent,
                             borderRadius: BorderRadius.circular(20),
                           ),

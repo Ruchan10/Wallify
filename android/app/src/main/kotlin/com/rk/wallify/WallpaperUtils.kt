@@ -789,7 +789,9 @@ object WallpaperUtils {
         val urls = mutableListOf<String>()
         try {
             val prefs = context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
-            val key = prefs.getString("flutter.unsplash_api_key", null) ?: "yTBcYNAtnRHbrYMn2p4DrBiqzOAfdH9nyexQQtJWO-E"
+            val key = prefs.getString("flutter.unsplash_api_key", null)
+                ?: prefs.getString("unsplash_api_key", null)
+            if (key.isNullOrEmpty()) return urls
             val connection = URL(apiUrl).openConnection() as HttpURLConnection
             connection.setRequestProperty("Authorization", "Client-ID $key")
             connection.connectTimeout = 15000
@@ -1170,11 +1172,21 @@ object WallpaperUtils {
 
     private fun saveCurrentWallpaper(context: Context, bitmap: android.graphics.Bitmap) {
         try {
-            val file = java.io.File(context.filesDir, "live_wallpaper.jpg")
-            val stream = java.io.FileOutputStream(file)
+            val dir = context.filesDir
+            val target = java.io.File(dir, "live_wallpaper.jpg")
+            val temp = java.io.File(dir, "live_wallpaper.jpg.tmp")
+            val stream = java.io.FileOutputStream(temp)
             bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 95, stream)
             stream.close()
-            Log.d("Wallify", "Saved wallpaper to ${file.absolutePath}")
+            if (target.exists()) target.delete()
+            if (!temp.renameTo(target)) {
+                temp.copyTo(target, overwrite = true)
+                temp.delete()
+            }
+            Log.d("Wallify", "Saved wallpaper to ${target.absolutePath}")
+            val intent = android.content.Intent("com.rk.wallify.LIVE_WALLPAPER_UPDATED")
+            intent.setPackage(context.packageName)
+            context.sendBroadcast(intent)
         } catch (e: Exception) {
             Log.e("Wallify", "Failed to save wallpaper bitmap", e)
         }

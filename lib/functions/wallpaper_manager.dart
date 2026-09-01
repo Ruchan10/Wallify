@@ -1,9 +1,7 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import 'package:wallify/core/user_shared_prefs.dart';
-import 'package:wallify/functions/wallpaper_cache_manager.dart';
 import 'package:wallify/model/wallpaper_model.dart';
+import 'package:wallify/services/wallpaper_api_service.dart';
 
 class WallpaperManager {
   static int? interval = 1;
@@ -17,78 +15,34 @@ class WallpaperManager {
     final selected = sources ?? ["internet", "favorites"];
     urls.clear();
     final seen = <String>{};
+
     try {
       if (selected.contains("favorites")) {
         for (final w in await UserSharedPrefs.getFavWallpapers()) {
           if (seen.add(w.url)) urls.add(w);
         }
       }
+
       tag = await UserSharedPrefs.getRandomTag();
       deviceWidth = await UserSharedPrefs.getDeviceWidth();
       deviceHeight = await UserSharedPrefs.getDeviceHeight();
 
       if (selected.contains("internet")) {
-        // Wallhaven
-        final wallRes = await http.get(
-          Uri.parse(
-            "https://wallhaven.cc/api/v1/search?q=$tag"
-            "&categories=100&purity=100"
-            "&ratios=portrait"
-            "&sorting=random",
+        final internetSources = ["wallhaven", "unsplash", "pixabay"];
+        final results = await WallpaperApiService.fetchAll(
+          sources: internetSources,
+          optionsFor: (source) => FetchOptions(
+            query: tag,
+            page: 1,
+            perPage: 15,
+            sorting: "random",
+            purity: "SFW",
+            orientation: "portrait",
           ),
         );
-        final wallData = jsonDecode(wallRes.body);
-        if (wallData["data"] is List) for (var item in wallData["data"]) {
-          final url = item["path"] as String?;
-          if (url != null && seen.add(url)) {
-            urls.add(Wallpaper(id: item["id"].toString(), url: url, timestamp: DateTime.now()));
-          }
-        }
 
-        // Unsplash
-        final unsplashKey = await UserSharedPrefs.getUnsplashApiKey();
-        final unsplashRes = await http.get(
-          Uri.parse(
-            "https://api.unsplash.com/search/photos?page=1"
-            "&query=$tag&orientation=portrait&content_filter=high",
-          ),
-          headers: {
-            "Authorization": "Client-ID $unsplashKey",
-          },
-        );
-        final unsplashData = jsonDecode(unsplashRes.body);
-        final unsplashResults = unsplashData["results"];
-        if (unsplashResults is List) for (var item in unsplashResults) {
-          final url = item["urls"]?["regular"] as String?;
-          if (url != null && seen.add(url)) {
-            urls.add(
-              Wallpaper(id: item["id"].toString(), url: url, timestamp: DateTime.now()),
-            );
-          }
-        }
-
-        // Pixabay (only if API key is provided)
-        final pixabayKey = await UserSharedPrefs.getPixabayApiKey();
-        if (pixabayKey != null && pixabayKey.isNotEmpty) {
-          final pixabayRes = await http.get(
-            Uri.parse(
-              "https://pixabay.com/api/"
-              "?key=$pixabayKey"
-              "&q=$tag"
-              "&image_type=photo"
-              "&orientation=vertical"
-              "&safesearch=true",
-            ),
-          );
-          final pixabayData = jsonDecode(pixabayRes.body);
-          if (pixabayData["hits"] is List) for (var item in pixabayData["hits"]) {
-            final url = item["largeImageURL"] as String?;
-            if (url != null && seen.add(url)) {
-              urls.add(
-                Wallpaper(id: item["id"].toString(), url: url, timestamp: DateTime.now()),
-              );
-            }
-          }
+        for (final w in results) {
+          if (seen.add(w.url)) urls.add(w);
         }
       }
     } catch (e) {
@@ -97,61 +51,7 @@ class WallpaperManager {
     return urls;
   }
 
-  static Future<bool> validateTag(String tag) async {
-    try {
-      // Wallhaven
-      try {
-        final wallRes = await http.get(
-          Uri.parse(
-            "https://wallhaven.cc/api/v1/search?q=$tag"
-            "&categories=100&purity=100"
-            "&ratios=portrait"
-            "&sorting=relevance",
-          ),
-        );
-        final wallData = jsonDecode(wallRes.body);
-        if (wallData["data"] is List && wallData["data"].isNotEmpty) return true;
-      } catch (_) {}
-
-      // Unsplash
-      try {
-        final unsplashKey = await UserSharedPrefs.getUnsplashApiKey();
-        final unsplashRes = await http.get(
-          Uri.parse(
-            "https://api.unsplash.com/search/photos?page=1"
-            "&query=$tag&orientation=portrait&content_filter=high",
-          ),
-          headers: {
-            "Authorization": "Client-ID $unsplashKey",
-          },
-        );
-        final unsplashData = jsonDecode(unsplashRes.body);
-        final unsplashResults = unsplashData["results"];
-        if (unsplashResults is List && unsplashResults.isNotEmpty) return true;
-      } catch (_) {}
-
-      // Pixabay (only if API key is provided)
-      final pixabayKey = await UserSharedPrefs.getPixabayApiKey();
-      if (pixabayKey != null && pixabayKey.isNotEmpty) {
-        try {
-          final pixRes = await http.get(
-            Uri.parse(
-              "https://pixabay.com/api/"
-              "?key=$pixabayKey"
-              "&q=$tag"
-              "&image_type=photo"
-              "&orientation=vertical"
-              "&safesearch=true",
-            ),
-          );
-          final pixData = jsonDecode(pixRes.body);
-          final hits = pixData["hits"];
-          if (hits is List && hits.isNotEmpty) return true;
-        } catch (_) {}
-      }
-    } catch (e) {
-      debugPrint("Tag validation error: $e");
-    }
-    return false;
+  static Future<bool> validateTag(String tag) {
+    return WallpaperApiService.validateTag(tag);
   }
 }
