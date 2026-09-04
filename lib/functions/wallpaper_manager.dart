@@ -26,6 +26,7 @@ class WallpaperManager {
       tag = await UserSharedPrefs.getRandomTag();
       deviceWidth = await UserSharedPrefs.getDeviceWidth();
       deviceHeight = await UserSharedPrefs.getDeviceHeight();
+      final sorting = await UserSharedPrefs.getFilterSorting();
 
       if (selected.contains("internet")) {
         final internetSources = ["wallhaven", "unsplash", "pixabay"];
@@ -35,7 +36,7 @@ class WallpaperManager {
             query: tag,
             page: 1,
             perPage: 15,
-            sorting: "random",
+            sorting: sorting ?? "toplist",
             purity: "SFW",
             orientation: "portrait",
           ),

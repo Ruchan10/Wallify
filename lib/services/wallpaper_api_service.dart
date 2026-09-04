@@ -87,11 +87,13 @@ class WallpaperApiService {
         ? "https://api.unsplash.com/search/photos"
         : "https://api.unsplash.com/photos";
 
+    final orderBy = opts.sorting != null
+        ? opts.sorting == "date_added" ? "latest" : "popular"
+        : !isSearch ? "popular" : null;
+
     final params = <String>[
       if (isSearch) "query=${opts.query}",
-      if (!isSearch) "order_by=popular",
-      if (isSearch && opts.sorting != null)
-        "order_by=${opts.sorting == "date_added" ? "latest" : "relevant"}",
+      if (orderBy != null) "order_by=$orderBy",
       if (opts.purity != null)
         "content_filter=${opts.purity == "NSFW" ? "high" : "low"}",
       if (opts.orientation != null) "orientation=${opts.orientation}",
@@ -174,10 +176,15 @@ class WallpaperApiService {
     final isSearch = opts.query != null;
     final endpoint = isSearch ? "v1/search" : "v1/curated";
 
+    final sortBy = opts.sorting != null
+        ? opts.sorting == "date_added" ? "date_added" : "popular"
+        : isSearch ? "popular" : null;
+
     final params = <String>[
       "page=${opts.page}",
       "per_page=${opts.perPage}",
       if (isSearch) "query=${Uri.encodeQueryComponent(opts.query!)}",
+      if (sortBy != null) "sort_by=$sortBy",
     ];
 
     final res = await http
