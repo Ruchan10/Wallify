@@ -9,7 +9,6 @@ on:
 env:
   APK_NAME: "Wallify"
   CHANGES: |
-    - Removed Schedule option
     - Minor fixes
 
 jobs:
