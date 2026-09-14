@@ -35,6 +35,14 @@ class ImageTile extends StatefulWidget {
 class _ImageTileState extends State<ImageTile> {
   bool _isPressed = false;
 
+  double _aspectRatio(Wallpaper w) {
+    if (w.ratio != null) return w.ratio!;
+    if (w.width != null && w.height != null && w.height! > 0) {
+      return w.width! / w.height!.toDouble();
+    }
+    return 1.0;
+  }
+
   void _showContextMenu(BuildContext context) {
     showModalBottomSheet(
       context: context,
@@ -126,6 +134,7 @@ class _ImageTileState extends State<ImageTile> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final aspectRatio = _aspectRatio(widget.wallpaper);
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(12),
@@ -161,32 +170,27 @@ class _ImageTileState extends State<ImageTile> {
             },
             onTapCancel: () => setState(() => _isPressed = false),
             onLongPress: () => _showContextMenu(context),
-            child: AnimatedScale(
-              scale: _isPressed ? 0.95 : 1.0,
-              duration: const Duration(milliseconds: 200),
-              curve: Curves.easeInOut,
-              child: Hero(
+            child: Hero(
               tag: 'wallpaper_${widget.wallpaper.url}',
               child: CachedNetworkImage(
-                  cacheManager: PerformanceConfig.cacheManager,
-                  imageUrl: widget.wallpaper.url,
-                  fit: BoxFit.cover,
-                  memCacheWidth: PerformanceConfig.thumbnailWidth,
-                  memCacheHeight: PerformanceConfig.thumbnailHeight,
-                  maxWidthDiskCache: PerformanceConfig.thumbnailWidth * 2,
-                  maxHeightDiskCache: PerformanceConfig.thumbnailHeight * 2,
-                  fadeInDuration: PerformanceConfig.fadeInDuration,
-                  placeholder: (context, url) => ShimmerLoading(
-                    height: 200,
-                    borderRadius: 12,
-                  ),
-                  errorWidget: (context, url, error) => Container(
-                    height: 100,
-                    color: colorScheme.surface.withValues(alpha: 0.2),
-                    child: Icon(
-                      Icons.broken_image,
-                      color: colorScheme.onSurface.withValues(alpha: 0.5),
-                    ),
+                cacheManager: PerformanceConfig.cacheManager,
+                imageUrl: widget.wallpaper.url,
+                fit: BoxFit.contain,
+                memCacheWidth: PerformanceConfig.thumbnailWidth,
+                memCacheHeight: PerformanceConfig.thumbnailHeight,
+                maxWidthDiskCache: PerformanceConfig.thumbnailWidth * 2,
+                maxHeightDiskCache: PerformanceConfig.thumbnailHeight * 2,
+                fadeInDuration: PerformanceConfig.fadeInDuration,
+                placeholder: (context, url) => ShimmerLoading(
+                  height: 200,
+                  borderRadius: 12,
+                ),
+                errorWidget: (context, url, error) => Container(
+                  height: 200,
+                  color: colorScheme.surface.withValues(alpha: 0.2),
+                  child: Icon(
+                    Icons.broken_image,
+                    color: colorScheme.onSurface.withValues(alpha: 0.5),
                   ),
                 ),
               ),

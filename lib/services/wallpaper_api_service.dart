@@ -73,6 +73,9 @@ class WallpaperApiService {
             id: item["id"],
             url: item["path"],
             timestamp: DateTime.now(),
+            width: item["dimension_x"] as int?,
+            height: item["dimension_y"] as int?,
+            ratio: item["ratio"] as double?,
           ),
         );
       }
@@ -120,6 +123,9 @@ class WallpaperApiService {
             id: item["id"],
             url: item["urls"]["regular"],
             timestamp: DateTime.now(),
+            width: item["width"] as int?,
+            height: item["height"] as int?,
+            ratio: item["ratio"] as double?,
           ),
         )
         .toList();
@@ -162,6 +168,9 @@ class WallpaperApiService {
             id: item["id"].toString(),
             url: item["largeImageURL"],
             timestamp: DateTime.now(),
+            width: item["imageWidth"] as int?,
+            height: item["imageHeight"] as int?,
+            ratio: item["imageWidth"] / item["imageHeight"] as double?,
           ),
         );
       }
@@ -211,6 +220,9 @@ class WallpaperApiService {
               id: item["id"].toString(),
               url: src["original"],
               timestamp: DateTime.now(),
+              width: src["width"] as int?,
+              height: src["height"] as int?,
+              ratio: src["width"] / src["height"] as double?,
             ),
           );
         }
@@ -241,6 +253,9 @@ class WallpaperApiService {
               id: item["id"].toString(),
               url: downloadUrl,
               timestamp: DateTime.now(),
+              width: item["width"] as int?,
+              height: item["height"] as int?,
+              ratio: item["width"] / item["height"] as double?,
             ),
           );
         }

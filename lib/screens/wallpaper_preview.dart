@@ -256,13 +256,16 @@ class _WallpaperPreviewPageState extends ConsumerState<WallpaperPreviewPage>
     const channel = MethodChannel('wallpaper_channel');
     final size = MediaQuery.of(context).size;
     try {
+      debugPrint('Starting object detection for ${_currentWallpaper.url}');
       final focus = await channel.invokeMethod<Map<dynamic, dynamic>>(
         'detectFocusPoint',
         {'filePath': _downloadedImage!.path},
       );
+      debugPrint('Object detection result: $focus');
       if (focus == null) return;
       final fx = (focus['x'] as num).toDouble();
       final fy = (focus['y'] as num).toDouble();
+      debugPrint('Focus point: x=$fx, y=$fy');
 
       final decoded = img.decodeImage(await _downloadedImage!.readAsBytes());
       if (decoded == null) return;
@@ -276,10 +279,13 @@ class _WallpaperPreviewPageState extends ConsumerState<WallpaperPreviewPage>
       final tx = size.width / 2 - fx * scale;
       final ty = size.height / 2 - fy * scale;
 
+      debugPrint('Transform: tx=$tx, ty=$ty, scale=$scale');
+
       _transformationController.value = Matrix4.identity()
         ..translate(tx, ty)
         ..scale(scale);
     } catch (e) {
+      debugPrint('Error in object detection: $e');
       _centerImageInViewport(size);
     }
   }

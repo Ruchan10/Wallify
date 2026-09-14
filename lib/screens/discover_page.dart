@@ -768,60 +768,54 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
                       if (images.isEmpty && !_isLoading) {
                         return _buildOfflineFallback(scheme: colorScheme);
                       }
-                      return MasonryGridView.builder(
-                        key: const PageStorageKey("discover_grid"),
-                        controller: _scrollController,
-                        gridDelegate:
-                            SliverSimpleGridDelegateWithFixedCrossAxisCount(
-                              crossAxisCount: 2,
-                            ),
-                        mainAxisSpacing: 8,
-                        crossAxisSpacing: 8,
-                        itemCount: images.length + (_isLoading ? 4 : 0),
-                        addAutomaticKeepAlives:
-                            PerformanceConfig.addAutomaticKeepAlives,
-                        addRepaintBoundaries:
-                            PerformanceConfig.addRepaintBoundaries,
-                        addSemanticIndexes: false,
-                        cacheExtent: PerformanceConfig.gridCacheExtent
-                            .toDouble(),
-                        itemBuilder: (context, index) {
-                          if (index >= images.length) {
-                            return ShimmerLoading(
-                              height: 150 + (index % 3) * 50,
+                      return StaggeredGridView.count(
+                      key: const PageStorageKey("discover_grid"),
+                      crossAxisCount: 2,
+                      mainAxisSpacing: 8,
+                      crossAxisSpacing: 8,
+                      children: List.generate(images.length + (_isLoading ? 4 : 0), (index) {
+                        if (index >= images.length) {
+                          return StaggeredGridTile.count(
+                            crossAxisCellCount: 1,
+                            mainAxisCellCount: 2,
+                            child: ShimmerLoading(
+                              height: 150,
                               borderRadius: 12,
-                            );
-                          }
-
-                          final img = images[index];
-                          final isFav = _favoritesNotifier.value.contains(
-                            img.url,
-                          );
-
-                          return RepaintBoundary(
-                            child: ImageTile(
-                              wallpaper: img,
-                              isFav: isFav,
-                              allWallpapers: images,
-                              index: index,
-                              onFavToggle: () {
-                                final updated = Set<String>.from(
-                                  _favoritesNotifier.value,
-                                );
-                                if (isFav) {
-                                  updated.remove(img.url);
-                                  UserSharedPrefs.removeFavWallpaper(img);
-                                } else {
-                                  updated.add(img.url);
-                                  UserSharedPrefs.saveFavWallpaper(img);
-                                }
-                                _favoritesNotifier.value = updated;
-                                setState(() {});
-                              },
                             ),
                           );
-                        },
-                      );
+                        }
+                        final img = images[index];
+                        final isFav = _favoritesNotifier.value.contains(
+                          img.url,
+                        );
+                        final aspectRatio = img.ratio ?? (img.width != null && img.height != 0 ? img.width! / img.height!.toDouble() : 1.0);
+                        final mainAxisCellCount = aspectRatio > 2.0 ? 1 : aspectRatio < 0.5 ? 2 : 1;
+                        return StaggeredGridTile.count(
+                          crossAxisCellCount: 1,
+                          mainAxisCellCount: mainAxisCellCount,
+                          child: ImageTile(
+                            wallpaper: img,
+                            isFav: isFav,
+                            allWallpapers: images,
+                            index: index,
+                            onFavToggle: () {
+                              final updated = Set<String>.from(
+                                _favoritesNotifier.value,
+                              );
+                              if (isFav) {
+                                updated.remove(img.url);
+                                UserSharedPrefs.removeFavWallpaper(img);
+                              } else {
+                                updated.add(img.url);
+                                UserSharedPrefs.saveFavWallpaper(img);
+                              }
+                              _favoritesNotifier.value = updated;
+                              setState(() {});
+                            },
+                          ),
+                        );
+                      }),
+                    );
                     },
                   ),
                 ),

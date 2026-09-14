@@ -306,7 +306,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                       backgroundColor: scheme.surfaceContainerHighest,
                     ),
                     ChoiceChip(
-                      label: const Text("Auto"),
+                      label: const Text("Random"),
                       selected: wallpaperLocation == 4,
                       onSelected: (_) {
                         setState(() => wallpaperLocation = 4);
