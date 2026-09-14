@@ -24,6 +24,27 @@ class PerformanceConfig {
     _cacheManager ??= WallifyCacheManager._();
     return _cacheManager!;
   }
+
+  static PreviewCacheManager? _previewCacheManager;
+  static PreviewCacheManager get previewCacheManager {
+    _previewCacheManager ??= PreviewCacheManager._();
+    return _previewCacheManager!;
+  }
+}
+
+/// Full-size preview images. Kept small because each entry stores both the
+/// original download and a resized copy.
+class PreviewCacheManager extends CacheManager with ImageCacheManager {
+  static const key = 'wallify_preview_cache';
+
+  PreviewCacheManager._()
+      : super(Config(
+          key,
+          stalePeriod: const Duration(days: 3),
+          maxNrOfCacheObjects: 20,
+          repo: JsonCacheInfoRepository(databaseName: key),
+          fileService: HttpFileService(),
+        ));
 }
 
 class WallifyCacheManager extends CacheManager with ImageCacheManager {

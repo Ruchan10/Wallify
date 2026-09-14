@@ -40,12 +40,6 @@ android {
         vectorDrawables.useSupportLibrary = true
     }
 
-    packaging {
-        jniLibs {
-            useLegacyPackaging = true
-        }
-    }
-
     ndkVersion = flutter.ndkVersion
 
     signingConfigs {

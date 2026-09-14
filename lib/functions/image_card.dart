@@ -218,7 +218,7 @@ class WallpaperThumbnail extends StatelessWidget {
       child: CachedNetworkImage(
         key: ValueKey(wallpaper.url),
         cacheManager: PerformanceConfig.cacheManager,
-        imageUrl: wallpaper.url,
+        imageUrl: wallpaper.thumbnailUrl,
         width: double.infinity,
         fit: ratio != null ? BoxFit.cover : BoxFit.fitWidth,
         // Only constrain the width so the decoded image keeps its ratio.

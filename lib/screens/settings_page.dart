@@ -83,6 +83,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       final sizes = await Future.wait([
         _dirSize(Directory('${temp.path}/libCachedImageData')),
         _dirSize(Directory('${temp.path}/wallify_cache')),
+        _dirSize(Directory('${temp.path}/${PreviewCacheManager.key}')),
         WallpaperCacheManager.getCacheSizeBytes(),
       ]);
       if (mounted) {
@@ -102,6 +103,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     try {
       await DefaultCacheManager().emptyCache();
       await PerformanceConfig.cacheManager.emptyCache();
+      await PerformanceConfig.previewCacheManager.emptyCache();
       await WallpaperCacheManager.clearCache();
       await _loadCacheSize();
       if (mounted) {
@@ -636,11 +638,11 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   subtitle: const Text("Restore from a Wallify backup"),
                   onTap: () async {
                     try {
-                      final picked = await FilePicker.pickFiles(
+                      final picked = await FilePicker.pickFile(
                         type: FileType.custom,
                         allowedExtensions: ['json'],
                       );
-                      final path = picked?.files.single.path;
+                      final path = picked?.path;
                       if (path == null) return;
 
                       final result = await SettingsBackup.importSettings(

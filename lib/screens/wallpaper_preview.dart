@@ -6,12 +6,12 @@ import 'dart:ui';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 import 'package:image/image.dart' as img;
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:wallify/core/performance_config.dart';
 import 'package:wallify/core/snackbar.dart';
 import 'package:wallify/core/user_shared_prefs.dart';
 import 'package:wallify/core/widget_helper.dart';
@@ -201,7 +201,7 @@ class _WallpaperPreviewPageState extends ConsumerState<WallpaperPreviewPage>
     });
 
     try {
-      final cacheManager = DefaultCacheManager();
+      final cacheManager = PerformanceConfig.previewCacheManager;
       final fileInfo =
           await cacheManager.getFileFromCache(_currentWallpaper.url);
 
@@ -987,6 +987,7 @@ class _WallpaperPreviewPageState extends ConsumerState<WallpaperPreviewPage>
                       maxScale: 4.0,
                       child: CachedNetworkImage(
                         imageUrl: wallpaper.url,
+                        cacheManager: PerformanceConfig.previewCacheManager,
                         fit: BoxFit.contain,
                         memCacheWidth: 1080,
                         memCacheHeight: 1920,

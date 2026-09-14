@@ -1,0 +1,35 @@
+# Wallify desktop config — copy to ~/.config/wallify/config and `chmod 600` it.
+# This file is sourced by bash, so use shell syntax (no spaces around "=").
+
+# --- API keys (leave empty to skip that source) -----------------------------
+UNSPLASH_ACCESS_KEY=""   # https://unsplash.com/oauth/applications
+PEXELS_API_KEY=""        # https://www.pexels.com/api/
+PIXABAY_API_KEY=""       # https://pixabay.com/api/docs/
+NASA_API_KEY="DEMO_KEY"  # https://api.nasa.gov (DEMO_KEY is heavily rate limited)
+WALLHAVEN_API_KEY=""     # optional: https://wallhaven.cc/settings/account
+
+# --- Sources ----------------------------------------------------------------
+# Picked in random order; if one fails the next is tried.
+# Also available: reddit (often blocked without a logged-in session).
+SOURCES="wallhaven unsplash pexels pixabay openverse bing nasa picsum"
+REDDIT_SUBREDDITS="wallpaper wallpapers EarthPorn spaceporn"
+BING_MARKET="en-US"
+
+# Search terms for sources that support them (bing, nasa and picsum ignore tags).
+TAGS=("nature" "space" "minimal" "cyberpunk" "mountains" "ocean" "night" "city" "abstract" "forest")
+
+# --- Behaviour --------------------------------------------------------------
+WALLPAPER_DIR="$HOME/Pictures/Wallpapers"
+KEEP_WALLPAPERS=30          # older wallify_* files are deleted; 0 keeps everything
+RESOLUTION="auto"           # or e.g. "2560x1440"
+ONLY_WHEN_CHARGING=false    # true: skip runs while on battery
+MIN_INTERVAL_MINUTES=0      # skip runs if the wallpaper changed more recently than this
+SET_LOCK_SCREEN=true
+
+# Force a desktop when auto-detection fails:
+# gnome, kde, cinnamon, mate, xfce, lxqt, hyprland, sway
+WALLIFY_DESKTOP=""
+
+# Command run after every change, with the image path as its last argument.
+# Example for i3lock (needs a PNG): POST_SET_HOOK="$HOME/.local/bin/make-lock-png"
+POST_SET_HOOK=""
