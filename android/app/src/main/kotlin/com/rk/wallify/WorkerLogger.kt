@@ -16,6 +16,8 @@ object WorkerLogger {
     private fun getPrefs(context: Context) =
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
+    // Read-modify-write on prefs; synchronized so concurrent callers don't drop entries.
+    @Synchronized
     fun log(context: Context, level: String, tag: String, message: String) {
         try {
             val prefs = getPrefs(context)

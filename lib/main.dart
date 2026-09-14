@@ -9,6 +9,7 @@ import 'package:wallify/core/navigation_service.dart';
 import 'package:wallify/core/performance_config.dart';
 import 'package:wallify/core/routes.dart';
 import 'package:wallify/core/theme_provider.dart';
+import 'package:wallify/core/user_shared_prefs.dart';
 import 'package:wallify/core/wallpaper_theme_provider.dart';
 import 'package:wallify/services/connectivity_service.dart';
 
@@ -21,6 +22,8 @@ void main() {
     () {
       WidgetsFlutterBinding.ensureInitialized();
       PerformanceConfig.applyImageCacheLimits();
+      // The window size can still be zero before the first frame.
+      WidgetsBinding.instance.addPostFrameCallback((_) => _saveScreenSize());
 
       _setupNavigationListener();
 
@@ -59,6 +62,19 @@ void main() {
       );
     },
   );
+}
+
+/// Stores the physical screen size (portrait) for native wallpaper cropping
+/// and AI generation, which previously always fell back to defaults.
+void _saveScreenSize() {
+  final views = WidgetsBinding.instance.platformDispatcher.views;
+  if (views.isEmpty) return;
+  final size = views.first.physicalSize;
+  if (size.isEmpty) return;
+  final width = size.shortestSide.round();
+  final height = size.longestSide.round();
+  UserSharedPrefs.saveDeviceWidth(width);
+  UserSharedPrefs.saveDeviceHeight(height);
 }
 
 void _setupNavigationListener() {

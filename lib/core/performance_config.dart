@@ -7,7 +7,6 @@ class PerformanceConfig {
   static const bool addRepaintBoundaries = true;
 
   static const int thumbnailWidth = 400;
-  static const int thumbnailHeight = 600;
 
   static const Duration fadeInDuration = Duration(milliseconds: 150);
 

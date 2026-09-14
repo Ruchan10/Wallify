@@ -37,6 +37,53 @@ object WallpaperUtils {
     private var objectDetectorFailed = false
     private var faceDetectorFailed = false
 
+    private const val FOCUS_TAG = "FocusDetect"
+    private const val DETECTION_MAX_DIM = 1280
+
+    /** Logs to logcat and to the in-app worker log screen. */
+    private fun focusLog(context: Context, message: String) {
+        Log.d(FOCUS_TAG, message)
+        WorkerLogger.i(context, FOCUS_TAG, message)
+    }
+
+    /**
+     * Real screen size in physical pixels, portrait-oriented. Falls back to the
+     * values stored by the Flutter side, then to 1080x1920.
+     */
+    internal fun getScreenSize(context: Context): Pair<Int, Int> {
+        try {
+            val dm = context.getSystemService(Context.DISPLAY_SERVICE) as android.hardware.display.DisplayManager
+            val display = dm.getDisplay(android.view.Display.DEFAULT_DISPLAY)
+            val metrics = android.util.DisplayMetrics()
+            @Suppress("DEPRECATION")
+            display.getRealMetrics(metrics)
+            if (metrics.widthPixels > 0 && metrics.heightPixels > 0) {
+                return Pair(
+                    minOf(metrics.widthPixels, metrics.heightPixels),
+                    maxOf(metrics.widthPixels, metrics.heightPixels)
+                )
+            }
+        } catch (e: Exception) {
+            WorkerLogger.w(context, FOCUS_TAG, "Could not read display metrics: ${e.message}")
+        }
+
+        val prefs = context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+        fun readInt(key: String): Int? = when (val v = prefs.all[key]) {
+            is Int -> v
+            is Long -> v.toInt()
+            is String -> v.toIntOrNull()
+            else -> null
+        }
+        val w = readInt("flutter.deviceWidth")
+        val h = readInt("flutter.deviceHeight")
+        if (w != null && h != null && w > 0 && h > 0) {
+            WorkerLogger.w(context, FOCUS_TAG, "Using saved screen size ${w}x$h")
+            return Pair(minOf(w, h), maxOf(w, h))
+        }
+        WorkerLogger.w(context, FOCUS_TAG, "Screen size unknown, defaulting to 1080x1920")
+        return Pair(1080, 1920)
+    }
+
     private fun getObjectDetector(context: Context): ObjectDetector? {
         if (objectDetectorFailed) return null
         if (cachedObjectDetector == null) {
@@ -46,12 +93,14 @@ object WallpaperUtils {
                     .build()
                 val options = ObjectDetectorOptions.builder()
                     .setBaseOptions(baseOptions)
-                    .setMaxResults(1)
-                    .setScoreThreshold(0.5f)
+                    .setMaxResults(5)
+                    .setScoreThreshold(0.3f)
                     .setRunningMode(RunningMode.IMAGE)
                     .build()
                 cachedObjectDetector = ObjectDetector.createFromOptions(context, options)
+                focusLog(context, "Object detector model loaded")
             } catch (e: Throwable) {
+                WorkerLogger.e(context, FOCUS_TAG, "Object detector not available: ${e.message}")
                 Log.w("Wallify", "Object detector not available: ${e.message}")
                 objectDetectorFailed = true
                 return null
@@ -73,7 +122,9 @@ object WallpaperUtils {
                     .setRunningMode(RunningMode.IMAGE)
                     .build()
                 cachedFaceDetector = FaceDetector.createFromOptions(context, options)
+                focusLog(context, "Face detector model loaded")
             } catch (e: Throwable) {
+                WorkerLogger.e(context, FOCUS_TAG, "Face detector not available: ${e.message}")
                 Log.w("Wallify", "Face detector not available: ${e.message}")
                 faceDetectorFailed = true
                 return null
@@ -311,7 +362,7 @@ object WallpaperUtils {
             }
             val resolvedLocation = if (wallpaperLocation == 4) {
                 val pick = (1..3).random()
-                WorkerLogger.i(context, "Wallify", "Auto mode: randomly picked $pick")
+                WorkerLogger.i(context, "Wallify", "Random mode: randomly picked $pick")
                 pick
             } else {
                 wallpaperLocation
@@ -438,6 +489,8 @@ object WallpaperUtils {
         nm.notify(1001, notification)
     }
 
+    // Shares the lock with detectFocusPoint: MediaPipe detectors aren't thread-safe.
+    @Synchronized
     internal fun imageHasFace(context: Context, bitmap: Bitmap): Boolean {
         val detector = getFaceDetector(context) ?: return false
         return try {
@@ -459,48 +512,119 @@ object WallpaperUtils {
         }
     }
 
+    /**
+     * Finds the point the wallpaper should be centred on: the largest face,
+     * otherwise the most prominent object, otherwise the image centre.
+     * Coordinates are in the original bitmap's pixel space.
+     */
+    @Synchronized
     internal fun detectFocusPoint(context: Context, bitmap: Bitmap): Map<String, Float> {
-        val centerX = bitmap.width / 2f
-        val centerY = bitmap.height / 2f
+        val imgW = bitmap.width
+        val imgH = bitmap.height
+        focusLog(context, "Detecting focus on ${imgW}x$imgH image (config=${bitmap.config})")
 
-        val faceDetector = getFaceDetector(context)
-        if (faceDetector != null) {
-            try {
-                val mpImage = BitmapImageBuilder(bitmap).build()
-                val results = faceDetector.detect(mpImage)
-                val detections = results.detections()
-                if (detections.isNotEmpty()) {
-                    val box = detections.first().boundingBox()
-                    val focusX = (box.left + box.right) / 2f
-                    val focusY = (box.top + box.bottom) / 2f
-                    Log.d("Wallify", "Focus point from face detection: ($focusX, $focusY)")
-                    return mapOf("x" to focusX, "y" to focusY, "source" to 1f)
-                }
-            } catch (e: Exception) {
-                Log.e("Wallify", "Face detection for focus failed: ${e.message}")
-            }
+        // Detect on a downscaled copy (much faster, same result), then map back.
+        val factor = maxOf(imgW, imgH).toFloat() / DETECTION_MAX_DIM
+        val scaled = if (factor > 1f) {
+            bitmap.scale((imgW / factor).toInt(), (imgH / factor).toInt(), true)
+        } else bitmap
+        val input = if (scaled.config != Bitmap.Config.ARGB_8888) {
+            scaled.copy(Bitmap.Config.ARGB_8888, false)
+        } else scaled
+        val boxFactor = if (factor > 1f) factor else 1f
+        if (input !== bitmap) {
+            focusLog(context, "Detection input downscaled to ${input.width}x${input.height}")
         }
 
-        val objDetector = getObjectDetector(context)
-        if (objDetector != null) {
-            try {
-                val mpImage = BitmapImageBuilder(bitmap).build()
-                val results = objDetector.detect(mpImage)
-                val detections = results.detections()
-                if (detections.isNotEmpty()) {
-                    val box = detections.first().boundingBox()
-                    val focusX = (box.left + box.right) / 2f
-                    val focusY = (box.top + box.bottom) / 2f
-                    Log.d("Wallify", "Focus point from object detection: ($focusX, $focusY)")
-                    return mapOf("x" to focusX, "y" to focusY, "source" to 2f)
+        try {
+            val mpImage = BitmapImageBuilder(input).build()
+
+            val faceDetector = getFaceDetector(context)
+            if (faceDetector == null) {
+                focusLog(context, "Face detector unavailable, skipping face step")
+            } else {
+                try {
+                    val faces = faceDetector.detect(mpImage).detections()
+                    focusLog(context, "Face detection found ${faces.size} face(s)")
+                    faces.forEachIndexed { i, d ->
+                        val score = d.categories().firstOrNull()?.score() ?: 0f
+                        focusLog(context, "  face[$i] score=${"%.2f".format(score)} box=${scaleBox(d.boundingBox(), boxFactor).toShortString()}")
+                    }
+                    val best = faces.maxByOrNull { it.boundingBox().width() * it.boundingBox().height() }
+                    if (best != null) {
+                        return focusResult(context, best.boundingBox(), boxFactor, imgW, imgH, "face", 1f)
+                    }
+                } catch (e: Exception) {
+                    WorkerLogger.e(context, FOCUS_TAG, "Face detection failed: ${e.message}")
+                    Log.e(FOCUS_TAG, "Face detection failed", e)
                 }
-            } catch (e: Exception) {
-                Log.e("Wallify", "Object detection for focus failed: ${e.message}")
             }
+
+            val objDetector = getObjectDetector(context)
+            if (objDetector == null) {
+                focusLog(context, "Object detector unavailable, skipping object step")
+            } else {
+                try {
+                    val objects = objDetector.detect(mpImage).detections()
+                    focusLog(context, "Object detection found ${objects.size} object(s)")
+                    val inputArea = (input.width * input.height).toFloat()
+                    // Favour confident detections, with a boost for larger subjects.
+                    fun rank(d: com.google.mediapipe.tasks.components.containers.Detection): Float {
+                        val score = d.categories().firstOrNull()?.score() ?: 0f
+                        val box = d.boundingBox()
+                        val areaFraction = (box.width() * box.height() / inputArea).coerceIn(0f, 1f)
+                        return score * (0.5f + 0.5f * areaFraction)
+                    }
+                    objects.forEachIndexed { i, d ->
+                        val cat = d.categories().firstOrNull()
+                        focusLog(
+                            context,
+                            "  object[$i] ${cat?.categoryName() ?: "?"} score=${"%.2f".format(cat?.score() ?: 0f)} " +
+                                "rank=${"%.2f".format(rank(d))} box=${scaleBox(d.boundingBox(), boxFactor).toShortString()}"
+                        )
+                    }
+                    val best = objects.maxByOrNull { rank(it) }
+                    if (best != null) {
+                        val label = best.categories().firstOrNull()?.categoryName() ?: "object"
+                        return focusResult(context, best.boundingBox(), boxFactor, imgW, imgH, "object '$label'", 2f)
+                    }
+                } catch (e: Exception) {
+                    WorkerLogger.e(context, FOCUS_TAG, "Object detection failed: ${e.message}")
+                    Log.e(FOCUS_TAG, "Object detection failed", e)
+                }
+            }
+        } catch (e: Error) {
+            WorkerLogger.e(context, FOCUS_TAG, "Native error during detection: ${e.message}")
+            Log.e(FOCUS_TAG, "Native error during detection", e)
+        } finally {
+            if (input !== bitmap) input.recycle()
+            if (scaled !== bitmap && scaled !== input) scaled.recycle()
         }
 
-        Log.d("Wallify", "No face or object detected, using image center: ($centerX, $centerY)")
-        return mapOf("x" to centerX, "y" to centerY, "source" to 0f)
+        focusLog(context, "No face or object found, using image centre (${imgW / 2}, ${imgH / 2})")
+        return mapOf("x" to imgW / 2f, "y" to imgH / 2f, "source" to 0f)
+    }
+
+    private fun scaleBox(box: RectF, factor: Float): RectF =
+        RectF(box.left * factor, box.top * factor, box.right * factor, box.bottom * factor)
+
+    private fun focusResult(
+        context: Context,
+        box: RectF,
+        factor: Float,
+        imgW: Int,
+        imgH: Int,
+        source: String,
+        code: Float
+    ): Map<String, Float> {
+        val x = ((box.left + box.right) / 2f * factor).coerceIn(0f, imgW.toFloat())
+        val y = ((box.top + box.bottom) / 2f * factor).coerceIn(0f, imgH.toFloat())
+        focusLog(
+            context,
+            "Focus from $source at (${x.toInt()}, ${y.toInt()}) = " +
+                "${(x / imgW * 100).toInt()}% across, ${(y / imgH * 100).toInt()}% down"
+        )
+        return mapOf("x" to x, "y" to y, "source" to code)
     }
 
     private fun getConfiguredFolderPaths(context: Context): List<String> {
@@ -727,23 +851,43 @@ object WallpaperUtils {
                 prefs.getString("flutter.random_tag", "nature") ?: "nature"
             }
 
-            val deviceWidth = (prefs.all["flutter.deviceWidth"] as? Int) ?: 1080
-            val deviceHeight = (prefs.all["flutter.deviceHeight"] as? Int) ?: 1920
+            val (deviceWidth, deviceHeight) = getScreenSize(context)
 
             WorkerLogger.i(context, "Wallify", "Fetching wallpapers tag=$tag, size=${deviceWidth}x$deviceHeight")
             Log.d("Wallify", "Fetching wallpapers with tag=$tag, size=${deviceWidth}x$deviceHeight")
 
-            val wallhavenUrl =
-                "https://wallhaven.cc/api/v1/search?q=$tag&categories=100&purity=100&ratios=portrait&sorting=random"
-            urls.addAll(fetchFromWallhaven(wallhavenUrl))
-            val unsplashUrl =
-                "https://api.unsplash.com/photos/random?query=$tag&orientation=portrait&content_filter=high&count=15"
-            urls.addAll(fetchFromUnsplash(context, unsplashUrl))
+            // Always pull the best-rated wallpapers. A random page adds variety
+            // between runs; page 1 is the fallback when that page is empty.
+            val q = java.net.URLEncoder.encode(tag, "UTF-8")
+            val page = (1..3).random()
+            fun <T> withPageFallback(fetch: (Int) -> List<T>): List<T> {
+                val first = fetch(page)
+                return if (first.isEmpty() && page != 1) fetch(1) else first
+            }
+
+            var wallhaven = withPageFallback { p ->
+                fetchFromWallhaven("https://wallhaven.cc/api/v1/search?q=$q&categories=100&purity=100&ratios=portrait&sorting=toplist&topRange=1M&order=desc&page=$p")
+            }
+            if (wallhaven.isEmpty()) {
+                // Niche tags may have nothing in the last month's toplist.
+                wallhaven = fetchFromWallhaven("https://wallhaven.cc/api/v1/search?q=$q&categories=100&purity=100&ratios=portrait&sorting=toplist&topRange=1y&order=desc")
+            }
+            WorkerLogger.i(context, "Wallify", "Wallhaven toplist: ${wallhaven.size} wallpapers")
+            urls.addAll(wallhaven)
+
+            val unsplash = withPageFallback { p ->
+                fetchFromUnsplash(context, "https://api.unsplash.com/search/photos?query=$q&orientation=portrait&content_filter=high&order_by=relevant&per_page=30&page=$p")
+            }
+            WorkerLogger.i(context, "Wallify", "Unsplash: ${unsplash.size} wallpapers")
+            urls.addAll(unsplash)
+
             val pixabayApiKey = prefs.getString("flutter.pixabay_api_key", null)
             if (!pixabayApiKey.isNullOrEmpty()) {
-                val pixabayUrl =
-                    "https://pixabay.com/api/?key=$pixabayApiKey&q=$tag&image_type=photo&orientation=vertical&safesearch=true"
-                urls.addAll(fetchFromPixabay(pixabayUrl))
+                val pixabay = withPageFallback { p ->
+                    fetchFromPixabay("https://pixabay.com/api/?key=$pixabayApiKey&q=$q&image_type=photo&orientation=vertical&safesearch=true&order=popular&per_page=30&page=$p")
+                }
+                WorkerLogger.i(context, "Wallify", "Pixabay popular: ${pixabay.size} wallpapers")
+                urls.addAll(pixabay)
             }
 
             if (urls.isEmpty()) {
@@ -797,7 +941,12 @@ object WallpaperUtils {
             connection.connectTimeout = 15000
             connection.readTimeout = 15000
             val response = connection.inputStream.bufferedReader().readText()
-            val data = org.json.JSONArray(response)
+            // Search returns {"results": [...]}; list endpoints return a bare array.
+            val data = when (val json = org.json.JSONTokener(response).nextValue()) {
+                is JSONObject -> json.optJSONArray("results") ?: JSONArray()
+                is JSONArray -> json
+                else -> JSONArray()
+            }
             for (i in 0 until data.length()) {
                 val item = data.getJSONObject(i)
                 val urlsObj = item.getJSONObject("urls")
@@ -839,26 +988,11 @@ object WallpaperUtils {
         }
 
         try {
-            val prefs = context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
-            val widthValue = prefs.all["flutter.deviceWidth"]
-            val heightValue = prefs.all["flutter.deviceHeight"]
+            val (deviceWidth, deviceHeight) = getScreenSize(context)
+            focusLog(context, "Target screen ${deviceWidth}x$deviceHeight, source image ${bitmap.width}x${bitmap.height} (flag=$flag)")
 
-            val deviceWidth = when (widthValue) {
-                is Int -> widthValue
-                is Long -> widthValue.toInt()
-                is String -> widthValue.toIntOrNull() ?: bitmap.width
-                else -> bitmap.width
-            }
-            val deviceHeight = when (heightValue) {
-                is Int -> heightValue
-                is Long -> heightValue.toInt()
-                is String -> heightValue.toIntOrNull() ?: bitmap.height
-                else -> bitmap.height
-            }
-
-            Log.d("Wallify", "Device dimensions from prefs: $deviceWidth x $deviceHeight")
-
-            var resultBitmap = detectAndCropMainObject(context, bitmap, deviceWidth, deviceHeight)
+            val resultBitmap = detectAndCropMainObject(context, bitmap, deviceWidth, deviceHeight)
+            focusLog(context, "Final wallpaper bitmap ${resultBitmap.width}x${resultBitmap.height}")
 
             manager.setBitmap(resultBitmap, null, true, flag)
             Log.d("Wallify", "Wallpaper set successfully for flag=$flag")
@@ -875,6 +1009,7 @@ object WallpaperUtils {
             }
 
         } catch (e: Exception) {
+            WorkerLogger.e(context, "Wallify", "Error setting wallpaper from $imagePath: ${e.message}")
             Log.e("Wallify", "Error setting wallpaper from $imagePath", e)
         }
     }
@@ -944,6 +1079,8 @@ object WallpaperUtils {
                 val prefs = context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
                 val editor = prefs.edit()
                 editor.putInt("wallpaperSeedColor", dominantColor)
+                // Flutter's SharedPreferences only sees "flutter."-prefixed keys (ints stored as Long).
+                editor.putLong("flutter.wallpaperSeedColor", dominantColor.toLong())
                 if (lightVibrant != null) editor.putInt("wallpaperLightVibrant", lightVibrant)
                 if (darkVibrant != null) editor.putInt("wallpaperDarkVibrant", darkVibrant)
                 editor.apply()
@@ -1106,67 +1243,22 @@ object WallpaperUtils {
         targetWidth: Int,
         targetHeight: Int
     ): Bitmap {
-        val detector = getObjectDetector(context)
-        if (detector == null) {
-            Log.d("Wallify", "Object detector unavailable, center-cropping.")
-            return centerCropToAspect(bitmap, targetWidth, targetHeight)
-        }
         return try {
-            val mpImage = BitmapImageBuilder(bitmap).build()
-            val results = detector.detect(mpImage)
-
-            var resultBitmap = bitmap
-            val detectedObjects = results.detections()
-
-            if (detectedObjects.isNotEmpty()) {
-                val obj = detectedObjects.first()
-                val box: RectF = obj.boundingBox()
-                Log.d("Wallify", "Detected object bounds: $box")
-
-                val targetAspect = targetWidth.toDouble() / targetHeight.toDouble()
-                val imgW = bitmap.width
-                val imgH = bitmap.height
-
-                val objCenterX = (box.left + box.right) / 2.0
-                val objCenterY = (box.top + box.bottom) / 2.0
-
-                var cropW: Int
-                var cropH: Int
-                val imgAspect = imgW.toDouble() / imgH.toDouble()
-
-                if (imgAspect > targetAspect) {
-                    cropH = imgH
-                    cropW = (imgH * targetAspect).toInt()
-                } else {
-                    cropW = imgW
-                    cropH = (imgW / targetAspect).toInt()
-                }
-
-                cropW = cropW.coerceAtMost(imgW)
-                cropH = cropH.coerceAtMost(imgH)
-
-                var cropLeft = (objCenterX - cropW / 2.0).toInt()
-                var cropTop = (objCenterY - cropH / 2.0).toInt()
-
-                cropLeft = cropLeft.coerceIn(0, imgW - cropW)
-                cropTop = cropTop.coerceIn(0, imgH - cropH)
-
-                Log.d("Wallify", "Smart crop: ${cropW}x${cropH} at ($cropLeft, $cropTop), object center: ($objCenterX, $objCenterY)")
-
-                val cropped = Bitmap.createBitmap(bitmap, cropLeft, cropTop, cropW, cropH)
-                resultBitmap = cropped.scale(targetWidth, targetHeight, true)
-            } else {
-                Log.d("Wallify", "No object detected, center-cropping full image.")
-                resultBitmap = centerCropToAspect(bitmap, targetWidth, targetHeight)
-            }
-
-            resultBitmap
+            val focus = detectFocusPoint(context, bitmap)
+            cropAroundPoint(
+                context, bitmap,
+                focus["x"] ?: (bitmap.width / 2f),
+                focus["y"] ?: (bitmap.height / 2f),
+                targetWidth, targetHeight
+            )
         } catch (e: Exception) {
-            Log.e("Wallify", "Error during object detection: $e")
-            centerCropToAspect(bitmap, targetWidth, targetHeight)
+            WorkerLogger.e(context, FOCUS_TAG, "Smart crop failed, centre-cropping: ${e.message}")
+            Log.e(FOCUS_TAG, "Smart crop failed", e)
+            cropAroundPoint(context, bitmap, bitmap.width / 2f, bitmap.height / 2f, targetWidth, targetHeight)
         } catch (e: Error) {
-            Log.e("Wallify", "Native library error during object detection: ${e.message}", e)
-            centerCropToAspect(bitmap, targetWidth, targetHeight)
+            WorkerLogger.e(context, FOCUS_TAG, "Native error in smart crop, centre-cropping: ${e.message}")
+            Log.e(FOCUS_TAG, "Native error in smart crop", e)
+            cropAroundPoint(context, bitmap, bitmap.width / 2f, bitmap.height / 2f, targetWidth, targetHeight)
         }
     }
 
@@ -1192,7 +1284,15 @@ object WallpaperUtils {
         }
     }
 
-    private fun centerCropToAspect(bitmap: Bitmap, targetWidth: Int, targetHeight: Int): Bitmap {
+    /** Crops the largest screen-aspect region centred as close to (focusX, focusY) as the image allows. */
+    private fun cropAroundPoint(
+        context: Context,
+        bitmap: Bitmap,
+        focusX: Float,
+        focusY: Float,
+        targetWidth: Int,
+        targetHeight: Int
+    ): Bitmap {
         val targetAspect = targetWidth.toDouble() / targetHeight.toDouble()
         val imgW = bitmap.width
         val imgH = bitmap.height
@@ -1202,14 +1302,26 @@ object WallpaperUtils {
         val cropH: Int
         if (imgAspect > targetAspect) {
             cropH = imgH
-            cropW = (imgH * targetAspect).toInt().coerceAtMost(imgW)
+            cropW = (imgH * targetAspect).toInt().coerceIn(1, imgW)
         } else {
             cropW = imgW
-            cropH = (imgW / targetAspect).toInt().coerceAtMost(imgH)
+            cropH = (imgW / targetAspect).toInt().coerceIn(1, imgH)
         }
 
-        val cropLeft = (imgW - cropW) / 2
-        val cropTop = (imgH - cropH) / 2
+        val cropLeft = (focusX - cropW / 2f).toInt().coerceIn(0, imgW - cropW)
+        val cropTop = (focusY - cropH / 2f).toInt().coerceIn(0, imgH - cropH)
+
+        val panRoom = when {
+            imgW - cropW > 0 -> "horizontal pan room ${imgW - cropW}px"
+            imgH - cropH > 0 -> "vertical pan room ${imgH - cropH}px"
+            else -> "image already matches screen aspect, no pan room"
+        }
+        focusLog(
+            context,
+            "Crop ${cropW}x$cropH at ($cropLeft, $cropTop) from ${imgW}x$imgH " +
+                "(image aspect ${"%.3f".format(imgAspect)}, screen aspect ${"%.3f".format(targetAspect)}, $panRoom) " +
+                "-> scaled to ${targetWidth}x$targetHeight"
+        )
 
         val cropped = Bitmap.createBitmap(bitmap, cropLeft, cropTop, cropW, cropH)
         return cropped.scale(targetWidth, targetHeight, true)

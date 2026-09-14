@@ -768,32 +768,33 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
                       if (images.isEmpty && !_isLoading) {
                         return _buildOfflineFallback(scheme: colorScheme);
                       }
-                      return StaggeredGridView.count(
-                      key: const PageStorageKey("discover_grid"),
-                      crossAxisCount: 2,
-                      mainAxisSpacing: 8,
-                      crossAxisSpacing: 8,
-                      children: List.generate(images.length + (_isLoading ? 4 : 0), (index) {
-                        if (index >= images.length) {
-                          return StaggeredGridTile.count(
-                            crossAxisCellCount: 1,
-                            mainAxisCellCount: 2,
-                            child: ShimmerLoading(
-                              height: 150,
-                              borderRadius: 12,
+                      final itemCount =
+                          images.length + (_isLoading ? 4 : 0);
+                      return MasonryGridView.builder(
+                        key: const PageStorageKey("discover_grid"),
+                        controller: _scrollController,
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        gridDelegate:
+                            const SliverSimpleGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: 2,
                             ),
+                        mainAxisSpacing: 8,
+                        crossAxisSpacing: 8,
+                        cacheExtent: PerformanceConfig.gridCacheExtent
+                            .toDouble(),
+                        itemCount: itemCount,
+                        itemBuilder: (context, index) {
+                          if (index >= images.length) {
+                            return ShimmerLoading(
+                              height: 150 + (index % 3) * 50,
+                              borderRadius: 12,
+                            );
+                          }
+                          final img = images[index];
+                          final isFav = _favoritesNotifier.value.contains(
+                            img.url,
                           );
-                        }
-                        final img = images[index];
-                        final isFav = _favoritesNotifier.value.contains(
-                          img.url,
-                        );
-                        final aspectRatio = img.ratio ?? (img.width != null && img.height != 0 ? img.width! / img.height!.toDouble() : 1.0);
-                        final mainAxisCellCount = aspectRatio > 2.0 ? 1 : aspectRatio < 0.5 ? 2 : 1;
-                        return StaggeredGridTile.count(
-                          crossAxisCellCount: 1,
-                          mainAxisCellCount: mainAxisCellCount,
-                          child: ImageTile(
+                          return ImageTile(
                             wallpaper: img,
                             isFav: isFav,
                             allWallpapers: images,
@@ -812,10 +813,9 @@ class _DiscoverPageState extends ConsumerState<DiscoverPage> {
                               _favoritesNotifier.value = updated;
                               setState(() {});
                             },
-                          ),
-                        );
-                      }),
-                    );
+                          );
+                        },
+                      );
                     },
                   ),
                 ),

@@ -2,7 +2,6 @@ import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:wallify/core/performance_config.dart';
@@ -33,16 +32,6 @@ class ImageTile extends StatefulWidget {
 }
 
 class _ImageTileState extends State<ImageTile> {
-  bool _isPressed = false;
-
-  double _aspectRatio(Wallpaper w) {
-    if (w.ratio != null) return w.ratio!;
-    if (w.width != null && w.height != null && w.height! > 0) {
-      return w.width! / w.height!.toDouble();
-    }
-    return 1.0;
-  }
-
   void _showContextMenu(BuildContext context) {
     showModalBottomSheet(
       context: context,
@@ -134,16 +123,13 @@ class _ImageTileState extends State<ImageTile> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final aspectRatio = _aspectRatio(widget.wallpaper);
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(12),
       child: Stack(
         children: [
           GestureDetector(
-            onTapDown: (_) => setState(() => _isPressed = true),
-            onTapUp: (_) {
-              setState(() => _isPressed = false);
+            onTap: () {
               Navigator.push(
                 context,
                 PageRouteBuilder(
@@ -168,33 +154,8 @@ class _ImageTileState extends State<ImageTile> {
                 ),
               );
             },
-            onTapCancel: () => setState(() => _isPressed = false),
             onLongPress: () => _showContextMenu(context),
-            child: Hero(
-              tag: 'wallpaper_${widget.wallpaper.url}',
-              child: CachedNetworkImage(
-                cacheManager: PerformanceConfig.cacheManager,
-                imageUrl: widget.wallpaper.url,
-                fit: BoxFit.contain,
-                memCacheWidth: PerformanceConfig.thumbnailWidth,
-                memCacheHeight: PerformanceConfig.thumbnailHeight,
-                maxWidthDiskCache: PerformanceConfig.thumbnailWidth * 2,
-                maxHeightDiskCache: PerformanceConfig.thumbnailHeight * 2,
-                fadeInDuration: PerformanceConfig.fadeInDuration,
-                placeholder: (context, url) => ShimmerLoading(
-                  height: 200,
-                  borderRadius: 12,
-                ),
-                errorWidget: (context, url, error) => Container(
-                  height: 200,
-                  color: colorScheme.surface.withValues(alpha: 0.2),
-                  child: Icon(
-                    Icons.broken_image,
-                    color: colorScheme.onSurface.withValues(alpha: 0.5),
-                  ),
-                ),
-              ),
-            ),
+            child: WallpaperThumbnail(wallpaper: widget.wallpaper),
           ),
           Positioned(
             top: 6,
@@ -229,6 +190,60 @@ class _ImageTileState extends State<ImageTile> {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Grid thumbnail that keeps the wallpaper's original aspect ratio.
+///
+/// When the dimensions are known up front the tile is sized immediately, so
+/// the masonry layout doesn't jump while images load. Otherwise (older saved
+/// entries) the image sizes itself from its intrinsic ratio once decoded.
+class WallpaperThumbnail extends StatelessWidget {
+  final Wallpaper wallpaper;
+
+  const WallpaperThumbnail({super.key, required this.wallpaper});
+
+  // Keep extreme panoramas / slivers usable in a 2-column grid.
+  static const double _minRatio = 0.4;
+  static const double _maxRatio = 2.5;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final ratio = wallpaper.aspectRatio;
+
+    final image = Hero(
+      tag: 'wallpaper_${wallpaper.url}',
+      child: CachedNetworkImage(
+        key: ValueKey(wallpaper.url),
+        cacheManager: PerformanceConfig.cacheManager,
+        imageUrl: wallpaper.url,
+        width: double.infinity,
+        fit: ratio != null ? BoxFit.cover : BoxFit.fitWidth,
+        // Only constrain the width so the decoded image keeps its ratio.
+        memCacheWidth: PerformanceConfig.thumbnailWidth,
+        maxWidthDiskCache: PerformanceConfig.thumbnailWidth * 2,
+        fadeInDuration: PerformanceConfig.fadeInDuration,
+        placeholder: (context, url) => ShimmerLoading(
+          height: ratio != null ? double.infinity : 200,
+          borderRadius: 12,
+        ),
+        errorWidget: (context, url, error) => Container(
+          height: ratio != null ? double.infinity : 200,
+          color: colorScheme.surface.withValues(alpha: 0.2),
+          child: Icon(
+            Icons.broken_image,
+            color: colorScheme.onSurface.withValues(alpha: 0.5),
+          ),
+        ),
+      ),
+    );
+
+    if (ratio == null) return image;
+    return AspectRatio(
+      aspectRatio: ratio.clamp(_minRatio, _maxRatio),
+      child: image,
     );
   }
 }

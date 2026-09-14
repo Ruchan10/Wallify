@@ -15,6 +15,16 @@ class Wallpaper {
     this.ratio,
   });
 
+  /// Width / height of the original image, or null when unknown (e.g. older
+  /// saved entries that were stored without dimensions).
+  double? get aspectRatio {
+    if (width != null && height != null && width! > 0 && height! > 0) {
+      return width! / height!;
+    }
+    if (ratio != null && ratio! > 0) return ratio;
+    return null;
+  }
+
   Map<String, dynamic> toJson() => {
         "id": id,
         "url": url,
@@ -31,9 +41,16 @@ class Wallpaper {
       id: (json["id"] ?? json["url"] ?? "").toString(),
       url: (json["url"] ?? "").toString(),
       timestamp: json["timestamp"] != null ? DateTime.parse(json["timestamp"]) : null,
-      width: json["width"] as int?,
-      height: json["height"] as int?,
-      ratio: json["ratio"] as double?,
+      width: parseNum(json["width"])?.toInt(),
+      height: parseNum(json["height"])?.toInt(),
+      ratio: parseNum(json["ratio"])?.toDouble(),
     );
+  }
+
+  /// Accepts ints, doubles and numeric strings (APIs aren't consistent).
+  static num? parseNum(dynamic value) {
+    if (value is num) return value;
+    if (value is String) return num.tryParse(value);
+    return null;
   }
 }

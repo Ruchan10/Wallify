@@ -143,6 +143,20 @@ class MainActivity : FlutterActivity() {
                             result.error("INVALID_PATH", "File path is required", null)
                         }
                     }
+                    "getCurrentWallpaperColor" -> {
+                        // Colour of whatever wallpaper is on the home screen right now.
+                        val color = try {
+                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O_MR1) {
+                                WallpaperManager.getInstance(applicationContext)
+                                    .getWallpaperColors(WallpaperManager.FLAG_SYSTEM)
+                                    ?.primaryColor?.toArgb()
+                            } else null
+                        } catch (e: Exception) {
+                            Log.w("Wallify", "Could not read current wallpaper colors: ${e.message}")
+                            null
+                        }
+                        result.success(color)
+                    }
                     "checkImageHasFace" -> {
                         val filePath: String? = call.argument<String>("filePath")
                         if (filePath != null) {
@@ -159,16 +173,24 @@ class MainActivity : FlutterActivity() {
                     }
                     "detectFocusPoint" -> {
                         val filePath: String? = call.argument<String>("filePath")
-                        if (filePath != null) {
-                            val bitmap = BitmapFactory.decodeFile(filePath)
-                            if (bitmap != null) {
-                                val focus = WallpaperUtils.detectFocusPoint(applicationContext, bitmap)
-                                result.success(focus)
-                            } else {
-                                result.success(mapOf("x" to 0f, "y" to 0f, "source" to 0f))
+                        // Decoding + detection is heavy, keep it off the main thread.
+                        lifecycleScope.launch(Dispatchers.IO) {
+                            WorkerLogger.i(applicationContext, "FocusDetect", "Preview focus request: $filePath")
+                            // Returning null (not 0,0) lets Flutter centre the image instead of
+                            // snapping to the top-left corner.
+                            val focus = try {
+                                val bitmap = filePath?.let { BitmapFactory.decodeFile(it) }
+                                if (bitmap != null) {
+                                    WallpaperUtils.detectFocusPoint(applicationContext, bitmap)
+                                } else {
+                                    WorkerLogger.e(applicationContext, "FocusDetect", "Could not decode image for focus detection: $filePath")
+                                    null
+                                }
+                            } catch (e: Throwable) {
+                                WorkerLogger.e(applicationContext, "FocusDetect", "Preview focus detection failed: ${e.message}")
+                                null
                             }
-                        } else {
-                            result.success(mapOf("x" to 0f, "y" to 0f, "source" to 0f))
+                            withContext(Dispatchers.Main) { result.success(focus) }
                         }
                     }
                     "saveToDownloads" -> {
@@ -389,7 +411,7 @@ fun downloadAndSetWallpaper(imageUrl: String, wallpaperLocation: Int, result: Me
         try {
             val resolved = if (wallpaperLocation == 4) {
                 val pick = (1..3).random()
-                Log.d("Wallify", "Auto mode: randomly picked $pick")
+                Log.d("Wallify", "Random mode: randomly picked $pick")
                 pick
             } else {
                 wallpaperLocation

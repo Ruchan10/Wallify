@@ -9,7 +9,8 @@ on:
 env:
   APK_NAME: "Wallify"
   CHANGES: |
-    - Minor fixes
+    - better wallpaper layout
+    - object detection fixed
 
 jobs:
   build:

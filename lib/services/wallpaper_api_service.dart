@@ -44,22 +44,25 @@ class WallpaperApiService {
               : opts.purity == "Sketchy"
               ? "110"
               : "111"}";
-    final sortingParam = opts.sorting == null
-        ? "toplist"
-        : (opts.range == "1M" ? opts.sorting! : "toplist");
-    final searchParam = opts.query == null ? "" : "&q=${opts.query}";
+    // Best-rated first by default; an explicit Discover sort still wins.
+    final sorting = opts.sorting ?? "toplist";
+    final rangeParam =
+        sorting == "toplist" ? "&topRange=${opts.range ?? "1M"}" : "";
+    final searchParam = opts.query == null
+        ? ""
+        : "&q=${Uri.encodeQueryComponent(opts.query!)}";
 
     final res = await http
         .get(
           Uri.parse(
             "https://wallhaven.cc/api/v1/search?"
             "page=${opts.page}"
-            "${opts.range == null ? "" : "&topRange=${opts.range}"}"
+            "$rangeParam"
             "$categoryParam"
             "$purityParam"
-            "&sorting=$sortingParam"
+            "&sorting=$sorting"
             "$searchParam"
-            "&order=asc",
+            "&order=desc",
           ),
         )
         .timeout(_timeout);
@@ -73,9 +76,8 @@ class WallpaperApiService {
             id: item["id"],
             url: item["path"],
             timestamp: DateTime.now(),
-            width: item["dimension_x"] as int?,
-            height: item["dimension_y"] as int?,
-            ratio: item["ratio"] as double?,
+            width: Wallpaper.parseNum(item["dimension_x"])?.toInt(),
+            height: Wallpaper.parseNum(item["dimension_y"])?.toInt(),
           ),
         );
       }
@@ -90,13 +92,17 @@ class WallpaperApiService {
         ? "https://api.unsplash.com/search/photos"
         : "https://api.unsplash.com/photos";
 
-    final orderBy = opts.sorting != null
-        ? opts.sorting == "date_added" ? "latest" : "popular"
-        : !isSearch ? "popular" : null;
+    // Browsing: most popular. Search only supports relevant/latest, and
+    // relevance is the best-quality ordering there.
+    final orderBy = opts.sorting == "date_added"
+        ? "latest"
+        : isSearch
+        ? "relevant"
+        : "popular";
 
     final params = <String>[
-      if (isSearch) "query=${opts.query}",
-      if (orderBy != null) "order_by=$orderBy",
+      if (isSearch) "query=${Uri.encodeQueryComponent(opts.query!)}",
+      "order_by=$orderBy",
       if (opts.purity != null)
         "content_filter=${opts.purity == "NSFW" ? "high" : "low"}",
       if (opts.orientation != null) "orientation=${opts.orientation}",
@@ -123,9 +129,8 @@ class WallpaperApiService {
             id: item["id"],
             url: item["urls"]["regular"],
             timestamp: DateTime.now(),
-            width: item["width"] as int?,
-            height: item["height"] as int?,
-            ratio: item["ratio"] as double?,
+            width: Wallpaper.parseNum(item["width"])?.toInt(),
+            height: Wallpaper.parseNum(item["height"])?.toInt(),
           ),
         )
         .toList();
@@ -142,15 +147,15 @@ class WallpaperApiService {
 
     final params = <String>[
       "key=$apiKey",
-      if (pixabayQuery != null) "q=$pixabayQuery",
+      if (pixabayQuery != null)
+        "q=${Uri.encodeQueryComponent(pixabayQuery)}",
       "image_type=photo",
       if (opts.purity != null)
         "safesearch=${opts.purity == "NSFW" ? "false" : "true"}",
-      if (opts.sorting == null)
-        "&order=popular"
-      else
-        "order=${opts.sorting == "date_added" ? "latest" : "popular"}",
-      if (opts.orientation != null) "orientation=${opts.orientation}",
+      "order=${opts.sorting == "date_added" ? "latest" : "popular"}",
+      // Pixabay only understands vertical/horizontal.
+      if (opts.orientation == "portrait") "orientation=vertical",
+      if (opts.orientation == "landscape") "orientation=horizontal",
       "page=${opts.page}",
       "per_page=${opts.perPage}",
     ];
@@ -168,9 +173,8 @@ class WallpaperApiService {
             id: item["id"].toString(),
             url: item["largeImageURL"],
             timestamp: DateTime.now(),
-            width: item["imageWidth"] as int?,
-            height: item["imageHeight"] as int?,
-            ratio: item["imageWidth"] / item["imageHeight"] as double?,
+            width: Wallpaper.parseNum(item["imageWidth"])?.toInt(),
+            height: Wallpaper.parseNum(item["imageHeight"])?.toInt(),
           ),
         );
       }
@@ -182,18 +186,15 @@ class WallpaperApiService {
     final apiKey = await UserSharedPrefs.getPexelsApiKey();
     if (apiKey == null || apiKey.isEmpty) return [];
 
+    // Pexels has no sort parameter: "curated" is its hand-picked best-of
+    // feed, and search results are ranked by relevance.
     final isSearch = opts.query != null;
     final endpoint = isSearch ? "v1/search" : "v1/curated";
-
-    final sortBy = opts.sorting != null
-        ? opts.sorting == "date_added" ? "date_added" : "popular"
-        : isSearch ? "popular" : null;
 
     final params = <String>[
       "page=${opts.page}",
       "per_page=${opts.perPage}",
       if (isSearch) "query=${Uri.encodeQueryComponent(opts.query!)}",
-      if (sortBy != null) "sort_by=$sortBy",
     ];
 
     final res = await http
@@ -220,9 +221,8 @@ class WallpaperApiService {
               id: item["id"].toString(),
               url: src["original"],
               timestamp: DateTime.now(),
-              width: src["width"] as int?,
-              height: src["height"] as int?,
-              ratio: src["width"] / src["height"] as double?,
+              width: Wallpaper.parseNum(item["width"])?.toInt(),
+              height: Wallpaper.parseNum(item["height"])?.toInt(),
             ),
           );
         }
@@ -253,9 +253,8 @@ class WallpaperApiService {
               id: item["id"].toString(),
               url: downloadUrl,
               timestamp: DateTime.now(),
-              width: item["width"] as int?,
-              height: item["height"] as int?,
-              ratio: item["width"] / item["height"] as double?,
+              width: Wallpaper.parseNum(item["width"])?.toInt(),
+              height: Wallpaper.parseNum(item["height"])?.toInt(),
             ),
           );
         }

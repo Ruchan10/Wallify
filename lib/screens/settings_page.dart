@@ -53,6 +53,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   int _cacheSize = 0;
   bool _batteryOptimized = false;
 
+  /// Bumped after an import so the API key fields reload their values.
+  int _apiKeysVersion = 0;
+
   @override
   void initState() {
     super.initState();
@@ -215,6 +218,21 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         showSnackBar(context: context, color: Colors.red, message: "Error: $e");
       }
     }
+  }
+
+  /// Makes imported settings take effect without restarting the app.
+  Future<void> _applyImportedSettings() async {
+    ref.invalidate(themeProvider);
+    ref.invalidate(monetThemeProvider);
+    ref.invalidate(wallpaperThemeProvider);
+    await _initialize(); // reloads state and reschedules if auto is on
+    if (!_autoWallpaperEnabled) {
+      try {
+        await platform.invokeMethod("cancelBackgroundWallpaperWorker");
+      } catch (_) {}
+    }
+    await updateWidget();
+    if (mounted) setState(() => _apiKeysVersion++);
   }
 
   void resetAutoWallpaper() async {
@@ -545,11 +563,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                             .watch(monetThemeProvider)
                             .whenOrNull(data: (v) => v) ??
                         false,
-                    onChanged: (val) async {
-                      await UserSharedPrefs.setUseMonetTheme(val);
-                      ref.invalidate(monetThemeProvider);
-                      ref.invalidate(wallpaperThemeProvider);
-                    },
+                    onChanged: (val) =>
+                        ref.read(monetThemeProvider.notifier).set(val),
                     activeThumbColor: scheme.secondary,
                   ),
                 ),
@@ -593,19 +608,19 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 ListTile(
                   leading: Icon(Icons.upload_file, color: scheme.primary),
                   title: const Text("Export Settings"),
+                  subtitle: const Text("Includes favorites and API keys"),
                   onTap: () async {
                     try {
-                      final file = await SettingsBackup.exportSettings();
+                      final location = await SettingsBackup.exportSettings();
                       if (mounted) {
                         showSnackBar(
                           context: context,
                           color: Colors.green,
-                          message: "Exported to ${file.path}",
+                          message: "Saved to $location",
                         );
                       }
                     } catch (e) {
                       if (mounted) {
-                        print("Export failed: $e");
                         showSnackBar(
                           context: context,
                           color: Colors.red,
@@ -618,32 +633,39 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 ListTile(
                   leading: Icon(Icons.download, color: scheme.primary),
                   title: const Text("Import Settings"),
+                  subtitle: const Text("Restore from a Wallify backup"),
                   onTap: () async {
                     try {
-                      final result = await FilePicker.pickFiles(
+                      final picked = await FilePicker.pickFiles(
                         type: FileType.custom,
                         allowedExtensions: ['json'],
                       );
-                      if (result != null && result.files.single.path != null) {
-                        final file = File(result.files.single.path!);
-                        final count = await SettingsBackup.importSettings(file);
+                      final path = picked?.files.single.path;
+                      if (path == null) return;
 
-                        await _initialize();
+                      final result = await SettingsBackup.importSettings(
+                        File(path),
+                      );
+                      await _applyImportedSettings();
 
-                        if (mounted) {
-                          showSnackBar(
-                            context: context,
-                            color: Colors.green,
-                            message: "Imported $count settings successfully",
-                          );
-                        }
+                      if (mounted) {
+                        showSnackBar(
+                          context: context,
+                          color: Colors.green,
+                          message: result.skipped == 0
+                              ? "Restored ${result.imported} settings"
+                              : "Restored ${result.imported} settings, "
+                                    "skipped ${result.skipped}",
+                        );
                       }
                     } catch (e) {
                       if (mounted) {
                         showSnackBar(
                           context: context,
                           color: Colors.red,
-                          message: "Import failed: $e",
+                          message: e is FormatException
+                              ? e.message
+                              : "Import failed: $e",
                         );
                       }
                     }
@@ -659,14 +681,15 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 ),
                 const SizedBox(height: 8),
                 _ApiKeyGuideRow(
-                  text: "Get a free Pexels API key at pexels.com/api",
+                  text: "Free key at pexels.com/api",
                   url: "https://www.pexels.com/api/",
                   scheme: scheme,
                 ),
                 const SizedBox(height: 4),
                 _ApiKeyField(
+                  key: ValueKey("pexels_$_apiKeysVersion"),
                   label: "Pexels API Key",
-                  hint: "API key from pexels.com/api",
+                  hint: "Paste your key",
                   isSecret: true,
                   load: () => UserSharedPrefs.getPexelsApiKey(),
                   save: (v) => UserSharedPrefs.setPexelsApiKey(v),
@@ -674,19 +697,20 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   scheme: scheme,
                 ),
                 _ApiKeyCaption(
-                  text: "Adds Pexels photos to the Discover tab.",
+                  text: "Adds Pexels photos to Discover.",
                   scheme: scheme,
                 ),
                 const SizedBox(height: 12),
                 _ApiKeyGuideRow(
-                  text: "Get a free Pixabay API key at pixabay.com/api",
+                  text: "Free key at pixabay.com/api",
                   url: "https://pixabay.com/api/docs/",
                   scheme: scheme,
                 ),
                 const SizedBox(height: 4),
                 _ApiKeyField(
+                  key: ValueKey("pixabay_$_apiKeysVersion"),
                   label: "Pixabay API Key",
-                  hint: "API key from pixabay.com/api",
+                  hint: "Paste your key",
                   isSecret: true,
                   load: () => UserSharedPrefs.getPixabayApiKey(),
                   save: (v) => UserSharedPrefs.setPixabayApiKey(v),
@@ -694,21 +718,20 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   scheme: scheme,
                 ),
                 _ApiKeyCaption(
-                  text:
-                      "Provides wallpapers for Discover, automatic wallpaper "
-                      "changes, and image info.",
+                  text: "More wallpapers for Discover and auto-change.",
                   scheme: scheme,
                 ),
                 const SizedBox(height: 12),
                 _ApiKeyGuideRow(
-                  text: "Get a free Unsplash API key at unsplash.com/oauth/applications",
+                  text: "Free key at unsplash.com/developers",
                   url: "https://unsplash.com/oauth/applications",
                   scheme: scheme,
                 ),
                 const SizedBox(height: 4),
                 _ApiKeyField(
+                  key: ValueKey("unsplash_$_apiKeysVersion"),
                   label: "Unsplash Access Key",
-                  hint: "Use the Access Key, not the Secret Key",
+                  hint: "Access Key, not Secret Key",
                   isSecret: true,
                   load: () => UserSharedPrefs.getUnsplashApiKey().then((v) =>
                       v == UserSharedPrefs.defaultUnsplashKey ? null : v),
@@ -717,35 +740,20 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   scheme: scheme,
                 ),
                 _ApiKeyCaption(
-                  text:
-                      "Provides wallpapers for Discover, automatic wallpaper "
-                      "changes, and image info. A built-in demo key works, "
-                      "but adding your own is unlimited.",
+                  text: "Optional. Works with a demo key; yours avoids limits.",
                   scheme: scheme,
-                ),
-                const SizedBox(height: 4),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: Text(
-                    "Paste the Access Key from your Unsplash app "
-                    "(under the \"Keys\" tab). The Secret Key is only for "
-                    "OAuth login and should never be shared.",
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: scheme.onSurfaceVariant,
-                    ),
-                  ),
                 ),
                 const SizedBox(height: 12),
                 _ApiKeyGuideRow(
-                  text: "Get a free Gemini API key at aistudio.google.com",
+                  text: "Free key at aistudio.google.com",
                   url: "https://aistudio.google.com/apikey",
                   scheme: scheme,
                 ),
                 const SizedBox(height: 4),
                 _ApiKeyField(
-                  label: "Google Gemini API Key",
-                  hint: "Free key from aistudio.google.com (vision analysis)",
+                  key: ValueKey("gemini_$_apiKeysVersion"),
+                  label: "Gemini API Key",
+                  hint: "Paste your key",
                   isSecret: true,
                   load: () => UserSharedPrefs.getGeminiApiKey(),
                   save: (v) => UserSharedPrefs.setGeminiApiKey(v),
@@ -753,9 +761,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   scheme: scheme,
                 ),
                 _ApiKeyCaption(
-                  text:
-                      "Enables AI Magic in the wallpaper preview to redesign "
-                      "wallpapers with Gemini.",
+                  text: "Powers AI Magic in the preview.",
                   scheme: scheme,
                 ),
                 const SizedBox(height: 8),
@@ -1412,6 +1418,7 @@ class _ApiKeyField extends StatefulWidget {
   final ColorScheme scheme;
 
   const _ApiKeyField({
+    super.key,
     required this.label,
     required this.hint,
     required this.isSecret,

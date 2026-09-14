@@ -26,7 +26,6 @@ class WallpaperManager {
       tag = await UserSharedPrefs.getRandomTag();
       deviceWidth = await UserSharedPrefs.getDeviceWidth();
       deviceHeight = await UserSharedPrefs.getDeviceHeight();
-      final sorting = await UserSharedPrefs.getFilterSorting();
 
       if (selected.contains("internet")) {
         final internetSources = ["wallhaven", "unsplash", "pixabay"];
@@ -36,7 +35,9 @@ class WallpaperManager {
             query: tag,
             page: 1,
             perPage: 15,
-            sorting: sorting ?? "toplist",
+            // Auto-change always uses the best-rated wallpapers, regardless
+            // of the sort picked in Discover.
+            sorting: "toplist",
             purity: "SFW",
             orientation: "portrait",
           ),

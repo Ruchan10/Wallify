@@ -1,129 +1,173 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/services.dart';
+import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:wallify/core/user_shared_prefs.dart';
+
+enum _PrefType { string, integer, boolean, stringList }
 
 class SettingsBackup {
-  static Future<File> exportSettings() async {
-    final prefs = await SharedPreferences.getInstance();
+  static const _format = "wallify-backup";
+  static const _version = 2;
 
-    final imageWallpapers = await UserSharedPrefs.getImageUrls();
-    final favWallpapers = await UserSharedPrefs.getFavWallpapers();
+  /// Everything a backup carries. Device-specific state (screen size, cached
+  /// file paths, usage tracking, worker logs) is deliberately left out so a
+  /// backup can be restored on another phone.
+  static const Map<String, _PrefType> _keys = {
+    // Wallpapers
+    "tags": _PrefType.stringList,
+    "invalidTags": _PrefType.stringList,
+    "favWallpaper": _PrefType.stringList,
+    "imageUrls": _PrefType.stringList,
+    "wallpaperHistory": _PrefType.string,
+    "wallpaperLocation": _PrefType.integer,
+    "wallpaperSource": _PrefType.string,
+    "folderPath": _PrefType.string,
+    "customApis": _PrefType.stringList,
+
+    // Automation
+    "autoWallpaperEnabled": _PrefType.boolean,
+    "wallpaper_interval": _PrefType.integer,
+    "lastWallpaperChange": _PrefType.string,
+    "scheduleEnabled": _PrefType.boolean,
+    "scheduleDays": _PrefType.string,
+    "scheduleStartHour": _PrefType.integer,
+    "scheduleEndHour": _PrefType.integer,
+    "constraint_charging": _PrefType.boolean,
+    "constraint_battery_not_low": _PrefType.boolean,
+    "constraint_storage_not_low": _PrefType.boolean,
+    "constraint_no_faces": _PrefType.boolean,
+    "constraint_wifi": _PrefType.boolean,
+    "allowedSsids": _PrefType.stringList,
+
+    // Discover filters
+    "discover_filter_sorting": _PrefType.string,
+    "discover_filter_purity": _PrefType.string,
+    "discover_filter_orientation": _PrefType.string,
+    "discover_filter_category": _PrefType.string,
+    "discover_filter_range": _PrefType.string,
+
+    // Appearance & app
+    "themeMode": _PrefType.integer,
+    "useMonetTheme": _PrefType.boolean,
+    "errorReportingEnabled": _PrefType.boolean,
+
+    // API keys
+    "pexels_api_key": _PrefType.string,
+    "pixabay_api_key": _PrefType.string,
+    "unsplash_api_key": _PrefType.string,
+    "gemini_api_key": _PrefType.string,
+  };
+
+  /// Writes a backup to Downloads and returns a human-readable location.
+  static Future<String> exportSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.reload(); // pick up values the native worker wrote
+
+    final settings = <String, dynamic>{};
+    for (final key in _keys.keys) {
+      final value = prefs.get(key);
+      if (value != null) settings[key] = value;
+    }
 
     final data = {
-      "tags": await UserSharedPrefs.getTags(),
-      "invalidTags": (await UserSharedPrefs.getInvalidTags()).toList(),
-      "wallpaperLocation": await UserSharedPrefs.getWallpaperLocation(),
-      "deviceWidth": await UserSharedPrefs.getDeviceWidth(),
-      "deviceHeight": await UserSharedPrefs.getDeviceHeight(),
-      "wallpaperHistory": prefs.getString("wallpaperHistory") ?? "[]",
-      "autoWallpaperEnabled": await UserSharedPrefs.getAutoWallpaperEnabled(),
-      "lastWallpaperChange": prefs.getString("lastWallpaperChange"),
-      "wallpaper_interval": await UserSharedPrefs.getInterval(),
-      "favWallpaper": favWallpapers.map((w) => jsonEncode(w.toJson())).toList(),
-      "imageUrls": imageWallpapers.map((w) => jsonEncode(w.toJson())).toList(),
-      "errorReportingEnabled": await UserSharedPrefs.getErrorReportingEnabled(),
-      "useMonetTheme": await UserSharedPrefs.getUseMonetTheme(),
-      "wallpaperSource": prefs.getString("wallpaperSource") ?? "internet",
-      "folderPath": jsonEncode(await UserSharedPrefs.getFolderPaths()),
-
-      // Constraints
-      "constraint_charging": await UserSharedPrefs.getConstraintCharging(),
-      "constraint_battery_not_low": await UserSharedPrefs.getConstraintBatteryNotLow(),
-      "constraint_storage_not_low": await UserSharedPrefs.getConstraintStorageNotLow(),
-      "constraint_no_faces": await UserSharedPrefs.getConstraintNoFaces(),
+      "format": _format,
+      "version": _version,
+      "exportedAt": DateTime.now().toIso8601String(),
+      "settings": settings,
     };
-
     final jsonString = const JsonEncoder.withIndent('  ').convert(data);
 
-    final timestamp = DateTime.now().millisecondsSinceEpoch;
-    final fileName = "WallifyBackup.json";
+    final stamp = DateFormat('yyyyMMdd_HHmm').format(DateTime.now());
+    final fileName = "Wallify_backup_$stamp.json";
 
-    final appDir = await getTemporaryDirectory();
-    final tempFile = File("${appDir.path}/$fileName");
+    final tempFile = File("${(await getTemporaryDirectory()).path}/$fileName");
     await tempFile.writeAsString(jsonString, flush: true);
 
     try {
       const channel = MethodChannel('wallpaper_channel');
       final result = await channel.invokeMethod<String>(
         'saveToDownloads',
-        {'filePath': tempFile.path, 'fileName': fileName},
+        {
+          'filePath': tempFile.path,
+          'fileName': fileName,
+          'subdirectory': 'Wallify',
+        },
       );
       if (result != null) {
         await tempFile.delete();
-        return File(result);
+        return "Downloads/Wallify/$fileName";
       }
     } catch (_) {
-      // Fall back to legacy methods
+      // Fall back to app-accessible directories below.
     }
 
-    final downloadDir = await getDownloadsDirectory();
-    if (downloadDir != null) {
-      final file = File("${downloadDir.path}/$fileName");
-      await file.writeAsString(jsonString, flush: true);
-      return file;
-    }
-
-    final extDir = await getExternalStorageDirectory();
-    if (extDir != null) {
-      final downloadSubdir = Directory("${extDir.path}/Download");
-      if (!await downloadSubdir.exists()) {
-        await downloadSubdir.create(recursive: true);
-      }
-      final file = File("${downloadSubdir.path}/$fileName");
-      await file.writeAsString(jsonString, flush: true);
-      return file;
-    }
-
-    final docDir = await getApplicationDocumentsDirectory();
-    final file = File("${docDir.path}/$fileName");
-    await file.writeAsString(jsonString, flush: true);
-    return file;
+    final dir = await getDownloadsDirectory() ??
+        await getExternalStorageDirectory() ??
+        await getApplicationDocumentsDirectory();
+    final file = File("${dir.path}/$fileName");
+    await tempFile.copy(file.path);
+    await tempFile.delete();
+    return file.path;
   }
 
-  static Future<int> importSettings(File file) async {
-    final content = await file.readAsString();
-    final decoded = jsonDecode(content);
-
+  /// Restores a backup. Only known settings are written; anything else in the
+  /// file is counted as skipped. Also accepts the older flat backup format.
+  static Future<({int imported, int skipped})> importSettings(File file) async {
+    final decoded = jsonDecode(await file.readAsString());
     if (decoded is! Map<String, dynamic>) {
-      throw FormatException("Invalid backup file: expected a JSON object");
+      throw const FormatException("Not a Wallify backup file");
+    }
+
+    final Map<String, dynamic> settings;
+    if (decoded.containsKey("format")) {
+      if (decoded["format"] != _format || decoded["settings"] is! Map) {
+        throw const FormatException("Not a Wallify backup file");
+      }
+      settings = Map<String, dynamic>.from(decoded["settings"] as Map);
+    } else {
+      settings = decoded; // v1: settings at the top level
+    }
+
+    if (!settings.keys.any(_keys.containsKey)) {
+      throw const FormatException("Not a Wallify backup file");
     }
 
     final prefs = await SharedPreferences.getInstance();
-    int count = 0;
+    var imported = 0;
+    var skipped = 0;
 
-    for (final entry in decoded.entries) {
-      final key = entry.key;
-      final value = entry.value;
-
-      if (value is String) {
-        await prefs.setString(key, value);
-        count++;
-      } else if (value is int) {
-        await prefs.setInt(key, value);
-        count++;
-      } else if (value is bool) {
-        await prefs.setBool(key, value);
-        count++;
-      } else if (value is List) {
-        final validStrings = <String>[];
-        bool allStrings = true;
-        for (final item in value) {
-          if (item is String) {
-            validStrings.add(item);
-          } else {
-            allStrings = false;
-          }
-        }
-        if (allStrings) {
-          await prefs.setStringList(key, validStrings);
-          count++;
-        }
-      }
+    for (final entry in settings.entries) {
+      final type = _keys[entry.key];
+      final ok = type != null && await _write(prefs, entry.key, type, entry.value);
+      ok ? imported++ : skipped++;
     }
 
-    return count;
+    return (imported: imported, skipped: skipped);
+  }
+
+  static Future<bool> _write(
+    SharedPreferences prefs,
+    String key,
+    _PrefType type,
+    dynamic value,
+  ) async {
+    switch (type) {
+      case _PrefType.string:
+        if (value is! String) return false;
+        return prefs.setString(key, value);
+      case _PrefType.integer:
+        if (value is! num) return false;
+        return prefs.setInt(key, value.toInt());
+      case _PrefType.boolean:
+        if (value is! bool) return false;
+        return prefs.setBool(key, value);
+      case _PrefType.stringList:
+        // Older installs stored some lists as a JSON string; keep that form.
+        if (value is String) return prefs.setString(key, value);
+        if (value is! List || value.any((e) => e is! String)) return false;
+        return prefs.setStringList(key, value.cast<String>());
+    }
   }
 }

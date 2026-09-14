@@ -251,10 +251,64 @@ class _WallpaperPreviewPageState extends ConsumerState<WallpaperPreviewPage>
     });
   }
 
+  /// Reads the image's pixel size from its header without fully decoding it.
+  Future<Size?> _imagePixelSize() async {
+    final file = _downloadedImage;
+    if (file == null) return null;
+    final buffer = await ImmutableBuffer.fromUint8List(await file.readAsBytes());
+    final descriptor = await ImageDescriptor.encoded(buffer);
+    final size = Size(descriptor.width.toDouble(), descriptor.height.toDouble());
+    descriptor.dispose();
+    buffer.dispose();
+    return size;
+  }
+
+  /// Scales the image to cover the viewport and centres [focus] (in image
+  /// pixels) as far as the image edges allow.
+  void _applyFocusTransform(Size viewport, Size image, Offset focus) {
+    final scaleX = viewport.width / image.width;
+    final scaleY = viewport.height / image.height;
+    final scale = scaleX > scaleY ? scaleX : scaleY;
+
+    // Guard against float rounding making these slightly positive, which
+    // would make clamp() throw.
+    final overflowX = viewport.width - image.width * scale;
+    final overflowY = viewport.height - image.height * scale;
+    final minTx = overflowX < 0 ? overflowX : 0.0;
+    final minTy = overflowY < 0 ? overflowY : 0.0;
+    final tx = (viewport.width / 2 - focus.dx * scale).clamp(minTx, 0.0);
+    final ty = (viewport.height / 2 - focus.dy * scale).clamp(minTy, 0.0);
+
+    debugPrint(
+      'Focus transform: image=${image.width.toInt()}x${image.height.toInt()} '
+      'focus=(${focus.dx.toInt()}, ${focus.dy.toInt()}) '
+      'tx=${tx.toStringAsFixed(1)}, ty=${ty.toStringAsFixed(1)}, '
+      'scale=${scale.toStringAsFixed(3)}',
+    );
+
+    _transformationController.value = Matrix4.identity()
+      ..translate(tx, ty)
+      ..scale(scale);
+  }
+
   Future<void> _detectAndCenterFocus() async {
     if (_downloadedImage == null) return;
     const channel = MethodChannel('wallpaper_channel');
-    final size = MediaQuery.of(context).size;
+    final viewport = MediaQuery.of(context).size;
+
+    Size? imageSize;
+    try {
+      imageSize = await _imagePixelSize();
+    } catch (e) {
+      debugPrint('Could not read image size: $e');
+    }
+    if (!mounted || imageSize == null || !_isCropMode) return;
+
+    // Centre straight away so the image never sits at the top-left while
+    // detection runs, or if it finds nothing.
+    final imageCenter = Offset(imageSize.width / 2, imageSize.height / 2);
+    _applyFocusTransform(viewport, imageSize, imageCenter);
+
     try {
       debugPrint('Starting object detection for ${_currentWallpaper.url}');
       final focus = await channel.invokeMethod<Map<dynamic, dynamic>>(
@@ -262,53 +316,17 @@ class _WallpaperPreviewPageState extends ConsumerState<WallpaperPreviewPage>
         {'filePath': _downloadedImage!.path},
       );
       debugPrint('Object detection result: $focus');
-      if (focus == null) return;
+      if (!mounted || !_isCropMode || _downloadedImage == null) return;
+      if (focus == null || (focus['source'] as num?)?.toInt() == 0) {
+        debugPrint('No subject detected, keeping image centred');
+        return;
+      }
       final fx = (focus['x'] as num).toDouble();
       final fy = (focus['y'] as num).toDouble();
-      debugPrint('Focus point: x=$fx, y=$fy');
-
-      final decoded = img.decodeImage(await _downloadedImage!.readAsBytes());
-      if (decoded == null) return;
-      final imgW = decoded.width.toDouble();
-      final imgH = decoded.height.toDouble();
-
-      final scaleX = size.width / imgW;
-      final scaleY = size.height / imgH;
-      final scale = scaleX > scaleY ? scaleX : scaleY;
-
-      final tx = size.width / 2 - fx * scale;
-      final ty = size.height / 2 - fy * scale;
-
-      debugPrint('Transform: tx=$tx, ty=$ty, scale=$scale');
-
-      _transformationController.value = Matrix4.identity()
-        ..translate(tx, ty)
-        ..scale(scale);
+      _applyFocusTransform(viewport, imageSize, Offset(fx, fy));
     } catch (e) {
       debugPrint('Error in object detection: $e');
-      _centerImageInViewport(size);
     }
-  }
-
-  void _centerImageInViewport(Size size) {
-    if (_downloadedImage == null) return;
-    try {
-      final decoded = img.decodeImage(File(_downloadedImage!.path).readAsBytesSync());
-      if (decoded == null) return;
-      final imgW = decoded.width.toDouble();
-      final imgH = decoded.height.toDouble();
-
-      final scaleX = size.width / imgW;
-      final scaleY = size.height / imgH;
-      final scale = scaleX > scaleY ? scaleX : scaleY;
-
-      final tx = (size.width - imgW * scale) / 2;
-      final ty = (size.height - imgH * scale) / 2;
-
-      _transformationController.value = Matrix4.identity()
-        ..translate(tx, ty)
-        ..scale(scale);
-    } catch (_) {}
   }
 
   Future<img.Image?> _processImage() async {
