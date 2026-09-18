@@ -1,74 +1,40 @@
 package com.rk.wallify
 
 import android.content.Context
-import org.json.JSONArray
-import org.json.JSONObject
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
+import android.util.Log
 
+/**
+ * Background worker logging, sent to Logcat (`adb logcat -s Wallify`).
+ *
+ * Logs used to be persisted to SharedPreferences for an in-app viewer. That
+ * viewer is gone, so nothing is stored any more and entries left behind by
+ * older versions are deleted the first time anything is logged.
+ */
 object WorkerLogger {
-    private const val PREFS_NAME = "FlutterSharedPreferences"
-    private const val LOG_KEY = "worker_logs"
-    private const val MAX_ENTRIES = 200
-    private val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.getDefault())
+    private const val LOG_TAG = "Wallify"
+    private const val LEGACY_PREFS_NAME = "FlutterSharedPreferences"
+    private const val LEGACY_LOG_KEY = "worker_logs"
 
-    private fun getPrefs(context: Context) =
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    @Volatile
+    private var legacyLogsCleared = false
 
-    // Read-modify-write on prefs; synchronized so concurrent callers don't drop entries.
-    @Synchronized
-    fun log(context: Context, level: String, tag: String, message: String) {
-        try {
-            val prefs = getPrefs(context)
-            val raw = prefs.getString(LOG_KEY, "[]") ?: "[]"
-            val arr = JSONArray(raw)
+    fun i(context: Context, tag: String, message: String) = log(context, Log.INFO, tag, message)
+    fun w(context: Context, tag: String, message: String) = log(context, Log.WARN, tag, message)
+    fun e(context: Context, tag: String, message: String) = log(context, Log.ERROR, tag, message)
 
-            val entry = JSONObject().apply {
-                put("ts", dateFormat.format(Date()))
-                put("level", level)
-                put("tag", tag)
-                put("msg", message)
-            }
-
-            arr.put(entry)
-            while (arr.length() > MAX_ENTRIES) {
-                arr.remove(0)
-            }
-
-            prefs.edit().putString(LOG_KEY, arr.toString()).apply()
-        } catch (_: Exception) {
-        }
+    private fun log(context: Context, priority: Int, tag: String, message: String) {
+        Log.println(priority, LOG_TAG, "[$tag] $message")
+        clearLegacyLogs(context)
     }
 
-    fun i(context: Context, tag: String, message: String) = log(context, "I", tag, message)
-    fun w(context: Context, tag: String, message: String) = log(context, "W", tag, message)
-    fun e(context: Context, tag: String, message: String) = log(context, "E", tag, message)
-
-    fun getLogs(context: Context): List<Map<String, String>> {
-        return try {
-            val prefs = getPrefs(context)
-            val raw = prefs.getString(LOG_KEY, "[]") ?: "[]"
-            val arr = JSONArray(raw)
-            val result = mutableListOf<Map<String, String>>()
-            for (i in 0 until arr.length()) {
-                val obj = arr.getJSONObject(i)
-                result.add(mapOf(
-                    "ts" to obj.optString("ts", ""),
-                    "level" to obj.optString("level", ""),
-                    "tag" to obj.optString("tag", ""),
-                    "msg" to obj.optString("msg", "")
-                ))
-            }
-            result
-        } catch (_: Exception) {
-            emptyList()
-        }
-    }
-
-    fun clearLogs(context: Context) {
+    private fun clearLegacyLogs(context: Context) {
+        if (legacyLogsCleared) return
+        legacyLogsCleared = true
         try {
-            getPrefs(context).edit().remove(LOG_KEY).apply()
+            val prefs = context.getSharedPreferences(LEGACY_PREFS_NAME, Context.MODE_PRIVATE)
+            if (prefs.contains(LEGACY_LOG_KEY)) {
+                prefs.edit().remove(LEGACY_LOG_KEY).apply()
+            }
         } catch (_: Exception) {
         }
     }

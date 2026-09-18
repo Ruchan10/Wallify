@@ -47,23 +47,36 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   bool _updateAvailable = false;
   bool _checkingUpdate = true;
 
-  List<Map<String, String>> _workerLogs = [];
-  bool _logsExpanded = false;
-
   int _cacheSize = 0;
   bool _batteryOptimized = false;
 
   /// Bumped after an import so the API key fields reload their values.
   int _apiKeysVersion = 0;
 
+  late final AppLifecycleListener _lifecycleListener;
+
   @override
   void initState() {
     super.initState();
     _initialize();
     _checkUpdateStatus();
-    _loadWorkerLogs();
     _loadCacheSize();
     _loadBatteryStatus();
+    // The Quick Settings tile can flip auto wallpaper while the app is open.
+    _lifecycleListener = AppLifecycleListener(onResume: _refreshAutoWallpaper);
+  }
+
+  @override
+  void dispose() {
+    _lifecycleListener.dispose();
+    super.dispose();
+  }
+
+  Future<void> _refreshAutoWallpaper() async {
+    final enabled = await UserSharedPrefs.getAutoWallpaperEnabled();
+    if (mounted && enabled != _autoWallpaperEnabled) {
+      setState(() => _autoWallpaperEnabled = enabled);
+    }
   }
 
   Future<int> _dirSize(Directory dir) async {
@@ -128,24 +141,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         _checkingUpdate = false;
       });
     }
-  }
-
-  Future<void> _loadWorkerLogs() async {
-    try {
-      final logs = await platform.invokeMethod("getWorkerLogs");
-      if (logs is List) {
-        setState(() {
-          _workerLogs = logs.map((e) => Map<String, String>.from(e as Map)).toList();
-        });
-      }
-    } catch (_) {}
-  }
-
-  Future<void> _clearWorkerLogs() async {
-    try {
-      await platform.invokeMethod("clearWorkerLogs");
-      setState(() => _workerLogs.clear());
-    } catch (_) {}
   }
 
   Future<void> _loadBatteryStatus() async {
@@ -474,6 +469,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                           WallpaperCacheManager.cacheWallpapers(fetched);
                         }
                         setState(() => _autoWallpaperEnabled = value);
+                        // Save first: the native scheduler reads this flag and
+                        // does nothing while it is still false.
+                        await UserSharedPrefs.setAutoWallpaperEnabled(value);
 
                         if (value) {
                           try {
@@ -509,7 +507,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                             );
                           }
                         }
-                        await UserSharedPrefs.setAutoWallpaperEnabled(value);
                         updateWidget();
                       },
                     ),
@@ -827,7 +824,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 const Divider(),
                 _buildStorageSection(scheme),
                 const SizedBox(height: 16),
-                _buildLogViewer(scheme),
+                const Divider(),
+                const SizedBox(height: 16),
+                _buildSupportSection(),
                 const SizedBox(height: 80),
               ],
             ),
@@ -1223,118 +1222,46 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     );
   }
 
-  Widget _buildLogViewer(ColorScheme scheme) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+  static final _coffeeUrl = Uri.parse("https://www.buymeacoffee.com/rk10");
+  static final _sourceUrl = Uri.parse("https://github.com/Ruchan10/Wallify");
+
+  Future<void> _openLink(Uri url) async {
+    if (!await launchUrl(url, mode: LaunchMode.externalApplication) && mounted) {
+      showSnackBar(
+        context: context,
+        color: Colors.red,
+        message: "Couldn't open ${url.host}",
+      );
+    }
+  }
+
+  Widget _buildSupportSection() {
+    return Row(
       children: [
-        InkWell(
-          onTap: () {
-            setState(() => _logsExpanded = !_logsExpanded);
-            if (_logsExpanded) _loadWorkerLogs();
-          },
-          child: Row(
-            children: [
-              Icon(
-                _logsExpanded ? Icons.expand_less : Icons.expand_more,
-                size: 20,
-                color: scheme.onSurfaceVariant,
-              ),
-              const SizedBox(width: 6),
-              Icon(Icons.terminal, size: 18, color: scheme.onSurfaceVariant),
-              const SizedBox(width: 6),
-              Text(
-                "Worker Logs (${_workerLogs.length})",
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-              const Spacer(),
-              if (_logsExpanded)
-                IconButton(
-                  icon: Icon(Icons.refresh, size: 18),
-                  onPressed: _loadWorkerLogs,
-                  tooltip: "Refresh logs",
-                  visualDensity: VisualDensity.compact,
-                ),
-              if (_logsExpanded && _workerLogs.isNotEmpty)
-                IconButton(
-                  icon: Icon(Icons.delete_outline, size: 18),
-                  onPressed: _clearWorkerLogs,
-                  tooltip: "Clear logs",
-                  visualDensity: VisualDensity.compact,
-                ),
-            ],
+        Expanded(
+          child: FilledButton.icon(
+            style: FilledButton.styleFrom(
+              // Buy Me a Coffee's brand yellow, readable in light and dark themes.
+              backgroundColor: const Color(0xFFFFDD00),
+              foregroundColor: Colors.black,
+              padding: const EdgeInsets.symmetric(vertical: 12),
+            ),
+            onPressed: () => _openLink(_coffeeUrl),
+            icon: const Icon(Icons.coffee_rounded),
+            label: const Text("Buy me a coffee"),
           ),
         ),
-        if (_logsExpanded) ...[
-          const SizedBox(height: 8),
-          Container(
-            height: 250,
-            decoration: BoxDecoration(
-              color: scheme.surfaceContainerHighest,
-              borderRadius: BorderRadius.circular(12),
+        const SizedBox(width: 12),
+        Expanded(
+          child: OutlinedButton.icon(
+            style: OutlinedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(vertical: 12),
             ),
-            child: _workerLogs.isEmpty
-              ? Center(
-                  child: Text(
-                    "No logs yet.\nLogs appear here when the\nbackground worker runs.",
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: scheme.onSurfaceVariant,
-                    ),
-                  ),
-                )
-              : ListView.builder(
-                  padding: const EdgeInsets.all(8),
-                  itemCount: _workerLogs.length,
-                  itemBuilder: (context, index) {
-                    final log = _workerLogs[index];
-                    final level = log["level"] ?? "";
-                    final ts = log["ts"] ?? "";
-                    final tag = log["tag"] ?? "";
-                    final msg = log["msg"] ?? "";
-                    final color = switch (level) {
-                      "E" => Colors.red.shade300,
-                      "W" => Colors.orange.shade300,
-                      _ => scheme.onSurface,
-                    };
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 1),
-                      child: Text.rich(
-                        TextSpan(
-                          children: [
-                            TextSpan(
-                              text: "[$level]",
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.bold,
-                                color: color,
-                                fontFamily: 'monospace',
-                              ),
-                            ),
-                            TextSpan(
-                              text: " $ts ",
-                              style: TextStyle(
-                                fontSize: 10,
-                                color: scheme.onSurfaceVariant.withValues(alpha: 0.6),
-                                fontFamily: 'monospace',
-                              ),
-                            ),
-                            TextSpan(
-                              text: msg,
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: scheme.onSurface,
-                                fontFamily: 'monospace',
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
-                ),
+            onPressed: () => _openLink(_sourceUrl),
+            icon: const Icon(Icons.code_rounded),
+            label: const Text("View source code"),
           ),
-        ],
+        ),
       ],
     );
   }

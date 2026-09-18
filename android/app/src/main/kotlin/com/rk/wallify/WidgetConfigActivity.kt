@@ -36,6 +36,7 @@ class WidgetConfigActivity : Activity() {
             when (currentLocation) {
                 1 -> R.id.radio_home
                 2 -> R.id.radio_lock
+                4 -> R.id.radio_random
                 else -> R.id.radio_both
             }
         )
@@ -51,6 +52,7 @@ class WidgetConfigActivity : Activity() {
             val location = when (locationGroup.checkedRadioButtonId) {
                 R.id.radio_home -> 1
                 R.id.radio_lock -> 2
+                R.id.radio_random -> 4
                 else -> 3
             }
             val sources = listOf(

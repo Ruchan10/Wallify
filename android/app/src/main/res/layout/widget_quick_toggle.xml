@@ -55,11 +55,11 @@
             android:layout_marginEnd="4dp" />
 
         <TextView
-            android:id="@+id/btn_auto_toggle"
+            android:id="@+id/option_random"
             android:layout_width="0dp"
             android:layout_height="24dp"
             android:layout_weight="1"
-            android:text="AUTO"
+            android:text="RANDOM"
             android:textColor="#70FFFFFF"
             android:textSize="9sp"
             android:textStyle="bold"

@@ -208,19 +208,6 @@ class MainActivity : FlutterActivity() {
                             result.error("INVALID_ARGS", "filePath and fileName are required", null)
                         }
                     }
-                    "getWorkerLogs" -> {
-                        val logs = WorkerLogger.getLogs(this@MainActivity)
-                        result.success(logs.map { mapOf(
-                            "ts" to (it["ts"] ?: ""),
-                            "level" to (it["level"] ?: ""),
-                            "tag" to (it["tag"] ?: ""),
-                            "msg" to (it["msg"] ?: "")
-                        ) })
-                    }
-                    "clearWorkerLogs" -> {
-                        WorkerLogger.clearLogs(this@MainActivity)
-                        result.success("Logs cleared")
-                    }
                     "updateWidget" -> {
                         StatsWidget.triggerUpdate(this@MainActivity)
                         QuickToggleWidget.triggerUpdate(this@MainActivity)

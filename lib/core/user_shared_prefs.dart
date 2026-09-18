@@ -332,6 +332,9 @@ class UserSharedPrefs {
 
   static Future<bool> getAutoWallpaperEnabled() async {
     final prefs = await SharedPreferences.getInstance();
+    // Native code (the Quick Settings tile) writes this too, behind the back of
+    // the plugin's in-memory cache.
+    await prefs.reload();
     return prefs.getBool(_autoWallpaperEnabledKey) ?? false;
   }
 

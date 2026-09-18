@@ -52,13 +52,20 @@
             android:name="flutterEmbedding"
             android:value="2" />
 
+        <!-- icon + label are what the Quick Settings editor shows before the tile
+             has ever run; without them Android falls back to the app icon. -->
         <service
             android:name=".WallifyTileService"
             android:exported="true"
+            android:icon="@drawable/ic_tile_wallpaper"
+            android:label="Auto Wallpaper"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
             <intent-filter>
                 <action android:name="android.service.quicksettings.action.QS_TILE" />
             </intent-filter>
+            <meta-data
+                android:name="android.service.quicksettings.TOGGLEABLE_TILE"
+                android:value="true" />
         </service>
 
         <service

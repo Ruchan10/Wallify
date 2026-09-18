@@ -3,6 +3,8 @@
 A wallpaper app for **Android**, plus a script that changes your **macOS / Linux**
 desktop wallpaper on a schedule.
 
+<a href="https://www.buymeacoffee.com/rk10" target="_blank"><img src="https://img.buymeacoffee.com/button-api/?text=Buy me a coffee&slug=rk10&button_colour=FFDD00&font_colour=000000&outline_colour=000000&coffee_colour=ffffff" height="40" /></a>
+
 <img src="https://raw.githubusercontent.com/Ruchan10/Wallify/main/assets/screenshots/flutter_01.png" width="45%">
 
 ## Phone
@@ -100,11 +102,6 @@ cd Wallify
 flutter pub get
 flutter run
 ```
-
-## ☕ Support
-
-If you like my work, consider buying me a coffee:
-<a href="https://www.buymeacoffee.com/rk10" target="_blank"><img src="https://img.buymeacoffee.com/button-api/?text=Buy me a coffee&slug=rk10&button_colour=FFDD00&font_colour=000000&outline_colour=000000&coffee_colour=ffffff" /></a>
 
 ## 🤝 Contributing
 

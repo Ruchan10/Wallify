@@ -8,7 +8,6 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.widget.RemoteViews
-import kotlin.random.Random
 
 class QuickToggleWidget : AppWidgetProvider() {
 
@@ -33,12 +32,6 @@ class QuickToggleWidget : AppWidgetProvider() {
                     WallpaperUtils.downloadAndSetWallpaperBackground(context, isManual = true)
                     triggerUpdate(context)
                 }.start()
-            }
-            ACTION_RANDOM_LOCATION -> {
-                val loc = Random.nextInt(1, 4)
-                val prefs = WidgetUtils.getPrefs(context)
-                prefs.edit().putInt("flutter.wallpaperLocation", loc).apply()
-                triggerUpdate(context)
             }
         }
     }
@@ -70,8 +63,9 @@ class QuickToggleWidget : AppWidgetProvider() {
         views.setOnClickPendingIntent(R.id.option_home, buildLocationIntent(context, 1, flags))
         views.setOnClickPendingIntent(R.id.option_lock, buildLocationIntent(context, 2, flags))
         views.setOnClickPendingIntent(R.id.option_both, buildLocationIntent(context, 3, flags))
+        // 4 is the app's Random mode: home, lock or both is re-picked on every change.
+        views.setOnClickPendingIntent(R.id.option_random, buildLocationIntent(context, 4, flags))
         views.setOnClickPendingIntent(R.id.btn_change_now, buildChangeNowIntent(context, flags))
-        views.setOnClickPendingIntent(R.id.btn_auto_toggle, buildRandomLocationIntent(context, flags))
         views.setOnClickPendingIntent(R.id.widget_root, WidgetUtils.buildOpenAppIntent(context, 100))
         return views
     }
@@ -82,6 +76,7 @@ class QuickToggleWidget : AppWidgetProvider() {
         views.setTextColor(R.id.option_home, android.graphics.Color.parseColor(if (location == 1) sel else unsel))
         views.setTextColor(R.id.option_lock, android.graphics.Color.parseColor(if (location == 2) sel else unsel))
         views.setTextColor(R.id.option_both, android.graphics.Color.parseColor(if (location == 3) sel else unsel))
+        views.setTextColor(R.id.option_random, android.graphics.Color.parseColor(if (location == 4) sel else unsel))
     }
 
     private fun buildLocationIntent(context: Context, location: Int, flags: Int): PendingIntent {
@@ -99,21 +94,12 @@ class QuickToggleWidget : AppWidgetProvider() {
         return PendingIntent.getBroadcast(context, REQ_CHANGE_NOW, intent, flags)
     }
 
-    private fun buildRandomLocationIntent(context: Context, flags: Int): PendingIntent {
-        val intent = Intent(context, QuickToggleWidget::class.java).apply {
-            action = ACTION_RANDOM_LOCATION
-        }
-        return PendingIntent.getBroadcast(context, REQ_RANDOM_LOCATION, intent, flags)
-    }
-
     companion object {
         const val ACTION_SET_LOCATION = "com.rk.wallify.qt.ACTION_SET_LOCATION"
         const val ACTION_CHANGE_NOW = "com.rk.wallify.qt.ACTION_CHANGE_NOW"
-        const val ACTION_RANDOM_LOCATION = "com.rk.wallify.qt.ACTION_RANDOM_LOCATION"
         const val EXTRA_LOCATION = "location"
         private const val REQ_LOCATION_BASE = 0
         private const val REQ_CHANGE_NOW = 10
-        private const val REQ_RANDOM_LOCATION = 20
 
         fun triggerUpdate(context: Context) {
             val appWidgetManager = AppWidgetManager.getInstance(context)
