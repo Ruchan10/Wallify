@@ -125,19 +125,54 @@ ask WALLHAVEN_API_KEY   "Wallhaven API key    (optional)"                       
 ask NASA_API_KEY        "NASA API key         (api.nasa.gov)"                    "${NASA_API_KEY:-DEMO_KEY}"
 
 step "Tags — the search terms wallpapers are picked from."
-DEFAULT_TAGS="nature, space, minimal, cyberpunk, mountains, ocean, night, city, abstract, forest"
-if [[ -n "${TAGS+set}" ]] && (( ${#TAGS[@]} )); then
-  DEFAULT_TAGS=$(printf '%s, ' "${TAGS[@]}" | sed 's/, $//')
-fi
-say "Separate them with commas."
-ask TAGS_RAW "Tags" "$DEFAULT_TAGS"
 
-# Split on commas, drop blanks and surrounding spaces.
+# Splits a comma-separated answer into trimmed, non-empty lines.
+split_list() {
+  printf '%s\n' "$1" | tr ',' '\n' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' | grep -v '^$'
+}
+lower() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
+
 NEW_TAGS=()
-while IFS= read -r tag; do
-  [[ -n "$tag" ]] && NEW_TAGS+=("$tag")
-done < <(printf '%s\n' "$TAGS_RAW" | tr ',' '\n' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
-(( ${#NEW_TAGS[@]} )) || NEW_TAGS=("nature" "space" "minimal")
+if [[ -n "${TAGS+set}" ]] && (( ${#TAGS[@]} )); then
+  # Re-run: keep the existing tags; add and remove on top of them.
+  NEW_TAGS=("${TAGS[@]}")
+  say "Your tags:"
+  i=1
+  for tag in "${NEW_TAGS[@]}"; do printf '  %2d. %s\n' "$i" "$tag"; i=$(( i + 1 )); done
+  say "Separate several with commas."
+  ask ADD_RAW "Tags to add" ""
+  while IFS= read -r tag; do
+    dup=false
+    for e in "${NEW_TAGS[@]}"; do [[ "$(lower "$e")" == "$(lower "$tag")" ]] && dup=true && break; done
+    $dup || NEW_TAGS+=("$tag")
+  done < <(split_list "$ADD_RAW")
+
+  ask REMOVE_RAW "Tags to remove (names or numbers)" ""
+  if [[ -n "$REMOVE_RAW" ]]; then
+    gone=$'\n'
+    while IFS= read -r item; do
+      # Numbers refer to the list shown above.
+      if [[ "$item" =~ ^[0-9]+$ ]] && (( item >= 1 && item <= ${#TAGS[@]} )); then
+        item="${TAGS[item-1]}"
+      fi
+      gone+="$(lower "$item")"$'\n'
+    done < <(split_list "$REMOVE_RAW")
+    kept=()
+    for tag in "${NEW_TAGS[@]}"; do
+      [[ "$gone" == *$'\n'"$(lower "$tag")"$'\n'* ]] || kept+=("$tag")
+    done
+    NEW_TAGS=(${kept[@]+"${kept[@]}"})
+  fi
+else
+  say "Separate them with commas."
+  ask TAGS_RAW "Tags" "nature, space, minimal, cyberpunk, mountains, ocean, night, city, abstract, forest"
+  while IFS= read -r tag; do NEW_TAGS+=("$tag"); done < <(split_list "$TAGS_RAW")
+fi
+if (( ${#NEW_TAGS[@]} )); then
+  say "Using: $(printf '%s, ' "${NEW_TAGS[@]}" | sed 's/, $//')"
+else
+  say "No tags — a built-in mix of popular searches will be used."
+fi
 
 # --- dependencies -----------------------------------------------------------
 
@@ -195,8 +230,9 @@ step "Writing the config"
   printf 'SOURCES="%s"\n'             "${SOURCES:-wallhaven unsplash pexels pixabay openverse bing nasa picsum}"
   printf 'REDDIT_SUBREDDITS="%s"\n'   "${REDDIT_SUBREDDITS:-wallpaper wallpapers EarthPorn spaceporn}"
   printf 'BING_MARKET="%s"\n\n'       "${BING_MARKET:-en-US}"
+  # %q keeps tags with spaces or quotes intact when the config is sourced.
   printf 'TAGS=('
-  printf '"%s" ' "${NEW_TAGS[@]}"
+  (( ${#NEW_TAGS[@]} )) && printf '%q ' "${NEW_TAGS[@]}"
   printf ')\n\n'
   printf 'WALLPAPER_DIR="%s"\n'       "${WALLPAPER_DIR:-\$HOME/Pictures/Wallpapers}"
   printf 'KEEP_WALLPAPERS=%s\n'       "${KEEP_WALLPAPERS:-30}"
@@ -204,6 +240,7 @@ step "Writing the config"
   printf 'ONLY_WHEN_CHARGING=%s\n'    "${ONLY_WHEN_CHARGING:-false}"
   printf 'MIN_INTERVAL_MINUTES=%s\n'  "${MIN_INTERVAL_MINUTES:-0}"
   printf 'SET_LOCK_SCREEN=%s\n'       "${SET_LOCK_SCREEN:-true}"
+  printf 'LOCK_SCREEN_IMAGE="%s"\n'   "${LOCK_SCREEN_IMAGE:-different}"
   printf 'WALLIFY_DESKTOP="%s"\n'     "${WALLIFY_DESKTOP:-}"
   printf 'POST_SET_HOOK="%s"\n'       "${POST_SET_HOOK:-}"
 } > "$CONFIG"
@@ -304,6 +341,9 @@ cat <<EOF
 Handy commands
   $BIN -f          change the wallpaper now
   $BIN -l          which sources are ready
+  $BIN -T          list your tags
+  $BIN -a "a, b"   add tags
+  $BIN -r "a, 2"   remove tags by name or number
 EOF
 if [[ "$SCHEDULER" == systemd ]]; then
   cat <<EOF

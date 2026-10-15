@@ -1,4 +1,7 @@
+import 'dart:async';
 import 'dart:io';
+import 'dart:isolate';
+import 'dart:math';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -34,20 +37,59 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
   List<String> savedTags = [];
   Set<String> _invalidTags = {};
+
+  /// Tags whose availability check is still running.
+  final Set<String> _checkingTags = {};
   int wallpaperLocation = WallpaperManagerFlutter.bothScreens;
 
   int _intervalMinutes = 60;
   final TextEditingController _intervalController = TextEditingController(
     text: "60",
   );
+  Timer? _intervalDebounce;
+  Timer? _rescheduleDebounce;
   static const platform = MethodChannel('wallpaper_channel');
   bool _autoWallpaperEnabled = false;
-  List<String> _wallpaperSources = ["internet"];
+  List<String> _wallpaperSources = [UserSharedPrefs.defaultWallpaperSource];
+  String _topPicksRange = "1w";
+
+  static const _sourceLabels = {
+    "internet": "Internet",
+    "toppicks": "Top Picks",
+    "folder": "Folder",
+    "favorites": "Favorites",
+  };
+  static const _topPicksRangeLabels = {
+    "1d": "Today",
+    "1w": "This week",
+    "1M": "This month",
+    "1y": "This year",
+  };
   List<String> _folderPaths = [];
   bool _updateAvailable = false;
   bool _checkingUpdate = true;
+  bool _errorReportingEnabled = false;
+  DateTime? _lastChange;
+  /// What Change Now is doing, shown on the button; null when idle.
+  String? _changeStatus;
+  bool get _changingNow => _changeStatus != null;
+  bool _backupBusy = false;
 
-  int _cacheSize = 0;
+  static const _constraints = [
+    (key: "constraint_charging", label: "Charging"),
+    (key: "constraint_battery_not_low", label: "Battery Not Low"),
+    (key: "constraint_storage_not_low", label: "Storage Not Low"),
+    (key: "constraint_no_faces", label: "No Faces"),
+  ];
+  Map<String, bool> _constraintValues = {};
+
+  static const _locations = [
+    (value: WallpaperManagerFlutter.homeScreen, label: "Home"),
+    (value: WallpaperManagerFlutter.lockScreen, label: "Lock"),
+    (value: WallpaperManagerFlutter.bothScreens, label: "Both"),
+  ];
+
+  int? _cacheSize;
   bool _batteryOptimized = false;
 
   /// Bumped after an import so the API key fields reload their values.
@@ -62,46 +104,66 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     _checkUpdateStatus();
     _loadCacheSize();
     _loadBatteryStatus();
-    // The Quick Settings tile can flip auto wallpaper while the app is open.
-    _lifecycleListener = AppLifecycleListener(onResume: _refreshAutoWallpaper);
+    // The Quick Settings tile and the worker change state while the app is open.
+    _lifecycleListener = AppLifecycleListener(onResume: _refreshFromNative);
   }
 
   @override
   void dispose() {
     _lifecycleListener.dispose();
+    _intervalDebounce?.cancel();
+    _rescheduleDebounce?.cancel();
+    _tagController.dispose();
+    _intervalController.dispose();
     super.dispose();
   }
 
-  Future<void> _refreshAutoWallpaper() async {
+  Future<void> _refreshFromNative() async {
     final enabled = await UserSharedPrefs.getAutoWallpaperEnabled();
-    if (mounted && enabled != _autoWallpaperEnabled) {
-      setState(() => _autoWallpaperEnabled = enabled);
+    final lastChange = await UserSharedPrefs.getLastWallpaperChange();
+    if (!mounted) return;
+    if (enabled != _autoWallpaperEnabled || lastChange != _lastChange) {
+      setState(() {
+        _autoWallpaperEnabled = enabled;
+        _lastChange = lastChange;
+      });
     }
   }
 
-  Future<int> _dirSize(Directory dir) async {
-    if (!dir.existsSync()) return 0;
-    int total = 0;
-    try {
-      await for (final entity in dir.list(recursive: true)) {
-        if (entity is File) total += entity.statSync().size;
-      }
-    } catch (_) {}
+  /// Sums file sizes in a background isolate; the image caches can hold
+  /// thousands of files and stat-ing them on the UI thread stalls scrolling.
+  static int _sumDirSizes(List<String> paths) {
+    var total = 0;
+    for (final path in paths) {
+      final dir = Directory(path);
+      if (!dir.existsSync()) continue;
+      try {
+        for (final entity in dir.listSync(recursive: true)) {
+          if (entity is File) {
+            try {
+              total += entity.lengthSync();
+            } catch (_) {}
+          }
+        }
+      } catch (_) {}
+    }
     return total;
   }
 
+  static Future<int> _computeDirSizes(List<String> paths) =>
+      Isolate.run(() => _sumDirSizes(paths));
+
   Future<void> _loadCacheSize() async {
     try {
-      final temp = await getTemporaryDirectory();
-      final sizes = await Future.wait([
-        _dirSize(Directory('${temp.path}/libCachedImageData')),
-        _dirSize(Directory('${temp.path}/wallify_cache')),
-        _dirSize(Directory('${temp.path}/${PreviewCacheManager.key}')),
-        WallpaperCacheManager.getCacheSizeBytes(),
-      ]);
-      if (mounted) {
-        setState(() => _cacheSize = sizes.fold(0, (a, b) => a + b));
-      }
+      final temp = (await getTemporaryDirectory()).path;
+      final paths = [
+        '$temp/libCachedImageData',
+        '$temp/wallify_cache',
+        '$temp/${PreviewCacheManager.key}',
+        await WallpaperCacheManager.cacheDirPath(),
+      ];
+      final size = await _computeDirSizes(paths);
+      if (mounted) setState(() => _cacheSize = size);
     } catch (_) {}
   }
 
@@ -114,10 +176,12 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
   Future<void> _clearAllCaches() async {
     try {
-      await DefaultCacheManager().emptyCache();
-      await PerformanceConfig.cacheManager.emptyCache();
-      await PerformanceConfig.previewCacheManager.emptyCache();
-      await WallpaperCacheManager.clearCache();
+      await Future.wait([
+        DefaultCacheManager().emptyCache(),
+        PerformanceConfig.cacheManager.emptyCache(),
+        PerformanceConfig.previewCacheManager.emptyCache(),
+        WallpaperCacheManager.clearCache(),
+      ]);
       await _loadCacheSize();
       if (mounted) {
         showSnackBar(context: context, message: "Cache cleared");
@@ -175,46 +239,428 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   }
 
   Future<void> _initialize() async {
-    _autoWallpaperEnabled = await UserSharedPrefs.getAutoWallpaperEnabled();
-    savedTags = await UserSharedPrefs.getTags();
-    _invalidTags = await UserSharedPrefs.getInvalidTags();
-    wallpaperLocation = await UserSharedPrefs.getWallpaperLocation();
-    _intervalMinutes = await UserSharedPrefs.getInterval();
-    _intervalController.text = _intervalMinutes.toString();
-    _wallpaperSources = await UserSharedPrefs.getWallpaperSources();
-    _folderPaths = await UserSharedPrefs.getFolderPaths();
+    final results = await Future.wait<Object?>([
+      UserSharedPrefs.getAutoWallpaperEnabled(),
+      UserSharedPrefs.getTags(),
+      UserSharedPrefs.getInvalidTags(),
+      UserSharedPrefs.getWallpaperLocation(),
+      UserSharedPrefs.getInterval(),
+      UserSharedPrefs.getWallpaperSources(),
+      UserSharedPrefs.getFolderPaths(),
+      UserSharedPrefs.getErrorReportingEnabled(),
+      UserSharedPrefs.getLastWallpaperChange(),
+      Future.wait(_constraints.map((c) => UserSharedPrefs.getBool(c.key))),
+      UserSharedPrefs.getTopPicksRange(),
+    ]);
+    if (!mounted) return;
 
-    setState(() {});
-    if (_autoWallpaperEnabled) {
-      await platform.invokeMethod("scheduleBackgroundWallpaperWorker");
+    final constraintValues = results[9] as List<bool>;
+    setState(() {
+      _autoWallpaperEnabled = results[0] as bool;
+      savedTags = results[1] as List<String>;
+      _invalidTags = results[2] as Set<String>;
+      wallpaperLocation = results[3] as int;
+      _intervalMinutes = results[4] as int;
+      _intervalController.text = _intervalMinutes.toString();
+      _wallpaperSources = results[5] as List<String>;
+      _folderPaths = results[6] as List<String>;
+      _errorReportingEnabled = results[7] as bool;
+      _lastChange = results[8] as DateTime?;
+      _topPicksRange = results[10] as String;
+      _constraintValues = {
+        for (var i = 0; i < _constraints.length; i++)
+          _constraints[i].key: constraintValues[i],
+      };
+    });
+    if (_autoWallpaperEnabled) _rescheduleWorker(immediately: true);
+  }
+
+  /// Re-registers the background worker so it picks up new settings. Calls
+  /// within a short window are merged, since each one restarts native work.
+  void _rescheduleWorker({bool immediately = false}) {
+    _rescheduleDebounce?.cancel();
+    Future<void> run() async {
+      try {
+        await platform.invokeMethod("scheduleBackgroundWallpaperWorker");
+      } catch (e) {
+        debugPrint("Rescheduling worker failed: $e");
+      }
+    }
+
+    if (immediately) {
+      run();
+    } else {
+      _rescheduleDebounce = Timer(const Duration(milliseconds: 500), run);
     }
   }
 
-  Future<void> changeWallpaper({bool changeNow = false}) async {
+  /// Settings that change which wallpapers the worker can pick were edited:
+  /// reschedule it and refresh its pool in the background.
+  void _onPoolSettingsChanged() {
+    _rescheduleWorker();
+    WallpaperManager.scheduleRefresh();
+  }
+
+  Future<void> changeWallpaper() async {
+    if (_changingNow) return;
     try {
-      // Pre-cache wallpapers from selected sources before triggering native change.
-      if (_wallpaperSources.contains("internet") ||
-          _wallpaperSources.contains("favorites")) {
-        final fetched = await WallpaperManager.fetchImagesFromAllSources(
-          sources: _wallpaperSources,
-        );
-        await UserSharedPrefs.saveWallpapers(fetched);
-        WallpaperCacheManager.cacheWallpapers(fetched);
+      // Make sure the worker picks from the current tags and sources.
+      if (_wallpaperSources.any(const {"internet", "favorites", "toppicks"}.contains)) {
+        setState(() => _changeStatus = "Finding wallpapers…");
+        await WallpaperManager.refreshPool();
       }
+      if (mounted) setState(() => _changeStatus = "Applying wallpaper…");
+      // Returns once the wallpaper is actually set (download, crop, apply).
       await platform.invokeMethod("scheduleBackgroundWallpaperWorkerNow");
       await updateWidget();
+      final lastChange = await UserSharedPrefs.getLastWallpaperChange();
       if (mounted) {
+        setState(() => _lastChange = lastChange);
         showSnackBar(
           context: context,
           color: Colors.green,
           message: "Wallpaper changed",
         );
       }
+    } on PlatformException catch (e) {
+      if (mounted) {
+        showSnackBar(
+          context: context,
+          color: Colors.red,
+          message: e.code == "CHANGE_FAILED"
+              ? "Couldn't change the wallpaper — no suitable image found"
+              : "Error: ${e.message ?? e.code}",
+        );
+      }
     } catch (e) {
       if (mounted) {
         showSnackBar(context: context, color: Colors.red, message: "Error: $e");
       }
+    } finally {
+      if (mounted) setState(() => _changeStatus = null);
     }
+  }
+
+  // ------------------------------------------------------------------ tags
+
+  /// Adds one or more comma-separated tags, then checks each against every
+  /// source in the background.
+  Future<void> _addTags(String input) async {
+    final existing = savedTags.map((t) => t.toLowerCase()).toSet();
+    final newTags = <String>[];
+    for (final raw in input.split(",")) {
+      final tag = raw.trim().replaceAll(RegExp(r'\s+'), ' ');
+      if (tag.isNotEmpty && existing.add(tag.toLowerCase())) newTags.add(tag);
+    }
+    _tagController.clear();
+    if (newTags.isEmpty) return;
+
+    setState(() {
+      savedTags = [...savedTags, ...newTags];
+      _checkingTags.addAll(newTags);
+    });
+    await UserSharedPrefs.saveTags(savedTags);
+    _onPoolSettingsChanged();
+    await Future.wait(newTags.map(_validateTag));
+  }
+
+  Future<void> _validateTag(String tag) async {
+    if (mounted) setState(() => _checkingTags.add(tag));
+    final valid = await WallpaperManager.validateTag(tag);
+
+    // The tag may have been removed while it was being checked.
+    if (savedTags.contains(tag)) {
+      if (valid == false) _invalidTags.add(tag);
+      if (valid == true) _invalidTags.remove(tag);
+      await UserSharedPrefs.saveInvalidTags(_invalidTags);
+    }
+    if (!mounted) return;
+    setState(() => _checkingTags.remove(tag));
+
+    if (valid == false) {
+      showSnackBar(
+        context: context,
+        color: Colors.red,
+        message: "No wallpapers found for \"$tag\" in any source",
+      );
+    } else if (valid == null) {
+      showSnackBar(
+        context: context,
+        color: Colors.orange,
+        message: "Couldn't check \"$tag\" — no source reachable. Tap it to retry.",
+      );
+    }
+  }
+
+  Future<void> _removeTag(String tag) async {
+    setState(() {
+      savedTags = savedTags.where((t) => t != tag).toList();
+      _invalidTags.remove(tag);
+      _checkingTags.remove(tag);
+    });
+    await Future.wait([
+      UserSharedPrefs.saveTags(savedTags),
+      UserSharedPrefs.saveInvalidTags(_invalidTags),
+    ]);
+    _onPoolSettingsChanged();
+  }
+
+  // ------------------------------------------------------------ automation
+
+  Future<void> _setAutoWallpaper(bool value) async {
+    setState(() => _autoWallpaperEnabled = value);
+    // Save first: the native scheduler reads this flag and does nothing
+    // while it is still false.
+    await UserSharedPrefs.setAutoWallpaperEnabled(value);
+    // Persist the shown selection (Top Picks unless the user chose other
+    // sources) so the native worker and widgets read the same thing.
+    if (value) await UserSharedPrefs.saveWallpaperSources(_wallpaperSources);
+
+    try {
+      await platform.invokeMethod(
+        value
+            ? "scheduleBackgroundWallpaperWorker"
+            : "cancelBackgroundWallpaperWorker",
+      );
+      if (mounted) {
+        showSnackBar(
+          context: context,
+          color: value ? Colors.green : Colors.red,
+          message: value ? "Auto wallpaper enabled ✅" : "Auto wallpaper disabled 🚫",
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        showSnackBar(
+          context: context,
+          color: Colors.red,
+          message: value
+              ? "Failed to enable auto wallpaper: $e"
+              : "Failed to disable automation: $e",
+        );
+      }
+    }
+    if (value) WallpaperManager.scheduleRefresh(delay: Duration.zero);
+    updateWidget();
+  }
+
+  void _setLocation(int location) {
+    if (location == wallpaperLocation) return;
+    setState(() => wallpaperLocation = location);
+    UserSharedPrefs.saveWallpaperLocation(location);
+    _rescheduleWorker();
+    updateWidget();
+  }
+
+  void _onIntervalChanged(String value) {
+    _intervalDebounce?.cancel();
+    // Wait until typing stops: applying "1" while the user is typing "120"
+    // would snap the field to the 15 minute minimum.
+    _intervalDebounce = Timer(
+      const Duration(milliseconds: 900),
+      () => _applyInterval(value, restoreIfInvalid: false),
+    );
+  }
+
+  void _applyInterval(String value, {bool restoreIfInvalid = true}) {
+    _intervalDebounce?.cancel();
+    if (!mounted) return;
+    final minutes = int.tryParse(value.trim());
+    if (minutes == null || minutes <= 0) {
+      if (restoreIfInvalid) _intervalController.text = "$_intervalMinutes";
+      return;
+    }
+    final applied = max(15, minutes);
+    if (applied != minutes) {
+      showSnackBar(
+        context: context,
+        color: Colors.orange,
+        message: "Minimum interval is 15 minutes",
+      );
+      _intervalController.text = "$applied";
+    }
+    if (applied == _intervalMinutes) return;
+    setState(() => _intervalMinutes = applied);
+    UserSharedPrefs.saveInterval(applied);
+    updateWidget();
+    _rescheduleWorker();
+  }
+
+  Future<void> _toggleSource(String source, bool selected) async {
+    setState(() {
+      _wallpaperSources = [
+        ..._wallpaperSources.where((s) => s != source),
+        if (selected) source,
+      ];
+      // Always keep at least one source selected.
+      if (_wallpaperSources.isEmpty) {
+        _wallpaperSources = [UserSharedPrefs.defaultWallpaperSource];
+      }
+    });
+    await UserSharedPrefs.saveWallpaperSources(_wallpaperSources);
+    _onPoolSettingsChanged();
+    updateWidget();
+  }
+
+  Future<void> _setTopPicksRange(String range) async {
+    if (range == _topPicksRange) return;
+    setState(() => _topPicksRange = range);
+    await UserSharedPrefs.setTopPicksRange(range);
+    _onPoolSettingsChanged();
+  }
+
+  Future<void> _setFolders(List<String> folders) async {
+    setState(() => _folderPaths = folders);
+    await UserSharedPrefs.setFolderPaths(folders);
+    _rescheduleWorker();
+  }
+
+  Future<void> _setConstraint(String key, bool selected) async {
+    setState(() => _constraintValues = {..._constraintValues, key: selected});
+    await UserSharedPrefs.setBool(key, selected);
+    _rescheduleWorker();
+  }
+
+  Future<void> _setErrorReporting(bool value) async {
+    setState(() => _errorReportingEnabled = value);
+    await UserSharedPrefs.setErrorReportingEnabled(value);
+    if (mounted) {
+      showSnackBar(
+        context: context,
+        message: value ? "Error reporting enabled" : "Error reporting disabled",
+      );
+    }
+  }
+
+  // ---------------------------------------------------------- backup
+
+  Future<bool> _hasApiKeys() async {
+    final keys = await Future.wait([
+      UserSharedPrefs.getPexelsApiKey(),
+      UserSharedPrefs.getPixabayApiKey(),
+      UserSharedPrefs.getGeminiApiKey(),
+      UserSharedPrefs.getUnsplashApiKey().then(
+        (v) => v == UserSharedPrefs.defaultUnsplashKey ? null : v,
+      ),
+    ]);
+    return keys.any((k) => k != null && k.isNotEmpty);
+  }
+
+  Future<void> _exportSettings() async {
+    if (_backupBusy) return;
+    var includeKeys = true;
+    if (await _hasApiKeys()) {
+      if (!mounted) return;
+      final choice = await showDialog<bool>(
+        context: context,
+        builder: (context) => _IncludeKeysDialog(
+          title: "Export settings",
+          message:
+              "Saves tags, favorites, history, automation and appearance "
+              "settings to Downloads/Wallify.",
+          keysLabel: "Include API keys",
+          keysWarning:
+              "Keys are stored in plain text in the file. Don't share it.",
+          confirmLabel: "Export",
+        ),
+      );
+      if (choice == null) return;
+      includeKeys = choice;
+    }
+
+    setState(() => _backupBusy = true);
+    try {
+      final location = await SettingsBackup.exportSettings(
+        includeApiKeys: includeKeys,
+      );
+      if (mounted) {
+        showSnackBar(
+          context: context,
+          color: Colors.green,
+          message: "Saved to $location",
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        showSnackBar(
+          context: context,
+          color: Colors.red,
+          message: "Export failed: $e",
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _backupBusy = false);
+    }
+  }
+
+  Future<void> _importSettings() async {
+    if (_backupBusy) return;
+    try {
+      // Any type: many file managers don't tag .json files with a JSON
+      // MIME type, so filtering by extension can hide valid backups.
+      final picked = await FilePicker.pickFile(type: FileType.any);
+      if (picked == null) return;
+
+      setState(() => _backupBusy = true);
+      // Read through the picker rather than a path: files picked from
+      // Drive or a document provider have no local path.
+      final preview = SettingsBackup.parse(await picked.readAsBytes());
+      if (!mounted) return;
+
+      final includeKeys = await showDialog<bool>(
+        context: context,
+        builder: (context) => _IncludeKeysDialog(
+          title: "Restore backup?",
+          message: _describeBackup(preview),
+          keysLabel: preview.apiKeyNames.isEmpty
+              ? null
+              : "Restore API keys (${preview.apiKeyNames.join(", ")})",
+          keysWarning: "Replaces the keys saved on this device.",
+          confirmLabel: "Restore",
+        ),
+      );
+      if (includeKeys == null) return;
+
+      final result = await SettingsBackup.importSettings(
+        preview,
+        includeApiKeys: includeKeys,
+      );
+      await _applyImportedSettings();
+
+      if (mounted) {
+        showSnackBar(
+          context: context,
+          color: Colors.green,
+          message: result.skipped == 0
+              ? "Restored ${result.imported} settings"
+              : "Restored ${result.imported} settings, "
+                    "skipped ${result.skipped} unrecognised",
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        showSnackBar(
+          context: context,
+          color: Colors.red,
+          message: e is FormatException ? e.message : "Import failed: $e",
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _backupBusy = false);
+    }
+  }
+
+  String _describeBackup(BackupPreview preview) {
+    final parts = <String>[
+      if (preview.exportedAt != null)
+        "Exported ${DateFormat("MMM d, y 'at' h:mm a").format(preview.exportedAt!.toLocal())}"
+            "${preview.appVersion != null ? " from v${preview.appVersion}" : ""}.",
+      "Contains ${preview.tagCount} tags, ${preview.favoriteCount} favorites "
+          "and ${preview.historyCount} history entries.",
+      "Favorites, history and tags are merged with this device's; other "
+          "settings are replaced.",
+    ];
+    return parts.join("\n\n");
   }
 
   /// Makes imported settings take effect without restarting the app.
@@ -228,13 +674,12 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         await platform.invokeMethod("cancelBackgroundWallpaperWorker");
       } catch (_) {}
     }
+    WallpaperManager.scheduleRefresh(delay: Duration.zero);
     await updateWidget();
     if (mounted) setState(() => _apiKeysVersion++);
   }
 
-  void resetAutoWallpaper() async {
-    await platform.invokeMethod("scheduleBackgroundWallpaperWorker");
-  }
+  // ------------------------------------------------------------------ UI
 
   @override
   Widget build(BuildContext context) {
@@ -263,189 +708,18 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 Wrap(
                   spacing: 8,
                   children: [
-                    ChoiceChip(
-                      label: const Text("Home"),
-                      selected:
-                          wallpaperLocation ==
-                          WallpaperManagerFlutter.homeScreen,
-                      onSelected: (_) {
-                        setState(
-                          () => wallpaperLocation =
-                              WallpaperManagerFlutter.homeScreen,
-                        );
-                        UserSharedPrefs.saveWallpaperLocation(
-                          wallpaperLocation,
-                        );
-                        resetAutoWallpaper();
-                        updateWidget();
-                      },
-                      selectedColor: scheme.primary.withValues(alpha: 0.2),
-                      backgroundColor: scheme.surfaceContainerHighest,
-                    ),
-                    ChoiceChip(
-                      label: const Text("Lock"),
-                      selected:
-                          wallpaperLocation ==
-                          WallpaperManagerFlutter.lockScreen,
-                      onSelected: (_) {
-                        setState(
-                          () => wallpaperLocation =
-                              WallpaperManagerFlutter.lockScreen,
-                        );
-                        UserSharedPrefs.saveWallpaperLocation(
-                          wallpaperLocation,
-                        );
-                        resetAutoWallpaper();
-                        updateWidget();
-                      },
-                      selectedColor: scheme.primary.withValues(alpha: 0.2),
-                      backgroundColor: scheme.surfaceContainerHighest,
-                    ),
-                    ChoiceChip(
-                      label: const Text("Both"),
-                      selected:
-                          wallpaperLocation ==
-                          WallpaperManagerFlutter.bothScreens,
-                      onSelected: (_) {
-                        setState(
-                          () => wallpaperLocation =
-                              WallpaperManagerFlutter.bothScreens,
-                        );
-                        UserSharedPrefs.saveWallpaperLocation(
-                          wallpaperLocation,
-                        );
-                        resetAutoWallpaper();
-                        updateWidget();
-                      },
-                      selectedColor: scheme.primary.withValues(alpha: 0.2),
-                      backgroundColor: scheme.surfaceContainerHighest,
-                    ),
-                    ChoiceChip(
-                      label: const Text("Random"),
-                      selected: wallpaperLocation == 4,
-                      onSelected: (_) {
-                        setState(() => wallpaperLocation = 4);
-                        UserSharedPrefs.saveWallpaperLocation(
-                          wallpaperLocation,
-                        );
-                        resetAutoWallpaper();
-                        updateWidget();
-                      },
-                      selectedColor: scheme.primary.withValues(alpha: 0.2),
-                      backgroundColor: scheme.surfaceContainerHighest,
-                    ),
+                    for (final location in _locations)
+                      ChoiceChip(
+                        label: Text(location.label),
+                        selected: wallpaperLocation == location.value,
+                        onSelected: (_) => _setLocation(location.value),
+                        selectedColor: scheme.primary.withValues(alpha: 0.2),
+                        backgroundColor: scheme.surfaceContainerHighest,
+                      ),
                   ],
                 ),
                 const SizedBox(height: 20),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _tagController,
-                        decoration: InputDecoration(
-                          labelText: "Enter a tag",
-                          fillColor: scheme.surfaceContainerHighest,
-                          filled: true,
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        onSubmitted: (value) async {
-                          if (value.isNotEmpty && !savedTags.contains(value)) {
-                            setState(() => savedTags.add(value));
-                            UserSharedPrefs.saveTags(savedTags);
-                            final valid = await WallpaperManager.validateTag(
-                              value,
-                            );
-                            if (!valid) {
-                              setState(() => _invalidTags.add(value));
-                              UserSharedPrefs.saveInvalidTags(_invalidTags);
-                            }
-                          }
-                          _tagController.clear();
-                          final fetched =
-                              await WallpaperManager.fetchImagesFromAllSources(
-                                sources: _wallpaperSources,
-                              );
-                          await UserSharedPrefs.saveWallpapers(fetched);
-                          WallpaperCacheManager.cacheWallpapers(fetched);
-                          resetAutoWallpaper();
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    FilledButton(
-                      style: FilledButton.styleFrom(
-                        backgroundColor: scheme.primary,
-                        foregroundColor: scheme.onPrimary,
-                      ),
-                      onPressed: () async {
-                        if (_tagController.text.isNotEmpty &&
-                            !savedTags.contains(_tagController.text)) {
-                          final tag = _tagController.text;
-                          setState(() => savedTags.add(tag));
-                          UserSharedPrefs.saveTags(savedTags);
-                          final valid = await WallpaperManager.validateTag(tag);
-                          if (!valid) {
-                            setState(() => _invalidTags.add(tag));
-                            UserSharedPrefs.saveInvalidTags(_invalidTags);
-                          }
-                        }
-                        _tagController.clear();
-                        final fetched =
-                            await WallpaperManager.fetchImagesFromAllSources(
-                              sources: _wallpaperSources,
-                            );
-                        await UserSharedPrefs.saveWallpapers(fetched);
-                        WallpaperCacheManager.cacheWallpapers(fetched);
-                        resetAutoWallpaper();
-                      },
-                      child: const Text("Add"),
-                    ),
-                  ],
-                ),
-                if (savedTags.isNotEmpty) ...[
-                  const SizedBox(height: 12),
-                  Wrap(
-                    spacing: 6,
-                    children: savedTags.map((tag) {
-                      final isInvalid = _invalidTags.contains(tag);
-                      return Chip(
-                        label: Text(tag),
-                        deleteIcon: Icon(
-                          Icons.close,
-                          color: scheme.onSurfaceVariant,
-                        ),
-                        backgroundColor: isInvalid
-                            ? Colors.red.withValues(alpha: 0.1)
-                            : scheme.surfaceContainerHighest,
-                        shape: isInvalid
-                            ? StadiumBorder(
-                                side: BorderSide(
-                                  color: Colors.red.shade300,
-                                  width: 2,
-                                ),
-                              )
-                            : null,
-                        onDeleted: () async {
-                          setState(() {
-                            savedTags.remove(tag);
-                            _invalidTags.remove(tag);
-                          });
-                          UserSharedPrefs.saveTags(savedTags);
-                          UserSharedPrefs.saveInvalidTags(_invalidTags);
-                          final fetched =
-                              await WallpaperManager.fetchImagesFromAllSources(
-                                sources: _wallpaperSources,
-                              );
-                          await UserSharedPrefs.saveWallpapers(fetched);
-                          WallpaperCacheManager.cacheWallpapers(fetched);
-                          resetAutoWallpaper();
-                        },
-                      );
-                    }).toList(),
-                  ),
-                ],
+                _buildTagSection(scheme),
                 const Divider(),
 
                 SizedBox(height: 16),
@@ -459,56 +733,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     ),
                     Switch(
                       value: _autoWallpaperEnabled,
-                      onChanged: (value) async {
-                        if (_wallpaperSources.contains("internet")) {
-                          final fetched =
-                              await WallpaperManager.fetchImagesFromAllSources(
-                                sources: _wallpaperSources,
-                              );
-                          await UserSharedPrefs.saveWallpapers(fetched);
-                          WallpaperCacheManager.cacheWallpapers(fetched);
-                        }
-                        setState(() => _autoWallpaperEnabled = value);
-                        // Save first: the native scheduler reads this flag and
-                        // does nothing while it is still false.
-                        await UserSharedPrefs.setAutoWallpaperEnabled(value);
-
-                        if (value) {
-                          try {
-                            await platform.invokeMethod(
-                              "scheduleBackgroundWallpaperWorker",
-                            );
-                            showSnackBar(
-                              context: context,
-                              message: "Auto wallpaper enabled ✅",
-                            );
-                          } catch (e) {
-                            showSnackBar(
-                              context: context,
-                              color: Colors.red,
-                              message: "Failed to enable auto wallpaper: $e",
-                            );
-                          }
-                        } else {
-                          try {
-                            await platform.invokeMethod(
-                              "cancelBackgroundWallpaperWorker",
-                            );
-                            showSnackBar(
-                              color: Colors.red,
-                              context: context,
-                              message: "Auto wallpaper disabled 🚫",
-                            );
-                          } catch (e) {
-                            showSnackBar(
-                              color: Colors.red,
-                              context: context,
-                              message: "Failed to disable automation: $e",
-                            );
-                          }
-                        }
-                        updateWidget();
-                      },
+                      onChanged: _setAutoWallpaper,
                     ),
                   ],
                 ),
@@ -569,34 +794,17 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 ),
 
                 // ========== ERROR REPORTING ==========
-                FutureBuilder<bool>(
-                  future: UserSharedPrefs.getErrorReportingEnabled(),
-                  builder: (context, snapshot) {
-                    final isEnabled = snapshot.data ?? false;
-                    return ListTile(
-                      leading: Icon(Icons.bug_report, color: scheme.primary),
-                      title: const Text("Error Reporting"),
-                      subtitle: const Text(
-                        "Send crash reports to help improve the app",
-                      ),
-                      trailing: Switch(
-                        value: isEnabled,
-                        onChanged: (val) async {
-                          await UserSharedPrefs.setErrorReportingEnabled(val);
-                          setState(() {});
-                          if (mounted) {
-                            showSnackBar(
-                              context: context,
-                              message: val
-                                  ? "Error reporting enabled"
-                                  : "Error reporting disabled",
-                            );
-                          }
-                        },
-                        activeThumbColor: scheme.secondary,
-                      ),
-                    );
-                  },
+                ListTile(
+                  leading: Icon(Icons.bug_report, color: scheme.primary),
+                  title: const Text("Error Reporting"),
+                  subtitle: const Text(
+                    "Send crash reports to help improve the app",
+                  ),
+                  trailing: Switch(
+                    value: _errorReportingEnabled,
+                    onChanged: _setErrorReporting,
+                    activeThumbColor: scheme.secondary,
+                  ),
                 ),
                 const Divider(),
 
@@ -605,70 +813,27 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 Text("Data", style: Theme.of(context).textTheme.titleLarge),
                 const SizedBox(height: 8),
                 ListTile(
+                  enabled: !_backupBusy,
                   leading: Icon(Icons.upload_file, color: scheme.primary),
                   title: const Text("Export Settings"),
-                  subtitle: const Text("Includes favorites and API keys"),
-                  onTap: () async {
-                    try {
-                      final location = await SettingsBackup.exportSettings();
-                      if (mounted) {
-                        showSnackBar(
-                          context: context,
-                          color: Colors.green,
-                          message: "Saved to $location",
-                        );
-                      }
-                    } catch (e) {
-                      if (mounted) {
-                        showSnackBar(
-                          context: context,
-                          color: Colors.red,
-                          message: "Export failed: $e",
-                        );
-                      }
-                    }
-                  },
+                  subtitle: const Text(
+                    "Tags, favorites, history, settings and optionally API keys",
+                  ),
+                  onTap: _exportSettings,
                 ),
                 ListTile(
+                  enabled: !_backupBusy,
                   leading: Icon(Icons.download, color: scheme.primary),
                   title: const Text("Import Settings"),
                   subtitle: const Text("Restore from a Wallify backup"),
-                  onTap: () async {
-                    try {
-                      final picked = await FilePicker.pickFile(
-                        type: FileType.custom,
-                        allowedExtensions: ['json'],
-                      );
-                      final path = picked?.path;
-                      if (path == null) return;
-
-                      final result = await SettingsBackup.importSettings(
-                        File(path),
-                      );
-                      await _applyImportedSettings();
-
-                      if (mounted) {
-                        showSnackBar(
-                          context: context,
-                          color: Colors.green,
-                          message: result.skipped == 0
-                              ? "Restored ${result.imported} settings"
-                              : "Restored ${result.imported} settings, "
-                                    "skipped ${result.skipped}",
-                        );
-                      }
-                    } catch (e) {
-                      if (mounted) {
-                        showSnackBar(
-                          context: context,
-                          color: Colors.red,
-                          message: e is FormatException
-                              ? e.message
-                              : "Import failed: $e",
-                        );
-                      }
-                    }
-                  },
+                  trailing: _backupBusy
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : null,
+                  onTap: _importSettings,
                 ),
                 const Divider(),
                 SizedBox(height: 16),
@@ -838,11 +1003,29 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 style: FilledButton.styleFrom(
                   backgroundColor: scheme.primary,
                   foregroundColor: scheme.onPrimary,
+                  // Stay in full colour while busy so the progress is visible.
+                  disabledBackgroundColor: scheme.primary,
+                  disabledForegroundColor: scheme.onPrimary,
                   padding: const EdgeInsets.symmetric(vertical: 14),
                 ),
-                onPressed: () => changeWallpaper(changeNow: true),
-                icon: const Icon(Icons.wallpaper),
-                label: const Text("Change Now"),
+                onPressed: _changingNow ? null : changeWallpaper,
+                icon: _changingNow
+                    ? SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: scheme.onPrimary,
+                        ),
+                      )
+                    : const Icon(Icons.wallpaper),
+                label: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 200),
+                  child: Text(
+                    _changeStatus ?? "Change Now",
+                    key: ValueKey(_changeStatus),
+                  ),
+                ),
               ),
             ),
           ],
@@ -851,6 +1034,73 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     );
   }
 
+  Widget _buildTagSection(ColorScheme scheme) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _tagController,
+                textInputAction: TextInputAction.done,
+                decoration: InputDecoration(
+                  labelText: "Enter a tag",
+                  helperText: "Separate several tags with commas",
+                  fillColor: scheme.surfaceContainerHighest,
+                  filled: true,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                onSubmitted: _addTags,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Padding(
+              // Line up with the field rather than its helper text.
+              padding: const EdgeInsets.only(bottom: 20),
+              child: FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: scheme.primary,
+                  foregroundColor: scheme.onPrimary,
+                ),
+                onPressed: () => _addTags(_tagController.text),
+                child: const Text("Add"),
+              ),
+            ),
+          ],
+        ),
+        if (savedTags.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (final tag in savedTags)
+                _TagChip(
+                  key: ValueKey(tag),
+                  tag: tag,
+                  invalid: _invalidTags.contains(tag),
+                  checking: _checkingTags.contains(tag),
+                  scheme: scheme,
+                  onRecheck: () => _validateTag(tag),
+                  onDelete: () => _removeTag(tag),
+                ),
+            ],
+          ),
+          if (_invalidTags.any(savedTags.contains)) ...[
+            const SizedBox(height: 6),
+            Text(
+              "Red tags have no wallpapers in any source and are skipped. "
+              "Tap one to check again.",
+              style: TextStyle(fontSize: 12, color: scheme.error),
+            ),
+          ],
+        ],
+      ],
+    );
+  }
 
   Widget _buildWallpaperSettings(BuildContext context, ColorScheme scheme) {
     return Column(
@@ -871,6 +1121,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               child: TextField(
                 controller: _intervalController,
                 keyboardType: TextInputType.number,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                 textAlign: TextAlign.center,
                 decoration: InputDecoration(
                   filled: true,
@@ -879,28 +1130,11 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     borderRadius: BorderRadius.circular(12),
                   ),
                 ),
-                onChanged: (value) {
-                  final minutes = int.tryParse(value);
-                  if (minutes != null && minutes >= 15) {
-                    setState(() => _intervalMinutes = minutes);
-                    UserSharedPrefs.saveInterval(minutes);
-                    updateWidget();
-                    resetAutoWallpaper();
-                  } else if (minutes != null && minutes > 0 && minutes < 15) {
-                    showSnackBar(
-                      context: context,
-                      color: Colors.orange,
-                      message:
-                          "Minimum interval is 15 minutes (set to $minutes, will be adjusted)",
-                    );
-                    setState(() => _intervalMinutes = 15);
-                    _intervalController.text = "15";
-                    UserSharedPrefs.saveInterval(15);
-                    updateWidget();
-                    resetAutoWallpaper();
-                  } else {
-                    _intervalController.text = _intervalMinutes.toString();
-                  }
+                onChanged: _onIntervalChanged,
+                onSubmitted: _applyInterval,
+                onTapOutside: (_) {
+                  FocusManager.instance.primaryFocus?.unfocus();
+                  _applyInterval(_intervalController.text);
                 },
               ),
             ),
@@ -914,32 +1148,13 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         const SizedBox(height: 8),
         Wrap(
           spacing: 8,
+          runSpacing: 8,
           children: [
-            for (final source in ["internet", "folder", "favorites"])
+            for (final source in _sourceLabels.keys)
               FilterChip(
-                label: Text(
-                  source == "internet"
-                      ? "Internet"
-                      : source == "folder"
-                      ? "Folder"
-                      : "Favorites",
-                ),
+                label: Text(_sourceLabels[source]!),
                 selected: _wallpaperSources.contains(source),
-                onSelected: (selected) async {
-                  setState(() {
-                    if (selected) {
-                      _wallpaperSources.add(source);
-                    } else {
-                      _wallpaperSources.remove(source);
-                    }
-                    // Always keep at least one source selected.
-                    if (_wallpaperSources.isEmpty) {
-                      _wallpaperSources.add("internet");
-                    }
-                  });
-                  await UserSharedPrefs.saveWallpaperSources(_wallpaperSources);
-                  resetAutoWallpaper();
-                },
+                onSelected: (selected) => _toggleSource(source, selected),
                 selectedColor: scheme.primaryContainer,
                 backgroundColor: scheme.surfaceContainerHighest,
                 padding: const EdgeInsets.symmetric(
@@ -957,6 +1172,27 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               ),
           ],
         ),
+        if (_wallpaperSources.contains("toppicks")) ...[
+          const SizedBox(height: 12),
+          Text(
+            "The best-rated wallpapers from every source, ignoring your tags.",
+            style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            children: [
+              for (final entry in _topPicksRangeLabels.entries)
+                ChoiceChip(
+                  label: Text(entry.value),
+                  selected: _topPicksRange == entry.key,
+                  onSelected: (_) => _setTopPicksRange(entry.key),
+                  selectedColor: scheme.primary.withValues(alpha: 0.2),
+                  backgroundColor: scheme.surfaceContainerHighest,
+                ),
+            ],
+          ),
+        ],
         if (_wallpaperSources.contains("folder")) ...[
           const SizedBox(height: 12),
           ..._folderPaths.map((path) => Container(
@@ -982,11 +1218,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   icon: Icon(Icons.close, size: 18, color: scheme.onSurfaceVariant),
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(),
-                  onPressed: () async {
-                    setState(() => _folderPaths.remove(path));
-                    await UserSharedPrefs.setFolderPaths(_folderPaths);
-                    resetAutoWallpaper();
-                  },
+                  onPressed: () => _setFolders(
+                    _folderPaths.where((p) => p != path).toList(),
+                  ),
                 ),
               ],
             ),
@@ -1012,9 +1246,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             onPressed: () async {
               final path = await FilePicker.getDirectoryPath();
               if (path != null && !_folderPaths.contains(path)) {
-                setState(() => _folderPaths.add(path));
-                await UserSharedPrefs.setFolderPaths(_folderPaths);
-                resetAutoWallpaper();
+                await _setFolders([..._folderPaths, path]);
               }
             },
             icon: const Icon(Icons.add, size: 18),
@@ -1024,157 +1256,112 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         const SizedBox(height: 8),
         _buildConstraintsChipSection(context),
         const SizedBox(height: 20),
-        FutureBuilder<DateTime?>(
-          future: UserSharedPrefs.getLastWallpaperChange(),
-          builder: (context, snapshot) {
-            final lastChange = snapshot.data;
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (lastChange != null)
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.history,
-                        size: 18,
-                        color: scheme.onSurfaceVariant,
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        "Last changed: ${DateFormat("MMM d, h:mm a").format(lastChange)}",
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: scheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
-                  ),
-                const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(vertical: 10),
-                  decoration: BoxDecoration(
-                    color: scheme.surfaceContainerHighest,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.bolt,
-                        size: 18,
-                        color: scheme.onSurfaceVariant,
-                      ),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: Text(
-                          "Next change approx. after ${DateFormat("MMM d, h:mm a").format((lastChange ?? DateTime.now()).add(Duration(minutes: _intervalMinutes)))} when device meets constraints",
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: scheme.onSurfaceVariant,
-                          ),
-                        ),
-                      ),
-                    ],
+        if (_lastChange != null)
+          Row(
+            children: [
+              Icon(
+                Icons.history,
+                size: 18,
+                color: scheme.onSurfaceVariant,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                "Last changed: ${DateFormat("MMM d, h:mm a").format(_lastChange!)}",
+                style: TextStyle(
+                  fontSize: 13,
+                  color: scheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        const SizedBox(height: 8),
+        Container(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+            color: scheme.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                Icons.bolt,
+                size: 18,
+                color: scheme.onSurfaceVariant,
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  "Next change approx. after ${DateFormat("MMM d, h:mm a").format((_lastChange ?? DateTime.now()).add(Duration(minutes: _intervalMinutes)))} when device meets constraints",
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: scheme.onSurfaceVariant,
                   ),
                 ),
-                const SizedBox(height: 24),
-              ],
-            );
-          },
+              ),
+            ],
+          ),
         ),
+        const SizedBox(height: 24),
       ],
     );
-  }
-
-  Future<Map<String, bool>> _loadAllConstraintValues(
-    List<Map<String, String>> constraints,
-  ) async {
-    final map = <String, bool>{};
-    for (final c in constraints) {
-      map[c["key"]!] = await UserSharedPrefs.getBool(c["key"]!);
-    }
-    return map;
   }
 
   Widget _buildConstraintsChipSection(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
 
-    final constraints = [
-      {"key": "constraint_charging", "label": "Charging"},
-      {"key": "constraint_battery_not_low", "label": "Battery Not Low"},
-      {"key": "constraint_storage_not_low", "label": "Storage Not Low"},
-      {"key": "constraint_no_faces", "label": "No Faces"},
-    ];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 20),
+        Text(
+          "Automation Constraints",
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
 
-    return FutureBuilder<Map<String, bool>>(
-      future: _loadAllConstraintValues(constraints),
-      builder: (context, snapshot) {
-        if (!snapshot.hasData) {
-          return const Center(child: CircularProgressIndicator());
-        }
+        const SizedBox(height: 12),
 
-        final values = snapshot.data!;
+        Wrap(
+          spacing: 8,
+          children: _constraints.map((c) {
+            final isSelected = _constraintValues[c.key] ?? false;
 
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SizedBox(height: 20),
-            Text(
-              "Automation Constraints",
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-
-            const SizedBox(height: 12),
-
-            Wrap(
-              spacing: 8,
-              children: constraints.map((c) {
-                final key = c["key"]!;
-                final label = c["label"]!;
-                final isSelected = values[key] ?? false;
-
-                return ChoiceChip(
-                  label: Text(
-                    label,
-                    style: TextStyle(
-                      color: isSelected
-                          ? scheme.onPrimary
-                          : scheme.onSurfaceVariant,
-                    ),
-                  ),
-                  selected: isSelected,
-                  selectedColor: scheme.primary,
-                  backgroundColor: scheme.surfaceContainerHighest,
-                  onSelected: (selected) async {
-                    await UserSharedPrefs.setBool(key, selected);
-                    resetAutoWallpaper();
-                    setState(() {});
-                  },
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 8,
-                  ),
-                  showCheckmark: false,
-                  shape: StadiumBorder(
-                    side: BorderSide(
-                      color: isSelected
-                          ? Colors.transparent
-                          : scheme.outlineVariant,
-                    ),
-                  ),
-                );
-              }).toList(),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              "Auto wallpaper change runs every time the device is plugged in or on interval if all enabled constraints are met.",
-              style: TextStyle(
-                fontSize: 12,
-                color: scheme.onSurfaceVariant,
+            return ChoiceChip(
+              label: Text(
+                c.label,
+                style: TextStyle(
+                  color: isSelected
+                      ? scheme.onPrimary
+                      : scheme.onSurfaceVariant,
+                ),
               ),
-            ),
-          ],
-        );
-      },
+              selected: isSelected,
+              selectedColor: scheme.primary,
+              backgroundColor: scheme.surfaceContainerHighest,
+              onSelected: (selected) => _setConstraint(c.key, selected),
+              padding: const EdgeInsets.symmetric(
+                horizontal: 14,
+                vertical: 8,
+              ),
+              showCheckmark: false,
+              shape: StadiumBorder(
+                side: BorderSide(
+                  color: isSelected
+                      ? Colors.transparent
+                      : scheme.outlineVariant,
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          "Auto wallpaper change runs every time the device is plugged in or on interval if all enabled constraints are met.",
+          style: TextStyle(
+            fontSize: 12,
+            color: scheme.onSurfaceVariant,
+          ),
+        ),
+      ],
     );
   }
 
@@ -1203,7 +1390,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             children: [
               Expanded(
                 child: Text(
-                  "Cached wallpapers & images: ${_cacheSize > 0 ? _formatBytes(_cacheSize) : "…"}",
+                  "Cached wallpapers & images: ${_cacheSize != null ? _formatBytes(_cacheSize!) : "…"}",
                   style: TextStyle(
                     fontSize: 13,
                     color: scheme.onSurfaceVariant,
@@ -1222,7 +1409,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     );
   }
 
-  static final _coffeeUrl = Uri.parse("https://www.buymeacoffee.com/rk10");
+  static final _coffeeUrl = Uri.parse("https://ko-fi.com/ruchan10");
   static final _sourceUrl = Uri.parse("https://github.com/Ruchan10/Wallify");
 
   Future<void> _openLink(Uri url) async {
@@ -1241,9 +1428,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         Expanded(
           child: FilledButton.icon(
             style: FilledButton.styleFrom(
-              // Buy Me a Coffee's brand yellow, readable in light and dark themes.
-              backgroundColor: const Color(0xFFFFDD00),
-              foregroundColor: Colors.black,
+              // Ko-fi's brand red, readable in light and dark themes.
+              backgroundColor: const Color(0xFFFF5E5B),
+              foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(vertical: 12),
             ),
             onPressed: () => _openLink(_coffeeUrl),
@@ -1266,6 +1453,129 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     );
   }
 }
+
+/// A saved tag. Red when no source has wallpapers for it; shows a spinner
+/// while that is being checked.
+class _TagChip extends StatelessWidget {
+  final String tag;
+  final bool invalid;
+  final bool checking;
+  final ColorScheme scheme;
+  final VoidCallback onRecheck;
+  final VoidCallback onDelete;
+
+  const _TagChip({
+    super.key,
+    required this.tag,
+    required this.invalid,
+    required this.checking,
+    required this.scheme,
+    required this.onRecheck,
+    required this.onDelete,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final red = Colors.red.shade400;
+    return InputChip(
+      label: Text(tag),
+      avatar: checking
+          ? SizedBox(
+              width: 14,
+              height: 14,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: scheme.primary,
+              ),
+            )
+          : invalid
+          ? Icon(Icons.error_outline, size: 18, color: red)
+          : null,
+      tooltip: invalid ? "No wallpapers found. Tap to check again" : null,
+      onPressed: checking ? null : onRecheck,
+      deleteIcon: Icon(Icons.close, color: scheme.onSurfaceVariant),
+      onDeleted: onDelete,
+      backgroundColor: invalid
+          ? Colors.red.withValues(alpha: 0.1)
+          : scheme.surfaceContainerHighest,
+      shape: StadiumBorder(
+        side: invalid
+            ? BorderSide(color: red, width: 2)
+            : BorderSide(color: scheme.outlineVariant),
+      ),
+    );
+  }
+}
+
+/// Confirmation dialog with an optional "include API keys" checkbox. Pops
+/// null when cancelled, otherwise whether keys should be included.
+class _IncludeKeysDialog extends StatefulWidget {
+  final String title;
+  final String message;
+
+  /// Checkbox label, or null to hide the checkbox.
+  final String? keysLabel;
+  final String keysWarning;
+  final String confirmLabel;
+
+  const _IncludeKeysDialog({
+    required this.title,
+    required this.message,
+    required this.keysLabel,
+    required this.keysWarning,
+    required this.confirmLabel,
+  });
+
+  @override
+  State<_IncludeKeysDialog> createState() => _IncludeKeysDialogState();
+}
+
+class _IncludeKeysDialogState extends State<_IncludeKeysDialog> {
+  bool _includeKeys = true;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return AlertDialog(
+      title: Text(widget.title),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(widget.message),
+            if (widget.keysLabel != null) ...[
+              const SizedBox(height: 12),
+              CheckboxListTile(
+                contentPadding: EdgeInsets.zero,
+                controlAffinity: ListTileControlAffinity.leading,
+                value: _includeKeys,
+                onChanged: (v) => setState(() => _includeKeys = v ?? false),
+                title: Text(widget.keysLabel!),
+                subtitle: Text(
+                  widget.keysWarning,
+                  style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text("Cancel"),
+        ),
+        FilledButton(
+          onPressed: () =>
+              Navigator.pop(context, widget.keysLabel != null && _includeKeys),
+          child: Text(widget.confirmLabel),
+        ),
+      ],
+    );
+  }
+}
+
 
 final _testPexelsKey = WallpaperApiService.testPexelsKey;
 final _testPixabayKey = WallpaperApiService.testPixabayKey;

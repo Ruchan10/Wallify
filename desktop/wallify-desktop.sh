@@ -3,10 +3,14 @@
 # wallify-desktop.sh — random wallpaper changer for macOS and Linux.
 #
 # Usage: wallify-desktop.sh [-f] [-s source] [-t tag] [-l] [-h]
+#        wallify-desktop.sh [-T] [-a "tag, tag"] [-r "tag, tag"]
 #   -f  force: ignore ONLY_WHEN_CHARGING and MIN_INTERVAL_MINUTES
 #   -s  use only this source (e.g. wallhaven)
 #   -t  use this tag / search term instead of a random one
 #   -l  list sources and whether they are ready, then exit
+#   -T  list your tags, numbered, then exit
+#   -a  add tags (comma separated) to the config, then exit
+#   -r  remove tags by name or by their -T number, then exit
 #
 # Settings: ${XDG_CONFIG_HOME:-~/.config}/wallify/config (see config.example)
 # Requires: curl, jq. Recommended: ImageMagick (crops to your screen size).
@@ -24,6 +28,9 @@ RESOLUTION="${RESOLUTION:-auto}"
 ONLY_WHEN_CHARGING="${ONLY_WHEN_CHARGING:-false}"
 MIN_INTERVAL_MINUTES="${MIN_INTERVAL_MINUTES:-0}"
 SET_LOCK_SCREEN="${SET_LOCK_SCREEN:-true}"
+# "different": a separate image for the lock screen where the desktop allows it.
+# "same": the lock screen shows the desktop wallpaper.
+LOCK_SCREEN_IMAGE="${LOCK_SCREEN_IMAGE:-different}"
 # reddit is opt-in: it often answers 403 to requests without a logged-in session.
 SOURCES="${SOURCES:-wallhaven unsplash pexels pixabay openverse bing nasa picsum}"
 REDDIT_SUBREDDITS="${REDDIT_SUBREDDITS:-wallpaper wallpapers EarthPorn spaceporn}"
@@ -33,6 +40,7 @@ WALLIFY_DESKTOP="${WALLIFY_DESKTOP:-}"
 POST_SET_HOOK="${POST_SET_HOOK:-}"
 MAX_ATTEMPTS="${MAX_ATTEMPTS:-4}"
 
+USER_TAGS=("${TAGS[@]}")
 if [[ ${#TAGS[@]} -eq 0 ]]; then
   TAGS=("cool" "forest" "amoled" "beach" "office" "sunset" "code" "open source" "outdoor"
         "games" "music" "grass" "universe" "technology" "black" "4K" "dark" "night" "space"
@@ -254,6 +262,99 @@ prune_old() {
 }
 
 # ---------------------------------------------------------------------------
+# Tags in the config file
+# ---------------------------------------------------------------------------
+
+# Rewrites the TAGS=(...) line of the config with the given tags.
+save_tags() {
+  [[ -f "$CONFIG_FILE" ]] || die "No config at $CONFIG_FILE. Run linux.sh or mac.sh first."
+  local line="TAGS=(" t tmp
+  for t in "$@"; do line+="$(printf '%q' "$t") "; done
+  line="${line% })"
+  [[ "$line" == "TAGS=(" ]] && line="TAGS=()"
+  tmp=$(mktemp "${CONFIG_FILE}.XXXXXX") || die "Cannot write $CONFIG_FILE"
+  if grep -q '^TAGS=(' "$CONFIG_FILE"; then
+    # Passed via the environment: awk -v would eat the backslashes %q adds.
+    WALLIFY_TAGS_LINE="$line" awk '/^TAGS=\(/ { print ENVIRON["WALLIFY_TAGS_LINE"]; next } { print }' "$CONFIG_FILE" > "$tmp"
+  else
+    { cat "$CONFIG_FILE"; printf '%s\n' "$line"; } > "$tmp"
+  fi
+  chmod 600 "$tmp" && mv "$tmp" "$CONFIG_FILE" || { rm -f "$tmp"; die "Cannot write $CONFIG_FILE"; }
+}
+
+# Splits a comma-separated list into trimmed, non-empty lines.
+split_list() {
+  printf '%s\n' "$1" | tr ',' '\n' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' | grep -v '^$'
+}
+
+list_tags() {
+  local i=1 t
+  if (( ${#USER_TAGS[@]} == 0 )); then
+    log "No tags set; a built-in mix is used. Add some with -a \"nature, space\"."
+    return
+  fi
+  for t in "${USER_TAGS[@]}"; do printf '%3d. %s\n' "$i" "$t"; i=$(( i + 1 )); done
+}
+
+add_tags() {
+  local tags=("${USER_TAGS[@]}") t e dup added=()
+  while IFS= read -r t; do
+    dup=false
+    for e in "${tags[@]}"; do [[ "$(lower "$e")" == "$(lower "$t")" ]] && dup=true && break; done
+    $dup && { log "Already have '$t'"; continue; }
+    tags+=("$t"); added+=("$t")
+  done < <(split_list "$1")
+  (( ${#added[@]} )) || { log "Nothing to add."; return; }
+  save_tags "${tags[@]}"
+  log "Added: $(printf '%s, ' "${added[@]}" | sed 's/, $//')"
+}
+
+# Accepts tag names (any case) or their numbers from list_tags.
+# (No associative arrays: macOS still ships bash 3.2.)
+remove_tags() {
+  local item t gone=$'\n' keep=() removed=()
+  while IFS= read -r item; do
+    if [[ "$item" =~ ^[0-9]+$ ]] && (( item >= 1 && item <= ${#USER_TAGS[@]} )); then
+      item="${USER_TAGS[item-1]}"
+    fi
+    gone+="$(lower "$item")"$'\n'
+  done < <(split_list "$1")
+  for t in "${USER_TAGS[@]}"; do
+    if [[ "$gone" == *$'\n'"$(lower "$t")"$'\n'* ]]; then removed+=("$t"); else keep+=("$t"); fi
+  done
+  (( ${#removed[@]} )) || { log "None of those tags are set. See them with -T."; return; }
+  save_tags "${keep[@]}"
+  log "Removed: $(printf '%s, ' "${removed[@]}" | sed 's/, $//')"
+  (( ${#keep[@]} )) || log "No tags left; a built-in mix will be used."
+}
+
+# ---------------------------------------------------------------------------
+# Lock screen support
+# ---------------------------------------------------------------------------
+
+# Prints how a separate lock screen image can be set here, or "none":
+#   kde      Plasma's screen locker has its own wallpaper setting
+#   gnome    GNOME before 42 reads org.gnome.desktop.screensaver
+#   file     swaylock / hyprlock / i3lock read an image path (lock.jpg)
+#   none     the lock screen always shows the desktop wallpaper
+lock_support() {
+  local de major
+  [[ "$OS" == Darwin ]] && { echo none; return; }
+  have betterlockscreen && { echo file; return; }
+  de=$(detect_desktop)
+  case "$de" in
+    *kde*|*plasma*) echo kde ;;
+    *gnome*|*ubuntu*|*unity*|*budgie*|*pantheon*|*pop*)
+      # GNOME 42+ blurs the desktop wallpaper for the lock screen and ignores
+      # the screensaver picture setting.
+      major=$(gnome-shell --version 2>/dev/null | grep -oE '[0-9]+' | head -n1)
+      if [[ -n "$major" ]] && (( major < 42 )); then echo gnome; else echo none; fi ;;
+    *hyprland*|*sway*|*i3*) echo file ;;
+    *) echo none ;;
+  esac
+}
+
+# ---------------------------------------------------------------------------
 # Setters
 # ---------------------------------------------------------------------------
 
@@ -283,19 +384,9 @@ set_linux() {
       gsettings set org.gnome.desktop.background picture-uri "$uri" || return 1
       gsettings set org.gnome.desktop.background picture-uri-dark "$uri" 2>/dev/null
       gsettings set org.gnome.desktop.background picture-options zoom
-      if lock_enabled; then
-        # Used by older GNOME and some distros; GNOME 42+ blurs the desktop wallpaper instead.
-        gsettings set org.gnome.desktop.screensaver picture-uri "$uri" 2>/dev/null
-      fi
       ;;
     *kde*|*plasma*)
       plasma-apply-wallpaperimage "$f" >/dev/null || return 1
-      kw=$(command -v kwriteconfig6 || command -v kwriteconfig5)
-      if lock_enabled && [[ -n "$kw" ]]; then
-        "$kw" --file kscreenlockerrc --group Greeter --key WallpaperPlugin org.kde.image
-        "$kw" --file kscreenlockerrc --group Greeter --group Wallpaper --group org.kde.image --group General --key Image "$uri"
-        "$kw" --file kscreenlockerrc --group Greeter --group Wallpaper --group org.kde.image --group General --key PreviewImage "$uri"
-      fi
       ;;
     *cinnamon*)
       gsettings set org.cinnamon.desktop.background picture-uri "$uri" || return 1
@@ -339,7 +430,24 @@ set_linux() {
       ;;
   esac
 
-  if lock_enabled && have betterlockscreen; then
+  return 0
+}
+
+# Sets the lock screen image where that is separate from the desktop.
+set_lock() {
+  local f="$1" uri="file://$1" kw
+  case "$(lock_support)" in
+    kde)
+      kw=$(command -v kwriteconfig6 || command -v kwriteconfig5) || return 1
+      "$kw" --file kscreenlockerrc --group Greeter --key WallpaperPlugin org.kde.image
+      "$kw" --file kscreenlockerrc --group Greeter --group Wallpaper --group org.kde.image --group General --key Image "$uri"
+      "$kw" --file kscreenlockerrc --group Greeter --group Wallpaper --group org.kde.image --group General --key PreviewImage "$uri"
+      ;;
+    gnome)
+      gsettings set org.gnome.desktop.screensaver picture-uri "$uri" 2>/dev/null
+      ;;
+  esac
+  if have betterlockscreen; then
     betterlockscreen -u "$f" >/dev/null 2>&1
   fi
   return 0
@@ -347,10 +455,49 @@ set_linux() {
 
 # ---------------------------------------------------------------------------
 
+# Downloads one wallpaper, trying sources in random order. Sets FETCHED (the
+# file), FETCHED_SOURCE and FETCHED_TAG. $1 forces a tag.
+fetch_one() {
+  local only_tag="$1" source url tmp file attempts=0 tag
+  FETCHED="" FETCHED_SOURCE="" FETCHED_TAG=""
+  for source in $(printf '%s\n' "${CANDIDATES[@]}" | awk -v seed="$RANDOM" 'BEGIN { srand(seed) } { print rand() "\t" $0 }' | sort -n | cut -f2-); do
+    (( attempts >= MAX_ATTEMPTS )) && break
+    attempts=$(( attempts + 1 ))
+
+    tag=${only_tag:-$(pick "${TAGS[@]}")}
+    TAG="$tag"
+    TAG_Q=$(urlenc "$tag")
+    log "Source: $source · Tag: $tag · ${WIDTH}x${HEIGHT}"
+
+    url=$("src_$source" | head -n1)
+    if [[ -z "$url" || "$url" == null ]]; then
+      log "No image from $source"
+      continue
+    fi
+
+    tmp=$(mktemp "${TMPDIR:-/tmp}/wallify.XXXXXX")
+    if ! http -o "$tmp" "$url" || ! is_image "$tmp"; then
+      log "Download from $source failed"
+      rm -f "$tmp"
+      continue
+    fi
+
+    if file=$(finalize_image "$tmp" "$source" "$tag"); then
+      FETCHED="$file" FETCHED_SOURCE="$source" FETCHED_TAG="$tag"
+      return 0
+    fi
+    rm -f "$tmp"
+  done
+  return 1
+}
+
 main() {
   local force=false only_source="" only_tag="" opt s
-  while getopts "fs:t:lh" opt; do
+  while getopts "fs:t:lTa:r:h" opt; do
     case "$opt" in
+      T) list_tags; exit 0 ;;
+      a) add_tags "$OPTARG"; exit 0 ;;
+      r) remove_tags "$OPTARG"; exit 0 ;;
       f) force=true ;;
       s) only_source=$(lower "$OPTARG") ;;
       t) only_tag="$OPTARG" ;;
@@ -359,7 +506,7 @@ main() {
           if source_ready "$s"; then echo "$s: ready"; else echo "$s: needs an API key"; fi
         done
         exit 0 ;;
-      *) sed -n '3,12p' "$0"; exit 0 ;;
+      *) sed -n '3,16p' "$0"; exit 0 ;;
     esac
   done
 
@@ -390,63 +537,56 @@ main() {
   WIDTH=${res%x*}
   HEIGHT=${res#*x}
 
-  local candidates=()
+  CANDIDATES=()
   if [[ -n "$only_source" ]]; then
     source_ready "$only_source" || die "Source '$only_source' is unknown or missing its API key"
-    candidates=("$only_source")
+    CANDIDATES=("$only_source")
   else
     for s in $(printf '%s\n' $SOURCES | awk -v seed="$RANDOM" 'BEGIN { srand(seed) } { print rand() "\t" $0 }' | sort -n | cut -f2-); do
-      source_ready "$s" && candidates+=("$s")
+      source_ready "$s" && CANDIDATES+=("$s")
     done
   fi
-  (( ${#candidates[@]} )) || die "No usable sources. Add API keys or edit SOURCES in $CONFIG_FILE"
+  (( ${#CANDIDATES[@]} )) || die "No usable sources. Add API keys or edit SOURCES in $CONFIG_FILE"
 
-  # Try sources in random order until one produces an image.
-  local source url tmp file="" attempts=0
-  for source in "${candidates[@]}"; do
-    (( attempts >= MAX_ATTEMPTS )) && break
-    attempts=$(( attempts + 1 ))
+  local home lock="" lock_mode
+  fetch_one "$only_tag" || die "Could not fetch a wallpaper after $MAX_ATTEMPTS attempt(s)"
+  home="$FETCHED"
+  log "Wallpaper from $FETCHED_SOURCE using tag '$FETCHED_TAG': $home"
 
-    TAG=${only_tag:-$(pick "${TAGS[@]}")}
-    TAG_Q=$(urlenc "$TAG")
-    log "Source: $source · Tag: $TAG · ${WIDTH}x${HEIGHT}"
-
-    url=$("src_$source" | head -n1)
-    if [[ -z "$url" || "$url" == null ]]; then
-      log "No image from $source"
-      continue
+  lock_mode=none
+  if lock_enabled; then
+    lock_mode=$(lock_support)
+    if [[ "$lock_mode" != none && "$LOCK_SCREEN_IMAGE" == different ]]; then
+      if fetch_one "$only_tag"; then
+        lock="$FETCHED"
+        log "Lock screen from $FETCHED_SOURCE using tag '$FETCHED_TAG': $lock"
+      else
+        log "Could not fetch a second image; the lock screen gets the desktop one"
+      fi
+    elif [[ "$lock_mode" == none && "$LOCK_SCREEN_IMAGE" == different && "$OS" == Linux ]]; then
+      log "This desktop's lock screen always shows the desktop wallpaper (GNOME 42+ does this)"
     fi
+  fi
+  lock="${lock:-$home}"
 
-    tmp=$(mktemp "${TMPDIR:-/tmp}/wallify.XXXXXX")
-    if ! http -o "$tmp" "$url" || ! is_image "$tmp"; then
-      log "Download from $source failed"
-      rm -f "$tmp"
-      continue
-    fi
+  if [[ "$OS" == Darwin ]]; then set_macos "$home"; else set_linux "$home"; fi ||
+    die "Downloaded $home but failed to set it as wallpaper"
+  if lock_enabled && [[ "$OS" == Linux && "$lock_mode" != none ]]; then
+    set_lock "$lock" || log "Could not set the lock screen image"
+  fi
 
-    if file=$(finalize_image "$tmp" "$source" "$TAG"); then
-      break
-    fi
-    rm -f "$tmp"
-    file=""
-  done
-  [[ -n "$file" ]] || die "Could not fetch a wallpaper after $attempts attempt(s)"
-
-  if [[ "$OS" == Darwin ]]; then set_macos "$file"; else set_linux "$file"; fi ||
-    die "Downloaded $file but failed to set it as wallpaper"
-
-  # Stable path for lock screens that read an image file (swaylock, hyprlock, ...).
-  ln -sfn "$file" "$WALLPAPER_DIR/current.jpg"
+  # Stable paths for lock screens that read an image file (swaylock, hyprlock, ...).
+  ln -sfn "$home" "$WALLPAPER_DIR/current.jpg"
+  ln -sfn "$lock" "$WALLPAPER_DIR/lock.jpg"
   date +%s > "$STAMP_FILE"
 
   if [[ -n "$POST_SET_HOOK" ]]; then
     # Unquoted on purpose so the hook may include arguments.
     # shellcheck disable=SC2086
-    $POST_SET_HOOK "$file" || log "POST_SET_HOOK failed"
+    $POST_SET_HOOK "$home" || log "POST_SET_HOOK failed"
   fi
 
   prune_old
-  log "Wallpaper set from $source using tag '$TAG': $file"
 }
 
 main "$@"

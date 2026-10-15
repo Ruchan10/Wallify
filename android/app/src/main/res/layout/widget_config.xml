@@ -66,14 +66,6 @@
                 android:text="Both Screens"
                 android:padding="12dp"
                 android:textSize="16sp" />
-
-            <RadioButton
-                android:id="@+id/radio_random"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="Random"
-                android:padding="12dp"
-                android:textSize="16sp" />
         </RadioGroup>
 
         <View
@@ -113,6 +105,14 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="Folder"
+            android:padding="12dp"
+            android:textSize="16sp" />
+
+        <CheckBox
+            android:id="@+id/chk_toppicks"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Top Picks"
             android:padding="12dp"
             android:textSize="16sp" />
 

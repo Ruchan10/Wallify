@@ -22,7 +22,7 @@ class QuickToggleWidget : AppWidgetProvider() {
         super.onReceive(context, intent)
         when (intent.action) {
             ACTION_SET_LOCATION -> {
-                val location = intent.getIntExtra(EXTRA_LOCATION, 3)
+                val location = intent.getIntExtra(EXTRA_LOCATION, 3).takeIf { it in 1..3 } ?: 3
                 val prefs = WidgetUtils.getPrefs(context)
                 prefs.edit().putInt("flutter.wallpaperLocation", location).apply()
                 triggerUpdate(context)
@@ -38,11 +38,12 @@ class QuickToggleWidget : AppWidgetProvider() {
 
     private fun buildRemoteViews(context: Context): RemoteViews {
         val prefs = WidgetUtils.getPrefs(context)
-        val location = prefs.all["flutter.wallpaperLocation"]?.let {
+        // Anything outside 1..3 (including the removed random mode, 4) is "both".
+        val location = (prefs.all["flutter.wallpaperLocation"]?.let {
             when (it) {
                 is Int -> it; is Long -> it.toInt(); is String -> it.toIntOrNull(); else -> null
             }
-        } ?: 3
+        } ?: 3).takeIf { it in 1..3 } ?: 3
         val interval = prefs.all["flutter.wallpaper_interval"]?.let {
             when (it) {
                 is Int -> it; is Long -> it.toInt(); is String -> it.toIntOrNull(); else -> null
@@ -50,8 +51,10 @@ class QuickToggleWidget : AppWidgetProvider() {
         } ?: 60
         val autoEnabled = prefs.getBoolean("flutter.autoWallpaperEnabled", false)
         val lastChangeStr = prefs.getString("flutter.lastWallpaperChange", null)
-        val source = prefs.getString("flutter.wallpaperSource", "internet") ?: "internet"
-        val sourceLabel = source.split(",").joinToString(", ") { it.replaceFirstChar { c -> c.uppercase() } }
+        val source = prefs.getString("flutter.wallpaperSource", "toppicks") ?: "toppicks"
+        val sourceLabel = source.split(",").joinToString(", ") {
+            if (it == "toppicks") "Top Picks" else it.replaceFirstChar { c -> c.uppercase() }
+        }
 
         val views = RemoteViews(context.packageName, R.layout.widget_quick_toggle)
         WidgetUtils.applyDynamicColors(views, prefs)
@@ -63,8 +66,6 @@ class QuickToggleWidget : AppWidgetProvider() {
         views.setOnClickPendingIntent(R.id.option_home, buildLocationIntent(context, 1, flags))
         views.setOnClickPendingIntent(R.id.option_lock, buildLocationIntent(context, 2, flags))
         views.setOnClickPendingIntent(R.id.option_both, buildLocationIntent(context, 3, flags))
-        // 4 is the app's Random mode: home, lock or both is re-picked on every change.
-        views.setOnClickPendingIntent(R.id.option_random, buildLocationIntent(context, 4, flags))
         views.setOnClickPendingIntent(R.id.btn_change_now, buildChangeNowIntent(context, flags))
         views.setOnClickPendingIntent(R.id.widget_root, WidgetUtils.buildOpenAppIntent(context, 100))
         return views
@@ -76,7 +77,6 @@ class QuickToggleWidget : AppWidgetProvider() {
         views.setTextColor(R.id.option_home, android.graphics.Color.parseColor(if (location == 1) sel else unsel))
         views.setTextColor(R.id.option_lock, android.graphics.Color.parseColor(if (location == 2) sel else unsel))
         views.setTextColor(R.id.option_both, android.graphics.Color.parseColor(if (location == 3) sel else unsel))
-        views.setTextColor(R.id.option_random, android.graphics.Color.parseColor(if (location == 4) sel else unsel))
     }
 
     private fun buildLocationIntent(context: Context, location: Int, flags: Int): PendingIntent {

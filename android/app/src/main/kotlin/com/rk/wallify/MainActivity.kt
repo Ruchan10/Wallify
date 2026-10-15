@@ -396,13 +396,8 @@ class MainActivity : FlutterActivity() {
 fun downloadAndSetWallpaper(imageUrl: String, wallpaperLocation: Int, result: MethodChannel.Result) {
     lifecycleScope.launch(Dispatchers.IO) {
         try {
-            val resolved = if (wallpaperLocation == 4) {
-                val pick = (1..3).random()
-                Log.d("Wallify", "Random mode: randomly picked $pick")
-                pick
-            } else {
-                wallpaperLocation
-            }
+            // The removed random mode (4) falls back to both screens.
+            val resolved = if (wallpaperLocation == 4) 3 else wallpaperLocation
             Log.d("Wallify", "Starting wallpaper download for location $wallpaperLocation (resolved: $resolved)")
 
             val wallpaperManager = WallpaperManager.getInstance(this@MainActivity)

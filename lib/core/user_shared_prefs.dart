@@ -50,9 +50,12 @@ class UserSharedPrefs {
   }
 
   /// ---- WALLPAPER LOCATION ----
+  /// 1 = home, 2 = lock, 3 = both. The old "random" mode (4) and anything
+  /// else unexpected reads as both.
   static Future<int> getWallpaperLocation() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getInt(_wallpaperLocationKey) ?? 3;
+    final location = prefs.getInt(_wallpaperLocationKey) ?? 3;
+    return location >= 1 && location <= 3 ? location : 3;
   }
 
   static Future<void> saveWallpaperLocation(int location) async {
@@ -405,11 +408,14 @@ class UserSharedPrefs {
 
   /// ---- WALLPAPER SOURCE (multi-select) ----
   /// Sources are stored as a comma-separated string e.g. "internet,folder,favorites".
+  /// Until the user picks some, auto-change uses Top Picks.
+  static const defaultWallpaperSource = "toppicks";
+
   static Future<List<String>> getWallpaperSources() async {
     final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_wallpaperSourceKey) ?? "internet";
+    final raw = prefs.getString(_wallpaperSourceKey) ?? defaultWallpaperSource;
     final list = raw.split(",").map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
-    return list.isEmpty ? ["internet"] : list;
+    return list.isEmpty ? [defaultWallpaperSource] : list;
   }
 
   static Future<void> saveWallpaperSources(List<String> sources) async {
@@ -417,7 +423,7 @@ class UserSharedPrefs {
     await prefs.setString(_wallpaperSourceKey, sources.join(","));
   }
 
-  /// Legacy single-source accessor – returns the first source, or "internet".
+  /// Legacy single-source accessor – returns the first source.
   static Future<String> getWallpaperSource() async {
     final sources = await getWallpaperSources();
     return sources.first;
@@ -552,6 +558,49 @@ class UserSharedPrefs {
   static Future<void> setFilterRange(String? val) async {
     final prefs = await SharedPreferences.getInstance();
     if (val == null) { await prefs.remove(_keyFilterRange); } else { await prefs.setString(_keyFilterRange, val); }
+  }
+
+  /// ---- TOP PICKS PERIOD (auto-change source) ----
+  /// Wallhaven toplist range: "1d", "1w", "1M" or "1y".
+  static const _topPicksRangeKey = "topPicksRange";
+  static const topPicksRanges = ["1d", "1w", "1M", "1y"];
+
+  static Future<String> getTopPicksRange() async {
+    final prefs = await SharedPreferences.getInstance();
+    final range = prefs.getString(_topPicksRangeKey);
+    return topPicksRanges.contains(range) ? range! : "1w";
+  }
+
+  static Future<void> setTopPicksRange(String range) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_topPicksRangeKey, range);
+  }
+
+  /// ---- RECENT SEARCHES ----
+  static const _recentSearchesKey = "recentSearches";
+  static const _maxRecentSearches = 10;
+
+  static Future<List<String>> getRecentSearches() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getStringList(_recentSearchesKey) ?? [];
+  }
+
+  /// Moves [query] to the front, without case-insensitive duplicates.
+  static Future<List<String>> addRecentSearch(String query) async {
+    final prefs = await SharedPreferences.getInstance();
+    final list = prefs.getStringList(_recentSearchesKey) ?? [];
+    list.removeWhere((q) => q.toLowerCase() == query.toLowerCase());
+    list.insert(0, query);
+    if (list.length > _maxRecentSearches) {
+      list.removeRange(_maxRecentSearches, list.length);
+    }
+    await prefs.setStringList(_recentSearchesKey, list);
+    return list;
+  }
+
+  static Future<void> clearRecentSearches() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_recentSearchesKey);
   }
 
   /// ---- ALLOWED WIFI SSIDs ----

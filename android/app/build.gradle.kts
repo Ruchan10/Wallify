@@ -81,7 +81,7 @@ dependencies {
     implementation("androidx.palette:palette-ktx:1.0.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
-    implementation("com.google.mediapipe:tasks-vision:0.10.18")
+    implementation("com.google.mediapipe:tasks-vision:0.10.35")
 }
 
 flutter {

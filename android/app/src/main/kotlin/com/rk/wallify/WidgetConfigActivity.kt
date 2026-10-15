@@ -29,14 +29,13 @@ class WidgetConfigActivity : Activity() {
                 else -> null
             }
         } ?: 3
-        val currentSource = prefs.getString("flutter.wallpaperSource", "internet") ?: "internet"
+        val currentSource = prefs.getString("flutter.wallpaperSource", "toppicks") ?: "toppicks"
 
         val locationGroup = findViewById<RadioGroup>(R.id.location_group)
         locationGroup.check(
             when (currentLocation) {
                 1 -> R.id.radio_home
                 2 -> R.id.radio_lock
-                4 -> R.id.radio_random
                 else -> R.id.radio_both
             }
         )
@@ -44,23 +43,25 @@ class WidgetConfigActivity : Activity() {
         val chkInternet = findViewById<CheckBox>(R.id.chk_internet)
         val chkFavorites = findViewById<CheckBox>(R.id.chk_favorites)
         val chkFolder = findViewById<CheckBox>(R.id.chk_folder)
+        val chkTopPicks = findViewById<CheckBox>(R.id.chk_toppicks)
         chkInternet.isChecked = currentSource.contains("internet")
         chkFavorites.isChecked = currentSource.contains("favorites")
         chkFolder.isChecked = currentSource.contains("folder")
+        chkTopPicks.isChecked = currentSource.contains("toppicks")
 
         findViewById<Button>(R.id.btn_save).setOnClickListener {
             val location = when (locationGroup.checkedRadioButtonId) {
                 R.id.radio_home -> 1
                 R.id.radio_lock -> 2
-                R.id.radio_random -> 4
                 else -> 3
             }
             val sources = listOf(
                 "internet" to chkInternet.isChecked,
                 "favorites" to chkFavorites.isChecked,
                 "folder" to chkFolder.isChecked,
+                "toppicks" to chkTopPicks.isChecked,
             ).filter { it.second }.map { it.first }
-            val sourceStr = if (sources.isEmpty()) "internet" else sources.joinToString(",")
+            val sourceStr = if (sources.isEmpty()) "toppicks" else sources.joinToString(",")
 
             prefs.edit()
                 .putInt("flutter.wallpaperLocation", location)

@@ -12,7 +12,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        android:weightSum="4"
+        android:weightSum="3"
         android:layout_marginBottom="6dp">
 
         <TextView
@@ -47,19 +47,6 @@
             android:layout_height="24dp"
             android:layout_weight="1"
             android:text="BOTH"
-            android:textColor="#70FFFFFF"
-            android:textSize="9sp"
-            android:textStyle="bold"
-            android:gravity="center"
-            android:background="@drawable/change_now_bg"
-            android:layout_marginEnd="4dp" />
-
-        <TextView
-            android:id="@+id/option_random"
-            android:layout_width="0dp"
-            android:layout_height="24dp"
-            android:layout_weight="1"
-            android:text="RANDOM"
             android:textColor="#70FFFFFF"
             android:textSize="9sp"
             android:textStyle="bold"

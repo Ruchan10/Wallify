@@ -16,6 +16,8 @@ REDDIT_SUBREDDITS="wallpaper wallpapers EarthPorn spaceporn"
 BING_MARKET="en-US"
 
 # Search terms for sources that support them (bing, nasa and picsum ignore tags).
+# Manage them without editing this file: wallify-desktop.sh -T (list),
+# -a "tag, tag" (add), -r "tag, 2" (remove by name or number).
 TAGS=("nature" "space" "minimal" "cyberpunk" "mountains" "ocean" "night" "city" "abstract" "forest")
 
 # --- Behaviour --------------------------------------------------------------
@@ -25,6 +27,11 @@ RESOLUTION="auto"           # or e.g. "2560x1440"
 ONLY_WHEN_CHARGING=false    # true: skip runs while on battery
 MIN_INTERVAL_MINUTES=0      # skip runs if the wallpaper changed more recently than this
 SET_LOCK_SCREEN=true
+# "different": a separate image for the lock screen, where the desktop allows it
+# (KDE Plasma, GNOME before 42, betterlockscreen, and swaylock/hyprlock pointed
+# at $WALLPAPER_DIR/lock.jpg). GNOME 42+ and macOS always show the desktop
+# wallpaper on the lock screen. "same": use the desktop image there too.
+LOCK_SCREEN_IMAGE="different"
 
 # Force a desktop when auto-detection fails:
 # gnome, kde, cinnamon, mate, xfce, lxqt, hyprland, sway

@@ -37,7 +37,8 @@ That's it. The wallpaper changes on your chosen interval from then on
 (launchd on macOS, a systemd user timer on Linux).
 
 Run the same command again any time to change the interval, keys or tags — your
-current answers come back as the defaults. To stop the automatic changes, add
+current answers come back as the defaults, and new tags are added to the ones
+you have (it also asks which to remove). To stop the automatic changes, add
 `--uninstall`:
 
 ```bash
@@ -53,6 +54,9 @@ directly — same thing.
 ```bash
 ~/.local/bin/wallify-desktop.sh -f    # change the wallpaper now
 ~/.local/bin/wallify-desktop.sh -l    # which sources are ready
+~/.local/bin/wallify-desktop.sh -T    # list your tags, numbered
+~/.local/bin/wallify-desktop.sh -a "ocean, night city"   # add tags
+~/.local/bin/wallify-desktop.sh -r "ocean, 2"            # remove by name or number
 ```
 
 Settings live in `~/.config/wallify/config` if you'd rather edit them by hand;
@@ -79,16 +83,23 @@ No API key at all still gives you five sources.
 Wallpapers work on macOS, GNOME, KDE, Cinnamon, MATE, XFCE, LXQt, Hyprland,
 Sway and plain X11 window managers (via `feh`, `xwallpaper` or `nitrogen`).
 
-Lock screens follow automatically on macOS, GNOME, KDE, Cinnamon, Hyprland and
-Sway. Elsewhere, point your lock screen at `~/Pictures/Wallpapers/current.jpg` —
-a symlink the script updates after every change:
+The lock screen gets its own, different wallpaper where the desktop allows it:
+KDE Plasma, GNOME before 42, `betterlockscreen`, and lock screens that read an
+image file (hyprlock, swaylock, i3lock) pointed at
+`~/Pictures/Wallpapers/lock.jpg` — a symlink the script updates after every
+change (`current.jpg` is the desktop image):
 
 ```ini
 # ~/.config/hypr/hyprlock.conf
 background {
-    path = ~/Pictures/Wallpapers/current.jpg
+    path = ~/Pictures/Wallpapers/lock.jpg
 }
 ```
+
+GNOME 42 and later, Cinnamon and macOS can't show a separate image: their lock
+screen always shows the desktop wallpaper (GNOME blurs it). Set
+`LOCK_SCREEN_IMAGE="same"` in the config to skip the second download elsewhere
+too.
 
 If your desktop is detected wrongly, set `WALLIFY_DESKTOP` in
 `~/.config/wallify/config` to `gnome`, `kde`, `cinnamon`, `mate`, `xfce`,

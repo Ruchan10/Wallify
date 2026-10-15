@@ -14,6 +14,13 @@ class FetchOptions {
   final String? category;
   final String? range;
 
+  /// Smallest acceptable image size in pixels, where the source supports it.
+  final int? minWidth;
+  final int? minHeight;
+
+  /// Ask for the source's own "best of" selection (editor's choice, curated).
+  final bool bestOf;
+
   const FetchOptions({
     this.query,
     this.page = 1,
@@ -23,7 +30,21 @@ class FetchOptions {
     this.orientation,
     this.category,
     this.range,
+    this.minWidth,
+    this.minHeight,
+    this.bestOf = false,
   });
+}
+
+/// Thrown when a source answers with something other than results, so callers
+/// can tell "no results" apart from "source unreachable".
+class SourceException implements Exception {
+  final String source;
+  final int statusCode;
+  const SourceException(this.source, this.statusCode);
+
+  @override
+  String toString() => "$source HTTP $statusCode";
 }
 
 class WallpaperApiService {
@@ -44,13 +65,26 @@ class WallpaperApiService {
               : opts.purity == "Sketchy"
               ? "110"
               : "111"}";
-    // Best-rated first by default; an explicit Discover sort still wins.
-    final sorting = opts.sorting ?? "toplist";
-    final rangeParam =
-        sorting == "toplist" ? "&topRange=${opts.range ?? "1M"}" : "";
+    // Browsing defaults to best-rated; searching defaults to best match,
+    // because "toplist" only searches the top wallpapers of the last month.
+    // An explicit Discover sort still wins.
+    final sorting =
+        opts.sorting ?? (opts.query == null ? "toplist" : "relevance");
+    final rangeParam = sorting == "toplist"
+        ? "&topRange=${_wallhavenRange(opts.range ?? "1M")}"
+        : "";
     final searchParam = opts.query == null
         ? ""
         : "&q=${Uri.encodeQueryComponent(opts.query!)}";
+    final ratiosParam = switch (opts.orientation) {
+      "portrait" => "&ratios=portrait",
+      "landscape" => "&ratios=landscape",
+      "squarish" => "&ratios=1x1",
+      _ => "",
+    };
+    final atLeastParam = opts.minWidth != null && opts.minHeight != null
+        ? "&atleast=${opts.minWidth}x${opts.minHeight}"
+        : "";
 
     final res = await http
         .get(
@@ -60,12 +94,15 @@ class WallpaperApiService {
             "$rangeParam"
             "$categoryParam"
             "$purityParam"
+            "$ratiosParam"
+            "$atLeastParam"
             "&sorting=$sorting"
             "$searchParam"
             "&order=desc",
           ),
         )
         .timeout(_timeout);
+    if (res.statusCode != 200) throw SourceException("wallhaven", res.statusCode);
 
     final data = jsonDecode(res.body);
     final list = <Wallpaper>[];
@@ -105,7 +142,9 @@ class WallpaperApiService {
       "order_by=$orderBy",
       if (opts.purity != null)
         "content_filter=${opts.purity == "NSFW" ? "high" : "low"}",
-      if (opts.orientation != null) "orientation=${opts.orientation}",
+      // Only search takes an orientation, and calls square "squarish" too.
+      if (isSearch && opts.orientation != null)
+        "orientation=${opts.orientation}",
       "page=${opts.page}",
       "per_page=${opts.perPage}",
     ];
@@ -116,6 +155,7 @@ class WallpaperApiService {
           headers: {"Authorization": "Client-ID $apiKey"},
         )
         .timeout(_timeout);
+    if (res.statusCode != 200) throw SourceException("unsplash", res.statusCode);
 
     final data = jsonDecode(res.body);
     final items = isSearch
@@ -156,13 +196,18 @@ class WallpaperApiService {
       // Pixabay only understands vertical/horizontal.
       if (opts.orientation == "portrait") "orientation=vertical",
       if (opts.orientation == "landscape") "orientation=horizontal",
+      if (opts.minWidth != null) "min_width=${opts.minWidth}",
+      if (opts.minHeight != null) "min_height=${opts.minHeight}",
+      if (opts.bestOf) "editors_choice=true",
       "page=${opts.page}",
-      "per_page=${opts.perPage}",
+      // Pixabay rejects per_page below 3.
+      "per_page=${opts.perPage.clamp(3, 200)}",
     ];
 
     final res = await http
         .get(Uri.parse("https://pixabay.com/api/?${params.join("&")}"))
         .timeout(_timeout);
+    if (res.statusCode != 200) throw SourceException("pixabay", res.statusCode);
 
     final data = jsonDecode(res.body);
     final list = <Wallpaper>[];
@@ -195,6 +240,8 @@ class WallpaperApiService {
       "page=${opts.page}",
       "per_page=${opts.perPage}",
       if (isSearch) "query=${Uri.encodeQueryComponent(opts.query!)}",
+      if (isSearch && opts.orientation != null)
+        "orientation=${opts.orientation == "squarish" ? "square" : opts.orientation}",
     ];
 
     final res = await http
@@ -204,10 +251,7 @@ class WallpaperApiService {
         )
         .timeout(_timeout);
 
-    if (res.statusCode != 200) {
-      debugPrint("Pexels HTTP ${res.statusCode}");
-      return [];
-    }
+    if (res.statusCode != 200) throw SourceException("pexels", res.statusCode);
 
     final data = jsonDecode(res.body);
     final photos = data["photos"];
@@ -263,49 +307,94 @@ class WallpaperApiService {
     return list;
   }
 
+  /// Every source Discover can search, in display order.
+  static const searchableSources = ["wallhaven", "unsplash", "pixabay", "pexels"];
+
+  static Future<List<Wallpaper>> fetchSource(String source, FetchOptions opts) {
+    return switch (source) {
+      "wallhaven" => fetchWallhaven(opts),
+      "unsplash" => fetchUnsplash(opts),
+      "pixabay" => fetchPixabay(opts),
+      "pexels" => fetchPexels(opts),
+      "lorempicsum" => fetchLoremPicsum(opts),
+      _ => Future.value(<Wallpaper>[]),
+    };
+  }
+
+  /// Fetches every source in parallel; a failing source contributes nothing.
   static Future<List<Wallpaper>> fetchAll({
     required List<String> sources,
     required FetchOptions Function(String source) optionsFor,
   }) async {
-    final futures = <Future<List<Wallpaper>>>[];
-    for (final source in sources) {
-      final opts = optionsFor(source);
-      final Future<List<Wallpaper>> future = switch (source) {
-        "wallhaven" => fetchWallhaven(opts),
-        "unsplash" => fetchUnsplash(opts),
-        "pixabay" => fetchPixabay(opts),
-        "pexels" => fetchPexels(opts),
-        "lorempicsum" => fetchLoremPicsum(opts),
-        _ => Future.value(<Wallpaper>[]),
-      };
-      futures.add(future.catchError((e) {
-        debugPrint("$source failed: $e");
-        return <Wallpaper>[];
-      }));
-    }
-    final results = await Future.wait(futures);
-    final all = <Wallpaper>[];
-    for (final list in results) {
-      all.addAll(list);
-    }
-    return all;
+    final results = await fetchEach(sources: sources, optionsFor: optionsFor);
+    return [for (final list in results.values) ...?list];
   }
 
-  static Future<bool> validateTag(String tag) async {
-    try {
-      final results = await fetchAll(
-        sources: ["wallhaven", "unsplash", "pixabay"],
-        optionsFor: (source) => FetchOptions(
-          query: tag,
-          perPage: 1,
-          sorting: "relevance",
-        ),
-      );
-      return results.isNotEmpty;
-    } catch (e) {
-      debugPrint("Tag validation error: $e");
-      return false;
+  /// Like [fetchAll], but keeps each source's results apart, in source order.
+  /// A source that failed maps to null.
+  static Future<Map<String, List<Wallpaper>?>> fetchEach({
+    required List<String> sources,
+    required FetchOptions Function(String source) optionsFor,
+  }) async {
+    final futures = [
+      for (final source in sources)
+        fetchSource(source, optionsFor(source))
+            .then<List<Wallpaper>?>((list) => list)
+            .catchError((Object e) {
+          debugPrint("$source failed: $e");
+          return null;
+        }),
+    ];
+    final results = await Future.wait(futures);
+    return {for (var i = 0; i < sources.length; i++) sources[i]: results[i]};
+  }
+
+  /// Merges per-source lists round-robin so every source is represented near
+  /// the top while each keeps its own ranking. Drops duplicate urls.
+  static List<Wallpaper> interleave(Iterable<List<Wallpaper>> lists) {
+    final iterators = [for (final l in lists) l.iterator];
+    final seen = <String>{};
+    final out = <Wallpaper>[];
+    var active = true;
+    while (active) {
+      active = false;
+      for (final it in iterators) {
+        if (it.moveNext()) {
+          active = true;
+          if (seen.add(it.current.url)) out.add(it.current);
+        }
+      }
     }
+    return out;
+  }
+
+  /// Whether any source has results for [tag]: true if one does, false if
+  /// every source that answered had none, and null when no source could be
+  /// reached (offline, rate limited), so a tag isn't flagged by mistake.
+  static Future<bool?> validateTag(String tag) async {
+    final sources = ["wallhaven", "unsplash"];
+    final pixabayKey = await UserSharedPrefs.getPixabayApiKey();
+    if (pixabayKey != null && pixabayKey.isNotEmpty) sources.add("pixabay");
+    final pexelsKey = await UserSharedPrefs.getPexelsApiKey();
+    if (pexelsKey != null && pexelsKey.isNotEmpty) sources.add("pexels");
+
+    final results = await fetchEach(
+      sources: sources,
+      optionsFor: (source) => FetchOptions(
+        query: tag,
+        perPage: 3,
+        sorting: "relevance",
+      ),
+    );
+    final answered = results.values.whereType<List<Wallpaper>>();
+    if (answered.any((list) => list.isNotEmpty)) return true;
+    return answered.isEmpty ? null : false;
+  }
+
+  /// Wallhaven wants "1d", "1w", "1y" but "1M", "3M", "6M" for months.
+  static String _wallhavenRange(String range) {
+    final lower = range.toLowerCase();
+    return lower.endsWith("m") ? "${lower.substring(0, lower.length - 1)}M" : lower;
   }
 
   static Future<bool> testPexelsKey(String key) async {

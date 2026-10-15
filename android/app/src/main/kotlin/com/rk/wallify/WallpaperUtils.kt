@@ -30,6 +30,9 @@ import com.google.mediapipe.tasks.vision.facedetector.FaceDetector.FaceDetectorO
 import android.graphics.RectF
 
 object WallpaperUtils {
+    // Written by the Flutter side (shared_preferences prefixes its keys).
+    private const val CACHED_PATHS_KEY = "flutter.cachedWallpaperPaths"
+    private const val LEGACY_CACHED_PATHS_KEY = "cachedWallpaperPaths"
     private val imageExtensions = setOf("jpg", "jpeg", "png", "webp", "bmp", "gif")
 
     private var cachedObjectDetector: ObjectDetector? = null
@@ -276,7 +279,7 @@ object WallpaperUtils {
             }
 
             val prefs = context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
-            val wallpaperSource = prefs.getString("flutter.wallpaperSource", "internet") ?: "internet"
+            val wallpaperSource = prefs.getString("flutter.wallpaperSource", "toppicks") ?: "toppicks"
             val sources = wallpaperSource.split(",").map { it.trim() }.filter { it.isNotEmpty() }.toSet()
             WorkerLogger.i(context, "Wallify", "Sources: $sources")
 
@@ -316,7 +319,7 @@ object WallpaperUtils {
                 }
             }
 
-            if (sources.contains("internet") || sources.isEmpty() || sources.contains("folder").not()) {
+            if (sources.contains("internet") || sources.contains("toppicks") || sources.isEmpty() || sources.contains("folder").not()) {
                 val cachedPaths = getCachedLocalPaths(context)
                 if (cachedPaths.isNotEmpty()) {
                     WorkerLogger.i(context, "Wallify", "Using ${cachedPaths.size} locally cached wallpapers")
@@ -360,13 +363,8 @@ object WallpaperUtils {
                 is String -> wallpaperLocationValue.toIntOrNull() ?: 3
                 else -> 3
             }
-            val resolvedLocation = if (wallpaperLocation == 4) {
-                val pick = (1..3).random()
-                WorkerLogger.i(context, "Wallify", "Random mode: randomly picked $pick")
-                pick
-            } else {
-                wallpaperLocation
-            }
+            // The removed random mode (4) and unknown values fall back to both.
+            val resolvedLocation = wallpaperLocation.takeIf { it in 1..3 } ?: 3
             WorkerLogger.i(context, "Wallify", "Wallpaper location mode: $wallpaperLocation (resolved: $resolvedLocation)")
 
             val wallpaperManager = WallpaperManager.getInstance(context)
@@ -783,7 +781,7 @@ object WallpaperUtils {
             }
 
             val prefs = context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
-            val wallpaperSource = prefs.getString("flutter.wallpaperSource", "internet") ?: "internet"
+            val wallpaperSource = prefs.getString("flutter.wallpaperSource", "toppicks") ?: "toppicks"
             val sources = wallpaperSource.split(",").map { it.trim() }.filter { it.isNotEmpty() }.toSet()
             val isOnlyFolder = sources.size == 1 && sources.contains("folder")
             val hasInternet = !isOnlyFolder
@@ -837,6 +835,23 @@ object WallpaperUtils {
         val urls = mutableListOf<String>()
         try {
             val prefs = context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+            val selectedSources = (prefs.getString("flutter.wallpaperSource", "toppicks") ?: "toppicks")
+                .split(",").map { it.trim() }.toSet()
+            // "toppicks" = each source's best wallpapers for a period, ignoring tags.
+            val wantTopPicks = "toppicks" in selectedSources
+            val wantTags = "internet" in selectedSources || !wantTopPicks
+
+            // A random page adds variety between runs; page 1 is the fallback
+            // when that page is empty.
+            val page = (1..3).random()
+            fun <T> withPageFallback(fetch: (Int) -> List<T>): List<T> {
+                val first = fetch(page)
+                return if (first.isEmpty() && page != 1) fetch(1) else first
+            }
+
+            if (wantTopPicks) urls.addAll(fetchTopPicks(context, prefs, ::withPageFallback))
+
+            if (wantTags) {
             val tagsJson = prefs.getString("flutter.tags", null)
             val savedTags = if (!tagsJson.isNullOrEmpty()) {
                 try {
@@ -856,14 +871,8 @@ object WallpaperUtils {
             WorkerLogger.i(context, "Wallify", "Fetching wallpapers tag=$tag, size=${deviceWidth}x$deviceHeight")
             Log.d("Wallify", "Fetching wallpapers with tag=$tag, size=${deviceWidth}x$deviceHeight")
 
-            // Always pull the best-rated wallpapers. A random page adds variety
-            // between runs; page 1 is the fallback when that page is empty.
+            // Always pull the best-rated wallpapers.
             val q = java.net.URLEncoder.encode(tag, "UTF-8")
-            val page = (1..3).random()
-            fun <T> withPageFallback(fetch: (Int) -> List<T>): List<T> {
-                val first = fetch(page)
-                return if (first.isEmpty() && page != 1) fetch(1) else first
-            }
 
             var wallhaven = withPageFallback { p ->
                 fetchFromWallhaven("https://wallhaven.cc/api/v1/search?q=$q&categories=100&purity=100&ratios=portrait&sorting=toplist&topRange=1M&order=desc&page=$p")
@@ -889,6 +898,7 @@ object WallpaperUtils {
                 WorkerLogger.i(context, "Wallify", "Pixabay popular: ${pixabay.size} wallpapers")
                 urls.addAll(pixabay)
             }
+            }
 
             if (urls.isEmpty()) {
                 Log.w("Wallify", "No wallpapers found from any source")
@@ -908,6 +918,45 @@ object WallpaperUtils {
         }
 
         return urls
+    }
+
+    /**
+     * The best portrait wallpapers of each source for the user's Top Picks period
+     * (flutter.topPicksRange). Only Wallhaven ranks by period; Unsplash and
+     * Pixabay contribute their popular / editor's choice feeds.
+     */
+    private fun fetchTopPicks(
+        context: Context,
+        prefs: android.content.SharedPreferences,
+        withPageFallback: ((Int) -> List<String>) -> List<String>,
+    ): List<String> {
+        val range = when (val r = prefs.getString("flutter.topPicksRange", "1w")) {
+            "1d", "1w", "1M", "1y" -> r
+            else -> "1w"
+        }
+        val wallhaven = withPageFallback { p ->
+            fetchFromWallhaven("https://wallhaven.cc/api/v1/search?purity=100&ratios=portrait&sorting=toplist&topRange=$range&order=desc&page=$p")
+        }
+        WorkerLogger.i(context, "Wallify", "Top picks ($range) Wallhaven: ${wallhaven.size}")
+
+        val unsplash = withPageFallback { p ->
+            fetchFromUnsplash(context, "https://api.unsplash.com/photos?order_by=popular&per_page=30&page=$p")
+        }
+        WorkerLogger.i(context, "Wallify", "Top picks Unsplash: ${unsplash.size}")
+
+        val pixabayApiKey = prefs.getString("flutter.pixabay_api_key", null)
+        val pixabay = if (pixabayApiKey.isNullOrEmpty()) emptyList() else withPageFallback { p ->
+            fetchFromPixabay("https://pixabay.com/api/?key=$pixabayApiKey&image_type=photo&orientation=vertical&safesearch=true&editors_choice=true&order=popular&per_page=30&page=$p")
+        }
+        WorkerLogger.i(context, "Wallify", "Top picks Pixabay: ${pixabay.size}")
+
+        // Alternate sources so no single one dominates the pool.
+        val merged = mutableListOf<String>()
+        val lists = listOf(wallhaven, unsplash, pixabay)
+        for (i in 0 until (lists.maxOfOrNull { it.size } ?: 0)) {
+            lists.forEach { list -> list.getOrNull(i)?.let { if (it !in merged) merged.add(it) } }
+        }
+        return merged
     }
 
     private fun fetchFromWallhaven(apiUrl: String): List<String> {
@@ -1056,7 +1105,9 @@ object WallpaperUtils {
 
     private fun getCachedLocalPaths(context: Context): MutableList<String> {
         val prefs = context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
-        val cachedRaw = prefs.getString("cachedWallpaperPaths", null) ?: return mutableListOf()
+        val cachedRaw = prefs.getString(CACHED_PATHS_KEY, null)
+            ?: prefs.getString(LEGACY_CACHED_PATHS_KEY, null)
+            ?: return mutableListOf()
         return try {
             val arr = org.json.JSONArray(cachedRaw)
             val paths = (0 until arr.length()).map { arr.getString(it) }.toMutableList()
@@ -1221,7 +1272,8 @@ object WallpaperUtils {
     private fun removeUsedCachedPath(context: Context, usedPath: String) {
         try {
             val prefs = context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
-            val cachedRaw = prefs.getString("cachedWallpaperPaths", null) ?: return
+            val key = if (prefs.contains(CACHED_PATHS_KEY)) CACHED_PATHS_KEY else LEGACY_CACHED_PATHS_KEY
+            val cachedRaw = prefs.getString(key, null) ?: return
             val arr = org.json.JSONArray(cachedRaw)
             val newArr = org.json.JSONArray()
             for (i in 0 until arr.length()) {
@@ -1229,7 +1281,7 @@ object WallpaperUtils {
                 if (path != usedPath) newArr.put(path)
             }
             if (newArr.length() < arr.length()) {
-                prefs.edit().putString("cachedWallpaperPaths", newArr.toString()).apply()
+                prefs.edit().putString(key, newArr.toString()).apply()
                 Log.d("Wallify", "Removed used cached path, ${newArr.length()} remaining")
             }
         } catch (e: Exception) {
