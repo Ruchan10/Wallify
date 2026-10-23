@@ -41,7 +41,12 @@ class MainActivity : FlutterActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        handleIntent(intent)
+        // A re-created activity, or one reopened from Recents, gets its original
+        // intent again. Changing the wallpaper re-themes the system, which can
+        // re-create this activity, so a "Change wallpaper" shortcut would repeat.
+        val relaunched = savedInstanceState != null ||
+            (intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) != 0
+        if (!relaunched) handleIntent(intent)
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -53,11 +58,7 @@ class MainActivity : FlutterActivity() {
         val shortcutAction = intent?.getStringExtra("shortcut_action")
         if (shortcutAction != null) {
             when (shortcutAction) {
-                "change_now" -> {
-                    Thread {
-                        WallpaperUtils.downloadAndSetWallpaperBackground(applicationContext, isManual = true)
-                    }.start()
-                }
+                "change_now" -> WorkManagerExt.changeNow(applicationContext)
                 "favorites" -> {
                     pendingNavigation = "favorites"
                     sendNavigationToFlutter()
@@ -99,17 +100,26 @@ class MainActivity : FlutterActivity() {
                     }
                     "scheduleBackgroundWallpaperWorkerNow" -> {
                         lifecycleScope.launch(Dispatchers.IO) {
-                            try {
-                                val changed = WallpaperUtils.downloadAndSetWallpaperBackground(applicationContext, isManual = true)
-                                if (changed) {
-                                    result.success("✅ Wallpaper changed successfully")
-                                } else {
-                                    result.error("CHANGE_FAILED", "Could not change wallpaper", null)
-                                }
+                            // Waits for a change that is already running instead of
+                            // stacking a second one on top of it.
+                            val outcome = try {
+                                WallpaperUtils.downloadAndSetWallpaperBackground(applicationContext, isManual = true)
                             } catch (e: Exception) {
-                                result.error("ERROR", e.message, null)
+                                Log.e("Wallify", "Change Now failed", e)
+                                WallpaperUtils.ChangeResult.FAILED
+                            }
+                            withContext(Dispatchers.Main) {
+                                when (outcome) {
+                                    WallpaperUtils.ChangeResult.CHANGED -> result.success("✅ Wallpaper changed successfully")
+                                    WallpaperUtils.ChangeResult.BUSY -> result.error("BUSY", "Another wallpaper change is still running", null)
+                                    WallpaperUtils.ChangeResult.OFFLINE -> result.error("OFFLINE", "Couldn't download a wallpaper", null)
+                                    else -> result.error("CHANGE_FAILED", "Could not change wallpaper", null)
+                                }
                             }
                         }
+                    }
+                    "getWallpaperChangeStatus" -> {
+                        result.success(WallpaperUtils.changeStatus)
                     }
 
                     "downloadAndSetWallpaper" -> {

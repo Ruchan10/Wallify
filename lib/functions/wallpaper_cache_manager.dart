@@ -171,6 +171,18 @@ class WallpaperCacheManager {
     return UserSharedPrefs.getCachedWallpaperPaths();
   }
 
+  /// Offers the worker only cached files that belong to [pool]. The worker
+  /// prefers cached files, so without this a new pool (other tags or sources)
+  /// would only take effect once its images had all downloaded.
+  static Future<void> retainOnly(List<Wallpaper> pool) async {
+    final dir = await cacheDirPath();
+    final inPool = {for (final w in pool) '$dir/${_safeName(w.id)}.jpg'};
+    final cached = await UserSharedPrefs.getCachedWallpaperPaths();
+    await UserSharedPrefs.saveCachedWallpaperPaths(
+      cached.where(inPool.contains).toList(),
+    );
+  }
+
   static Future<int> clearCache() async {
     final dir = await _cacheDir();
     int count = 0;

@@ -10,8 +10,12 @@ import android.graphics.BitmapFactory
 import android.os.Build
 import android.util.Log
 import java.io.File
+import java.io.IOException
 import java.net.HttpURLConnection
+import java.net.MalformedURLException
 import java.net.URL
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.locks.ReentrantLock
 import kotlin.random.Random
 import org.json.JSONArray
 import java.util.*
@@ -42,6 +46,28 @@ object WallpaperUtils {
 
     private const val FOCUS_TAG = "FocusDetect"
     private const val DETECTION_MAX_DIM = 1280
+
+    /** How a wallpaper change attempt ended. */
+    enum class ChangeResult { CHANGED, SKIPPED, BUSY, OFFLINE, FAILED }
+
+    // One change at a time. The periodic worker, Change Now, the widget, the
+    // notification and the app shortcut can fire together, and each would
+    // otherwise apply a wallpaper of its own.
+    private val changeLock = ReentrantLock()
+    private const val CHANGE_WAIT_MINUTES = 3L
+
+    /** Epoch millis of the last change. Native only, so no "flutter." prefix. */
+    private const val LAST_CHANGE_MILLIS_KEY = "lastWallpaperChangeMillis"
+
+    /** Downloads failing in a row before a run stops trying the network. */
+    private const val MAX_NETWORK_FAILURES = 3
+
+    const val CHANGE_NOTIFICATION_ID = 1001
+
+    /** The running change's current step, for the Change Now button; null when idle. */
+    @Volatile
+    var changeStatus: String? = null
+        private set
 
     /** Logs to logcat and to the in-app worker log screen. */
     private fun focusLog(context: Context, message: String) {
@@ -136,6 +162,11 @@ object WallpaperUtils {
         return cachedFaceDetector
     }
 
+    /**
+     * Only the constraints the settings page offers. Wi-Fi only, the schedule and
+     * allowed SSIDs lost their UI in earlier versions, and their leftover values
+     * blocked changes with no way to see or turn them off.
+     */
     fun checkConstraints(context: Context): Pair<Boolean, String> {
         val prefs = context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
 
@@ -146,7 +177,7 @@ object WallpaperUtils {
 
         val requiresCharging = prefs.getBoolean("flutter.constraint_charging", false)
         if (requiresCharging && !isDeviceCharging(context)) {
-            return Pair(false, "Device is not charging")
+            return Pair(false, "Device is not plugged in")
         }
 
         val requiresBatteryNotLow = prefs.getBoolean("flutter.constraint_battery_not_low", false)
@@ -159,68 +190,21 @@ object WallpaperUtils {
             return Pair(false, "Storage space is low (<100MB free)")
         }
 
-        val requiresWifi = prefs.getBoolean("flutter.constraint_wifi", false)
-        if (requiresWifi && !isWifiConnected(context)) {
-            return Pair(false, "Not connected to Wi-Fi")
-        }
-
-        val scheduleEnabled = prefs.getBoolean("flutter.scheduleEnabled", false)
-        if (scheduleEnabled) {
-            val calendar = Calendar.getInstance()
-            val today = calendar.get(Calendar.DAY_OF_WEEK)
-            val dayMap = mapOf(
-                Calendar.MONDAY to 1, Calendar.TUESDAY to 2, Calendar.WEDNESDAY to 3,
-                Calendar.THURSDAY to 4, Calendar.FRIDAY to 5, Calendar.SATURDAY to 6,
-                Calendar.SUNDAY to 7
-            )
-            val currentDayNum = dayMap[today] ?: 0
-            val daysJson = prefs.getString("flutter.scheduleDays", null)
-            if (daysJson != null) {
-                val allowedDays = try {
-                    JSONArray(daysJson).let { arr ->
-                        (0 until arr.length()).map { arr.getInt(it) }.toSet()
-                    }
-                } catch (_: Exception) { emptySet() }
-                if (allowedDays.isNotEmpty() && currentDayNum !in allowedDays) {
-                    val dayNames = listOf("", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
-                    return Pair(false, "Today (${dayNames.getOrElse(currentDayNum) { "?" }}) is not in schedule")
-                }
-            }
-
-            val startHour = prefs.getInt("flutter.scheduleStartHour", 6)
-            val endHour = prefs.getInt("flutter.scheduleEndHour", 22)
-            val currentHour = calendar.get(Calendar.HOUR_OF_DAY)
-            if (currentHour < startHour) {
-                return Pair(false, "Too early (${currentHour}h) — schedule starts at ${startHour}h")
-            }
-            if (currentHour >= endHour) {
-                return Pair(false, "Too late (${currentHour}h) — schedule ends at ${endHour}h")
-            }
-        }
-
-        val allowedSsidsJson = prefs.getString("flutter.allowedSsids", null)
-        if (!allowedSsidsJson.isNullOrBlank()) {
-            val allowed = try {
-                val arr = org.json.JSONArray(allowedSsidsJson)
-                (0 until arr.length()).map { arr.getString(it).trim() }.toSet()
-            } catch (_: Exception) { emptySet() }
-            if (allowed.isNotEmpty()) {
-                val wifiManager = context.getSystemService(Context.WIFI_SERVICE) as? android.net.wifi.WifiManager
-                val currentSsid = wifiManager?.connectionInfo?.ssid?.trim('"') ?: ""
-                if (currentSsid !in allowed) {
-                    return Pair(false, "SSID '$currentSsid' not in allowed list")
-                }
-            }
-        }
-
         return Pair(true, "All constraints met")
     }
 
+    /**
+     * Plugged in, whether or not the battery is filling right now: battery
+     * protection and adaptive charging hold it at 80-85% and report "not charging".
+     */
     fun isDeviceCharging(context: Context): Boolean {
         return try {
             val intent = context.registerReceiver(null, android.content.IntentFilter(android.content.Intent.ACTION_BATTERY_CHANGED))
+            val plugged = intent?.getIntExtra(android.os.BatteryManager.EXTRA_PLUGGED, 0) ?: 0
             val status = intent?.getIntExtra(android.os.BatteryManager.EXTRA_STATUS, -1) ?: -1
-            status == android.os.BatteryManager.BATTERY_STATUS_CHARGING || status == android.os.BatteryManager.BATTERY_STATUS_FULL
+            plugged != 0 ||
+                status == android.os.BatteryManager.BATTERY_STATUS_CHARGING ||
+                status == android.os.BatteryManager.BATTERY_STATUS_FULL
         } catch (e: Exception) {
             true
         }
@@ -252,31 +236,60 @@ object WallpaperUtils {
         }
     }
 
-    fun isWifiConnected(context: Context): Boolean {
-        return try {
-            val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? android.net.ConnectivityManager
-            val network = cm?.activeNetwork ?: return false
-            val caps = cm.getNetworkCapabilities(network) ?: return false
-            caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) ||
-            caps.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_NOT_METERED)
-        } catch (e: Exception) {
-            true
+    /**
+     * Changes the wallpaper. If another change is running it waits for that one
+     * instead, and doesn't change the wallpaper a second time once it succeeds.
+     * Automatic runs ([isManual] false) also skip when the constraints aren't met
+     * or the wallpaper changed recently. [isStopped] aborts before anything is
+     * applied.
+     */
+    fun downloadAndSetWallpaperBackground(
+        context: Context,
+        isManual: Boolean = false,
+        isStopped: () -> Boolean = { false },
+    ): ChangeResult {
+        val lastChangeBefore = lastChangeMillis(context)
+        val waited = !changeLock.tryLock()
+        if (waited) {
+            WorkerLogger.i(context, "Wallify", "Another wallpaper change is running, waiting for it")
+            val acquired = try {
+                changeLock.tryLock(CHANGE_WAIT_MINUTES, TimeUnit.MINUTES)
+            } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+                false
+            }
+            if (!acquired) {
+                WorkerLogger.w(context, "Wallify", "Gave up waiting for the running wallpaper change")
+                return ChangeResult.BUSY
+            }
+        }
+        try {
+            if (waited && lastChangeMillis(context) != lastChangeBefore) {
+                WorkerLogger.i(context, "Wallify", "Wallpaper changed while waiting, not changing it again")
+                return if (isManual) ChangeResult.CHANGED else ChangeResult.SKIPPED
+            }
+            return changeWallpaperLocked(context, isManual, isStopped)
+        } finally {
+            changeStatus = null
+            changeLock.unlock()
         }
     }
 
-    fun downloadAndSetWallpaperBackground(context: Context, isManual: Boolean = false): Boolean {
+    private fun changeWallpaperLocked(context: Context, isManual: Boolean, isStopped: () -> Boolean): ChangeResult {
         try {
-            WorkerLogger.i(context, "Wallify", "Starting background wallpaper change check")
+            WorkerLogger.i(context, "Wallify", "Starting background wallpaper change check (manual=$isManual)")
             Log.d("Wallify", "Starting background wallpaper change (no Activity)")
 
             if (!isManual) {
+                if (changedRecently(context)) return ChangeResult.SKIPPED
                 val (met, reason) = checkConstraints(context)
                 if (!met) {
                     WorkerLogger.w(context, "Wallify", "Skipping wallpaper change: $reason")
                     Log.d("Wallify", "Skipping wallpaper change: $reason")
-                    return false
+                    return ChangeResult.SKIPPED
                 }
             }
+            changeStatus = "Finding wallpapers…"
 
             val prefs = context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
             val wallpaperSource = prefs.getString("flutter.wallpaperSource", "toppicks") ?: "toppicks"
@@ -336,7 +349,7 @@ object WallpaperUtils {
                         if (fetched.isEmpty()) {
                             WorkerLogger.e(context, "Wallify", "Could not fetch any wallpapers, aborting.")
                             Log.e("Wallify", "Could not fetch any wallpapers, aborting.")
-                            return false
+                            return ChangeResult.FAILED
                         } else {
                             imageUrls.addAll(fetched)
                             WorkerLogger.i(context, "Wallify", "Added ${fetched.size} new wallpapers from API")
@@ -352,7 +365,7 @@ object WallpaperUtils {
             if (imageSources.isEmpty()) {
                 WorkerLogger.e(context, "Wallify", "No wallpapers from any source, aborting.")
                 Log.e("Wallify", "No wallpapers from any source, aborting.")
-                return false
+                return ChangeResult.FAILED
             }
             WorkerLogger.i(context, "Wallify", "Total image candidates: ${imageSources.size}")
 
@@ -368,78 +381,140 @@ object WallpaperUtils {
             WorkerLogger.i(context, "Wallify", "Wallpaper location mode: $wallpaperLocation (resolved: $resolvedLocation)")
 
             val wallpaperManager = WallpaperManager.getInstance(context)
+            val (screenW, screenH) = getScreenSize(context)
 
-            when (resolvedLocation) {
-                1 -> {
-                    WorkerLogger.i(context, "Wallify", "Setting HOME wallpaper")
-                    val nonFacePath = getOrFetchNonFaceImagePath(context, imageSources)
-                    if (nonFacePath == null) {
-                        WorkerLogger.e(context, "Wallify", "No suitable wallpapers found (all had faces or invalid, fetch failed).")
-                        Log.e("Wallify", "No suitable wallpapers found (all had faces or invalid, fetch failed).")
-                        return false
-                    }
-                    WorkerLogger.i(context, "Wallify", "Selected: $nonFacePath")
-                    setWallpaper(context, wallpaperManager, nonFacePath, WallpaperManager.FLAG_SYSTEM)
-                }
-
-                2 -> {
-                    WorkerLogger.i(context, "Wallify", "Setting LOCK wallpaper")
-                    val nonFacePath = getOrFetchNonFaceImagePath(context, imageSources)
-                    if (nonFacePath == null) {
-                        WorkerLogger.e(context, "Wallify", "No suitable wallpapers found (all had faces or invalid, fetch failed).")
-                        Log.e("Wallify", "No suitable wallpapers found (all had faces or invalid, fetch failed).")
-                        return false
-                    }
-                    WorkerLogger.i(context, "Wallify", "Selected: $nonFacePath")
-                    setWallpaper(context, wallpaperManager, nonFacePath, WallpaperManager.FLAG_LOCK)
-                }
-
-                3 -> {
-                    WorkerLogger.i(context, "Wallify", "Setting BOTH wallpapers")
-                    val homePath = getOrFetchNonFaceImagePath(context, imageSources)
-                    if (homePath == null) {
-                        WorkerLogger.e(context, "Wallify", "No suitable wallpapers found for home (all had faces or invalid, fetch failed).")
-                        Log.e("Wallify", "No suitable wallpapers found for home (all had faces or invalid, fetch failed).")
-                        return false
-                    }
-
-                    imageSources.remove(homePath)
-                    var lockPath = getOrFetchNonFaceImagePath(context, imageSources)
-                    if (lockPath == null) {
-                        lockPath = homePath
-                    }
-                    WorkerLogger.i(context, "Wallify", "Home: $homePath, Lock: $lockPath")
-                    setWallpaper(context, wallpaperManager, homePath, WallpaperManager.FLAG_SYSTEM)
-                    setWallpaper(context, wallpaperManager, lockPath, WallpaperManager.FLAG_LOCK)
-                }
-
-                else -> {
-                    WorkerLogger.i(context, "Wallify", "Setting default (home) wallpaper")
-                    val nonFacePath = getOrFetchNonFaceImagePath(context, imageSources)
-                    if (nonFacePath == null) {
-                        WorkerLogger.e(context, "Wallify", "No suitable wallpapers found (all had faces or invalid, fetch failed).")
-                        Log.e("Wallify", "No suitable wallpapers found (all had faces or invalid, fetch failed).")
-                        return false
-                    }
-                    WorkerLogger.i(context, "Wallify", "Selected: $nonFacePath")
-                    Log.d("Wallify", "Setting default (home) wallpaper: $nonFacePath")
-                    setWallpaper(context, wallpaperManager, nonFacePath, WallpaperManager.FLAG_SYSTEM)
-                }
+            // Pick and crop everything before applying anything, then set home and
+            // lock back to back: they change together instead of seconds apart, and
+            // a run the system stops never leaves only one screen changed.
+            var home: PickedWallpaper? = null
+            var lock: PickedWallpaper? = null
+            if (resolvedLocation != 2) {
+                home = pickWallpaper(context, imageSources, screenW, screenH, isStopped)
+                    ?: return noWallpaperFound(context, isStopped, "home")
+                imageSources.remove(home.path)
             }
+            if (resolvedLocation != 1) {
+                // With both screens the lock screen gets a second wallpaper if there is one.
+                lock = try {
+                    pickWallpaper(context, imageSources, screenW, screenH, isStopped)
+                } catch (e: IOException) {
+                    if (home == null) throw e
+                    WorkerLogger.w(context, "Wallify", "No second wallpaper (${e.message}), using the home one for both")
+                    null
+                } ?: home ?: return noWallpaperFound(context, isStopped, "lock")
+            }
+
+            if (isStopped()) {
+                WorkerLogger.w(context, "Wallify", "Stopped by the system before applying; WorkManager runs it again")
+                return ChangeResult.SKIPPED
+            }
+
+            changeStatus = "Applying wallpaper…"
+            WorkerLogger.i(context, "Wallify", "Home: ${home?.path}, Lock: ${lock?.path}")
+            val applied = applyWallpapers(context, wallpaperManager, home, lock)
+            if (applied.isEmpty()) return ChangeResult.FAILED
+            // Straight away: a run repeated after this point must see the change.
+            updateLastChangeTime(context)
+
+            for (picked in applied) {
+                trackWallpaperChange(context, picked.path)
+                markShown(context, picked.path)
+            }
+            // The home screen decides the app's Monet colours and the live wallpaper.
+            home?.takeIf { it in applied }?.let {
+                extractAndSaveWallpaperColors(context, it.bitmap)
+                saveCurrentWallpaper(context, it.bitmap)
+            }
+            StatsWidget.triggerUpdate(context)
+            QuickToggleWidget.triggerUpdate(context)
+            ScheduleWidget.triggerUpdate(context)
 
             WorkerLogger.i(context, "Wallify", "Wallpaper change completed successfully (mode=$wallpaperLocation, source=$wallpaperSource)")
             Log.d("Wallify", "Wallpaper change completed (mode=$wallpaperLocation, source=$wallpaperSource)")
             showChangeNotification(context)
-            return true
+            return ChangeResult.CHANGED
+        } catch (e: IOException) {
+            WorkerLogger.e(context, "Wallify", "Network unavailable (${e.message}), keeping the wallpaper pool for next time")
+            return ChangeResult.OFFLINE
         } catch (e: Exception) {
             WorkerLogger.e(context, "Wallify", "Error: ${e.message}")
             Log.e("Wallify", "Error setting wallpaper in background", e)
-            return false
+            return ChangeResult.FAILED
         } catch (e: Error) {
             WorkerLogger.e(context, "Wallify", "Fatal error: ${e.message}")
             Log.e("Wallify", "Fatal error setting wallpaper in background: ${e.message}", e)
-            return false
+            return ChangeResult.FAILED
         }
+    }
+
+    private class PickedWallpaper(val path: String, val bitmap: Bitmap)
+
+    /** Picks a wallpaper from [imageSources] and crops it to the screen. */
+    private fun pickWallpaper(
+        context: Context,
+        imageSources: MutableList<String>,
+        screenW: Int,
+        screenH: Int,
+        isStopped: () -> Boolean,
+    ): PickedWallpaper? {
+        val picked = getOrFetchNonFaceImage(context, imageSources, isStopped) ?: return null
+        WorkerLogger.i(context, "Wallify", "Selected: ${picked.path}")
+        changeStatus = "Cropping wallpaper…"
+        focusLog(context, "Target screen ${screenW}x$screenH, source image ${picked.bitmap.width}x${picked.bitmap.height}")
+        val cropped = detectAndCropMainObject(context, picked.bitmap, screenW, screenH)
+        if (cropped !== picked.bitmap) picked.bitmap.recycle()
+        focusLog(context, "Final wallpaper bitmap ${cropped.width}x${cropped.height}")
+        return PickedWallpaper(picked.path, cropped)
+    }
+
+    private fun noWallpaperFound(context: Context, isStopped: () -> Boolean, screen: String): ChangeResult {
+        if (isStopped()) {
+            WorkerLogger.w(context, "Wallify", "Stopped by the system while picking a wallpaper")
+            return ChangeResult.SKIPPED
+        }
+        WorkerLogger.e(context, "Wallify", "No suitable wallpapers found for $screen (all had faces or invalid, fetch failed).")
+        Log.e("Wallify", "No suitable wallpapers found for $screen (all had faces or invalid, fetch failed).")
+        return ChangeResult.FAILED
+    }
+
+    /**
+     * Sets [home] and [lock] (either may be null) and returns the ones that were
+     * applied. The same wallpaper on both screens goes in one call.
+     */
+    private fun applyWallpapers(
+        context: Context,
+        manager: WallpaperManager,
+        home: PickedWallpaper?,
+        lock: PickedWallpaper?,
+    ): List<PickedWallpaper> {
+        val applied = mutableListOf<PickedWallpaper>()
+        fun apply(picked: PickedWallpaper, which: Int) {
+            try {
+                if (which != 0) manager.setBitmap(picked.bitmap, null, true, which)
+                if (picked !in applied) applied.add(picked)
+                Log.d("Wallify", "Wallpaper set successfully for flag=$which")
+            } catch (e: Exception) {
+                WorkerLogger.e(context, "Wallify", "Error setting wallpaper from ${picked.path}: ${e.message}")
+                Log.e("Wallify", "Error setting wallpaper from ${picked.path}", e)
+            }
+        }
+
+        // With Wallify's own live wallpaper on the home screen, the home image only
+        // goes to it (saveCurrentWallpaper); a static one would replace it.
+        val homeFlag = if (home != null && isOwnLiveWallpaperActive(context, manager)) 0 else WallpaperManager.FLAG_SYSTEM
+        if (home != null && home === lock) {
+            apply(home, homeFlag or WallpaperManager.FLAG_LOCK)
+        } else {
+            home?.let { apply(it, homeFlag) }
+            lock?.let { apply(it, WallpaperManager.FLAG_LOCK) }
+        }
+        return applied
+    }
+
+    private fun isOwnLiveWallpaperActive(context: Context, manager: WallpaperManager): Boolean = try {
+        manager.wallpaperInfo?.packageName == context.packageName
+    } catch (_: Exception) {
+        false
     }
 
     private fun showChangeNotification(context: Context) {
@@ -473,18 +548,26 @@ object WallpaperUtils {
             )
         }
 
+        val keepIntent = Intent(context, QuickToggleWidget::class.java).apply {
+            action = QuickToggleWidget.ACTION_DISMISS_NOTIFICATION
+        }
+        val keepPending = PendingIntent.getBroadcast(
+            context, 2, keepIntent,
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE else 0
+        )
+
         val notification = androidx.core.app.NotificationCompat.Builder(context, channelId)
             .setSmallIcon(android.R.drawable.ic_menu_gallery)
             .setContentTitle("Wallpaper Changed")
             .setContentText("Your wallpaper has been updated")
             .setContentIntent(openPending)
             .addAction(android.R.drawable.ic_menu_edit, "Try Another", tryAnotherPending)
-            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Keep", null)
+            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Keep", keepPending)
             .setAutoCancel(true)
             .build()
 
         val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        nm.notify(1001, notification)
+        nm.notify(CHANGE_NOTIFICATION_ID, notification)
     }
 
     // Shares the lock with detectFocusPoint: MediaPipe detectors aren't thread-safe.
@@ -694,10 +777,21 @@ object WallpaperUtils {
             .edit().remove("usedWallpaperUrls").apply()
     }
 
-    private fun getNonFaceImagePath(context: Context, paths: MutableList<String>): String? {
+    /**
+     * The first usable candidate, decoded. Unusable ones are removed from [paths]
+     * and added to [rejected]; broken images and faces are also dropped from the
+     * pool, while network failures leave it alone and, after a few in a row,
+     * throw IOException.
+     */
+    private fun getNonFaceImage(
+        context: Context,
+        paths: MutableList<String>,
+        rejected: MutableSet<String>,
+        isStopped: () -> Boolean,
+    ): PickedWallpaper? {
         val prefs = context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
         val requiresNoFaces = prefs.getBoolean("flutter.constraint_no_faces", true)
-        Log.d("Wallify", "getNonFaceImagePath: requiresNoFaces=$requiresNoFaces, poolSize=${paths.size}")
+        Log.d("Wallify", "getNonFaceImage: requiresNoFaces=$requiresNoFaces, poolSize=${paths.size}")
 
         val usedFolderPaths = loadUsedFolderPaths(context)
         val usedUrls = loadUsedUrlSet(context)
@@ -723,8 +817,10 @@ object WallpaperUtils {
             Log.d("Wallify", "Skipping ${usedUrls.size} previously used wallpapers: ${usedUrls.take(10)}")
         }
 
+        var networkFailures = 0
         val iterator = paths.iterator()
         while (iterator.hasNext()) {
+            if (isStopped()) return null
             val path = iterator.next()
 
             if (isAlreadyUsed(path)) {
@@ -733,85 +829,84 @@ object WallpaperUtils {
                 continue
             }
 
-            val bitmap = loadBitmapFromSource(context, path)
+            if (isRemote(path)) changeStatus = "Downloading wallpaper…"
+            val bitmap = try {
+                loadBitmapFromSource(context, path)
+            } catch (e: IOException) {
+                // Offline or a server hiccup says nothing about the wallpaper: keep it.
+                WorkerLogger.w(context, "Wallify", "Download failed (${e.message}): $path")
+                iterator.remove()
+                rejected.add(path)
+                if (++networkFailures >= MAX_NETWORK_FAILURES) throw e
+                continue
+            }
+            networkFailures = 0
             if (bitmap == null) {
                 Log.w("Wallify", "Skipping invalid image: $path")
                 iterator.remove()
-                if (!isFolderImagePath(context, path)) {
-                    removeUsedUrl(context, path, addToHistory = false)
-                    removeUsedCachedPath(context, path)
-                }
+                rejected.add(path)
+                forgetCandidate(context, path)
                 continue
             }
 
-            if (!requiresNoFaces) {
-                if (isFolderImagePath(context, path)) addUsedFolderPath(context, path)
-                else addUsedUrl(context, path)
-                return path
+            if (requiresNoFaces && imageHasFace(context, bitmap)) {
+                Log.d("Wallify", "Discarded face image: $path")
+                bitmap.recycle()
+                iterator.remove()
+                rejected.add(path)
+                forgetCandidate(context, path)
+                continue
             }
 
-            if (!imageHasFace(context, bitmap)) {
-                Log.d("Wallify", "Selected wallpaper without faces: $path")
-                if (isFolderImagePath(context, path)) addUsedFolderPath(context, path)
-                else addUsedUrl(context, path)
-                return path
-            } else {
-                Log.d("Wallify", "Discarded face image: $path")
-                iterator.remove()
-                if (!isFolderImagePath(context, path)) {
-                    removeUsedUrl(context, path, addToHistory = false)
-                }
-            }
+            Log.d("Wallify", "Selected wallpaper: $path")
+            if (isFolderImagePath(context, path)) addUsedFolderPath(context, path)
+            else addUsedUrl(context, path)
+            return PickedWallpaper(path, bitmap)
         }
 
         return null
     }
 
-    private fun getOrFetchNonFaceImagePath(
+    private fun getOrFetchNonFaceImage(
         context: Context,
         imageSources: MutableList<String>,
+        isStopped: () -> Boolean,
         maxFetchRetries: Int = 2
-    ): String? {
+    ): PickedWallpaper? {
         var retriesLeft = maxFetchRetries
+        var rotationRestarted = false
+        val rejected = mutableSetOf<String>()
         imageSources.shuffle()
+        val candidates = imageSources.toList()
         while (true) {
-            val path = getNonFaceImagePath(context, imageSources)
-            if (path != null) {
-                return path
+            val picked = getNonFaceImage(context, imageSources, rejected, isStopped)
+            if (picked != null || isStopped()) {
+                return picked
+            }
+
+            // Everything left was shown already this cycle: start the rotation over
+            // with the same candidates, folder images included.
+            if (!rotationRestarted && (loadUsedFolderPaths(context).isNotEmpty() || loadUsedUrlSet(context).isNotEmpty())) {
+                WorkerLogger.i(context, "Wallify", "All candidates used this cycle, starting the rotation again")
+                clearUsedFolderPaths(context)
+                clearUsedUrls(context)
+                rotationRestarted = true
+                imageSources.clear()
+                imageSources.addAll(candidates.filterNot { it in rejected }.shuffled())
+                continue
             }
 
             val prefs = context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
             val wallpaperSource = prefs.getString("flutter.wallpaperSource", "toppicks") ?: "toppicks"
             val sources = wallpaperSource.split(",").map { it.trim() }.filter { it.isNotEmpty() }.toSet()
-            val isOnlyFolder = sources.size == 1 && sources.contains("folder")
-            val hasInternet = !isOnlyFolder
-
-            if (isOnlyFolder) {
-                if (loadUsedFolderPaths(context).isNotEmpty()) {
-                    WorkerLogger.i(context, "Wallify", "All folder images used this cycle, resetting rotation")
-                    clearUsedFolderPaths(context)
-                    continue
-                }
+            if (sources.size == 1 && sources.contains("folder")) {
                 WorkerLogger.w(context, "Wallify", "No folder images available")
                 return null
             }
 
-            if (!hasInternet) {
-                WorkerLogger.w(context, "Wallify", "No suitable wallpaper found (hasInternet=$hasInternet, retriesLeft=$retriesLeft)")
-                Log.w("Wallify", "No suitable wallpaper found (hasInternet=$hasInternet, retriesLeft=$retriesLeft)")
-                return null
-            }
-
-            if (loadUsedUrlSet(context).isNotEmpty()) {
-                WorkerLogger.i(context, "Wallify", "All cached candidates already used, resetting usage tracking")
-                Log.i("Wallify", "All cached candidates already used, resetting usage tracking")
-                clearUsedUrls(context)
-                continue
-            }
-
             if (retriesLeft <= 0) {
-                WorkerLogger.w(context, "Wallify", "No suitable wallpaper found (hasInternet=$hasInternet, retriesLeft=$retriesLeft)")
-                Log.w("Wallify", "No suitable wallpaper found (hasInternet=$hasInternet, retriesLeft=$retriesLeft)")
+                WorkerLogger.w(context, "Wallify", "No suitable wallpaper found (retriesLeft=$retriesLeft)")
+                Log.w("Wallify", "No suitable wallpaper found (retriesLeft=$retriesLeft)")
                 return null
             }
 
@@ -819,6 +914,7 @@ object WallpaperUtils {
             WorkerLogger.i(context, "Wallify", "Candidate wallpaper pool exhausted. Fetching fresh wallpapers from APIs...")
             Log.i("Wallify", "Candidate wallpaper pool exhausted. Fetching fresh wallpapers from APIs...")
 
+            changeStatus = "Finding wallpapers…"
             val freshUrls = fetchImagesFromAllSources(context)
             if (freshUrls.isEmpty()) {
                 WorkerLogger.e(context, "Wallify", "Could not fetch any new wallpapers from APIs.")
@@ -1027,58 +1123,47 @@ object WallpaperUtils {
         return urls
     }
 
-    private fun setWallpaper(context: Context, manager: WallpaperManager, imagePath: String, flag: Int) {
-        WorkerLogger.i(context, "Wallify", "Loading image: $imagePath (flag=$flag)")
-        val bitmap = loadBitmapFromSource(context, imagePath)
-        if (bitmap == null) {
-            WorkerLogger.e(context, "Wallify", "Failed to load image bitmap: $imagePath")
-            Log.e("Wallify", "Failed to load image: $imagePath")
-            return
-        }
+    private fun isRemote(path: String) = path.startsWith("http://") || path.startsWith("https://")
 
-        try {
-            val (deviceWidth, deviceHeight) = getScreenSize(context)
-            focusLog(context, "Target screen ${deviceWidth}x$deviceHeight, source image ${bitmap.width}x${bitmap.height} (flag=$flag)")
-
-            val resultBitmap = detectAndCropMainObject(context, bitmap, deviceWidth, deviceHeight)
-            focusLog(context, "Final wallpaper bitmap ${resultBitmap.width}x${resultBitmap.height}")
-
-            manager.setBitmap(resultBitmap, null, true, flag)
-            Log.d("Wallify", "Wallpaper set successfully for flag=$flag")
-            extractAndSaveWallpaperColors(context, resultBitmap)
-            updateLastChangeTime(context)
-            StatsWidget.triggerUpdate(context)
-            QuickToggleWidget.triggerUpdate(context)
-            ScheduleWidget.triggerUpdate(context)
-            saveCurrentWallpaper(context, resultBitmap)
-            trackWallpaperChange(context, imagePath)
-            if (!isFolderImagePath(context, imagePath)) {
-                removeUsedUrl(context, imagePath)
-                removeUsedCachedPath(context, imagePath)
-            }
-
-        } catch (e: Exception) {
-            WorkerLogger.e(context, "Wallify", "Error setting wallpaper from $imagePath: ${e.message}")
-            Log.e("Wallify", "Error setting wallpaper from $imagePath", e)
-        }
-    }
-
+    /**
+     * Null when the image is broken or gone for good; throws IOException when it
+     * just couldn't be downloaded right now.
+     */
     private fun loadBitmapFromSource(context: Context, path: String): Bitmap? {
-        return if (path.startsWith("http://") || path.startsWith("https://")) {
-            val tempFile = downloadImage(context, path)
-            if (tempFile == null) return null
-            val bitmap = BitmapFactory.decodeFile(tempFile.absolutePath)
+        if (!isRemote(path)) return decodeForScreen(context, path)
+        val tempFile = downloadImage(context, path) ?: return null
+        return try {
+            decodeForScreen(context, tempFile.absolutePath)
+        } finally {
             tempFile.delete()
-            bitmap
-        } else {
-            BitmapFactory.decodeFile(path)
         }
     }
 
+    /**
+     * Decodes at the smallest size that still covers the screen, so the crop never
+     * upscales. Wallhaven originals reach 8K, hundreds of MB at full size.
+     */
+    private fun decodeForScreen(context: Context, file: String): Bitmap? {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(file, bounds)
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+        val (screenW, screenH) = getScreenSize(context)
+        var sampleSize = 1
+        while (bounds.outWidth / (sampleSize * 2) >= screenW && bounds.outHeight / (sampleSize * 2) >= screenH) {
+            sampleSize *= 2
+        }
+        return BitmapFactory.decodeFile(file, BitmapFactory.Options().apply { inSampleSize = sampleSize })
+    }
+
+    /** See [loadBitmapFromSource] for null versus IOException. */
     private fun downloadImage(context: Context, imageUrl: String): File? {
-        return try {
-            val url = URL(imageUrl)
-            val connection = url.openConnection() as HttpURLConnection
+        val connection = try {
+            URL(imageUrl).openConnection() as HttpURLConnection
+        } catch (e: MalformedURLException) {
+            Log.e("Wallify", "Invalid image URL: $imageUrl")
+            return null
+        }
+        try {
             connection.requestMethod = "GET"
             connection.connectTimeout = 10000
             connection.readTimeout = 10000
@@ -1087,19 +1172,23 @@ object WallpaperUtils {
             val responseCode = connection.responseCode
             if (responseCode != HttpURLConnection.HTTP_OK) {
                 Log.e("Wallify", "Failed to download image: HTTP $responseCode for $imageUrl")
+                // Server errors, timeouts and rate limits pass; other codes mean it's gone.
+                if (responseCode >= 500 || responseCode == 408 || responseCode == 429) {
+                    throw IOException("HTTP $responseCode")
+                }
                 return null
             }
 
-            val input = connection.inputStream
-            val bytes = input.readBytes()
-            input.close()
-
             val file = File(context.cacheDir, "wallpaper_bg_${Random.nextInt()}.jpg")
-            file.writeBytes(bytes)
-            file
-        } catch (e: Exception) {
-            Log.e("Wallify", "Failed to download image: $e")
-            null
+            try {
+                connection.inputStream.use { input -> file.outputStream().use { input.copyTo(it) } }
+            } catch (e: IOException) {
+                file.delete()
+                throw e
+            }
+            return file
+        } finally {
+            connection.disconnect()
         }
     }
 
@@ -1159,13 +1248,36 @@ object WallpaperUtils {
         val prefs = context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
         val editor = prefs.edit()
 
-        val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
-        val now = dateFormat.format(Date())
+        // Locale.US: Dart and the widgets parse this, and some locales (Nepali,
+        // Arabic, ...) would write the digits in their own script.
+        val date = Date()
+        val now = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(date)
 
         editor.putString("flutter.lastWallpaperChange", now)
-        editor.apply()
+        editor.putLong(LAST_CHANGE_MILLIS_KEY, date.time)
+        // commit, not apply: a run repeated in a new process must see this.
+        editor.commit()
 
         Log.d("Wallify", "Updated lastWallpaperChange = $now")
+    }
+
+    private fun lastChangeMillis(context: Context): Long =
+        context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+            .getLong(LAST_CHANGE_MILLIS_KEY, 0L)
+
+    /**
+     * An automatic run within half an interval of the last change repeats it:
+     * WorkManager re-running work the system stopped, or a run that queued up
+     * while another trigger changed the wallpaper.
+     */
+    private fun changedRecently(context: Context): Boolean {
+        val prefs = context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+        val last = lastChangeMillis(context)
+        if (last <= 0L) return false
+        val elapsed = System.currentTimeMillis() - last
+        if (elapsed !in 0 until WorkManagerExt.intervalMinutes(prefs) * 60_000L / 2) return false
+        WorkerLogger.i(context, "Wallify", "Skipping wallpaper change: it changed ${elapsed / 60_000} min ago")
+        return true
     }
 
     private fun removeUsedUrl(context: Context, usedUrl: String, addToHistory: Boolean = true) {
@@ -1289,6 +1401,54 @@ object WallpaperUtils {
         }
     }
 
+    /** Moves a wallpaper that was just applied out of the pool and into History. */
+    private fun markShown(context: Context, path: String) {
+        if (isFolderImagePath(context, path)) return
+        // A cached copy goes into History as the wallpaper it was downloaded from:
+        // History can't show a private file path.
+        val poolUrl = if (isRemote(path)) path else poolUrlForCachedFile(context, path)
+        if (poolUrl != null) removeUsedUrl(context, poolUrl)
+        removeUsedCachedPath(context, path)
+    }
+
+    /** Drops a wallpaper that can't be used: a broken image, or a face with No Faces on. */
+    private fun forgetCandidate(context: Context, path: String) {
+        if (isFolderImagePath(context, path)) return
+        val poolUrl = if (isRemote(path)) path else poolUrlForCachedFile(context, path)
+        if (poolUrl != null) removeUsedUrl(context, poolUrl, addToHistory = false)
+        removeUsedCachedPath(context, path)
+    }
+
+    /** The pool URL a cached file was downloaded from; WallpaperCacheManager names it by id. */
+    private fun poolUrlForCachedFile(context: Context, path: String): String? {
+        val name = File(path).nameWithoutExtension
+        val prefs = context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+        return parsePoolEntries(prefs.getString("flutter.imageUrls", "[]") ?: "[]")
+            .firstOrNull { entry -> entry.optString("id").let { it.isNotEmpty() && cacheFileName(it) == name } }
+            ?.optString("url")
+            ?.takeIf { it.isNotEmpty() }
+    }
+
+    // Same as WallpaperCacheManager._safeName on the Dart side.
+    private fun cacheFileName(id: String) = id.replace(Regex("[^A-Za-z0-9_-]"), "_")
+
+    private fun parsePoolEntries(jsonStr: String): List<JSONObject> {
+        // Dart writes string lists with a "<prefix>!" marker in front of the JSON.
+        val json = if (jsonStr.contains("![")) jsonStr.substringAfter("!") else jsonStr
+        return try {
+            val arr = JSONArray(json)
+            (0 until arr.length()).mapNotNull { i ->
+                when (val raw = arr.get(i)) {
+                    is JSONObject -> raw
+                    is String -> try { JSONObject(raw) } catch (_: Exception) { null }
+                    else -> null
+                }
+            }
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
     internal fun detectAndCropMainObject(
         context: Context,
         bitmap: Bitmap,
@@ -1376,7 +1536,9 @@ object WallpaperUtils {
         )
 
         val cropped = Bitmap.createBitmap(bitmap, cropLeft, cropTop, cropW, cropH)
-        return cropped.scale(targetWidth, targetHeight, true)
+        val scaled = cropped.scale(targetWidth, targetHeight, true)
+        if (cropped !== scaled && cropped !== bitmap) cropped.recycle()
+        return scaled
     }
 
     private fun trackWallpaperChange(context: Context, imagePath: String) {
@@ -1390,7 +1552,7 @@ object WallpaperUtils {
             val recentArr = JSONArray(recentRaw)
             val entry = JSONObject().apply {
                 put("path", imagePath)
-                put("time", SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date()))
+                put("time", SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date()))
             }
             recentArr.put(entry)
             while (recentArr.length() > 10) {

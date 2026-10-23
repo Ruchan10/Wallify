@@ -67,6 +67,8 @@ class WidgetConfigActivity : Activity() {
                 .putInt("flutter.wallpaperLocation", location)
                 .putString("flutter.wallpaperSource", sourceStr)
                 .apply()
+            // Folder-only changes need no network; the scheduled work should know.
+            WorkManagerExt.scheduleAutoChange(this)
 
             setResult(
                 RESULT_OK,

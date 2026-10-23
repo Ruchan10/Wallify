@@ -37,7 +37,7 @@ class ScheduleWidget : AppWidgetProvider() {
 
         if (autoEnabled && lastChangeStr != null) {
             try {
-                val parseFmt = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+                val parseFmt = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US)
                 val lastChange = parseFmt.parse(lastChangeStr)
                 if (lastChange != null) {
                     val now = System.currentTimeMillis()

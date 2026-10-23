@@ -8,6 +8,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.widget.RemoteViews
+import androidx.core.app.NotificationManagerCompat
 
 class QuickToggleWidget : AppWidgetProvider() {
 
@@ -28,10 +29,13 @@ class QuickToggleWidget : AppWidgetProvider() {
                 triggerUpdate(context)
             }
             ACTION_CHANGE_NOW -> {
-                Thread {
-                    WallpaperUtils.downloadAndSetWallpaperBackground(context, isManual = true)
-                    triggerUpdate(context)
-                }.start()
+                // Also the notification's "Try Another": take it down so the tap
+                // visibly registered; it comes back once the new wallpaper is set.
+                NotificationManagerCompat.from(context).cancel(WallpaperUtils.CHANGE_NOTIFICATION_ID)
+                WorkManagerExt.changeNow(context)
+            }
+            ACTION_DISMISS_NOTIFICATION -> {
+                NotificationManagerCompat.from(context).cancel(WallpaperUtils.CHANGE_NOTIFICATION_ID)
             }
         }
     }
@@ -97,6 +101,7 @@ class QuickToggleWidget : AppWidgetProvider() {
     companion object {
         const val ACTION_SET_LOCATION = "com.rk.wallify.qt.ACTION_SET_LOCATION"
         const val ACTION_CHANGE_NOW = "com.rk.wallify.qt.ACTION_CHANGE_NOW"
+        const val ACTION_DISMISS_NOTIFICATION = "com.rk.wallify.qt.ACTION_DISMISS_NOTIFICATION"
         const val EXTRA_LOCATION = "location"
         private const val REQ_LOCATION_BASE = 0
         private const val REQ_CHANGE_NOW = 10

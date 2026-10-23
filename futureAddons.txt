@@ -1,3 +1,2 @@
-- in wallpaper source also add top picks it should only apply wallpapers from top picks from different source
 
 - dd more sources

@@ -254,9 +254,11 @@ class UserSharedPrefs {
 
   static Future<DateTime?> getLastWallpaperChange() async {
     final prefs = await SharedPreferences.getInstance();
+    // Written by the native worker, behind the plugin's in-memory cache.
+    await prefs.reload();
     final dateStr = prefs.getString(_lastWallpaperChangeKey);
     if (dateStr == null) return null;
-    return DateTime.parse(dateStr);
+    return DateTime.tryParse(dateStr);
   }
 
   static Future<void> saveInterval(int minutes) async {
@@ -351,9 +353,9 @@ class UserSharedPrefs {
     await prefs.setBool(key, value);
   }
 
-  static Future<bool> getBool(String key) async {
+  static Future<bool> getBool(String key, {bool defaultValue = false}) async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(key) ?? false;
+    return prefs.getBool(key) ?? defaultValue;
   }
 
   static Future<void> setConstraintCharging(bool enabled) async {
@@ -468,6 +470,8 @@ class UserSharedPrefs {
 
   static Future<List<String>> getCachedWallpaperPaths() async {
     final prefs = await SharedPreferences.getInstance();
+    // The native worker removes paths as it uses them.
+    await prefs.reload();
     final raw = prefs.getString(_cachedWallpaperPathsKey);
     if (raw == null) return [];
     try {

@@ -1,5 +1,5 @@
 name: wallify
-description: "A auto wallpaper changer app made in flutter."
+description: "An automatic wallpaper changer app made in Flutter."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -16,7 +16,8 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.6.1
+# versionCode = major*10000 + minor*100 + patch (F-Droid reads it from here)
+version: 1.6.3
 
 environment:
   sdk: ^3.9.0

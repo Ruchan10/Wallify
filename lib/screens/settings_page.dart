@@ -73,13 +73,15 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   /// What Change Now is doing, shown on the button; null when idle.
   String? _changeStatus;
   bool get _changingNow => _changeStatus != null;
+  Timer? _changeStatusPoll;
   bool _backupBusy = false;
 
+  /// [defaultOn] matches what the native worker assumes while unset.
   static const _constraints = [
-    (key: "constraint_charging", label: "Charging"),
-    (key: "constraint_battery_not_low", label: "Battery Not Low"),
-    (key: "constraint_storage_not_low", label: "Storage Not Low"),
-    (key: "constraint_no_faces", label: "No Faces"),
+    (key: "constraint_charging", label: "Charging", defaultOn: false),
+    (key: "constraint_battery_not_low", label: "Battery Not Low", defaultOn: false),
+    (key: "constraint_storage_not_low", label: "Storage Not Low", defaultOn: false),
+    (key: "constraint_no_faces", label: "No Faces", defaultOn: true),
   ];
   Map<String, bool> _constraintValues = {};
 
@@ -113,6 +115,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     _lifecycleListener.dispose();
     _intervalDebounce?.cancel();
     _rescheduleDebounce?.cancel();
+    _changeStatusPoll?.cancel();
     _tagController.dispose();
     _intervalController.dispose();
     super.dispose();
@@ -128,6 +131,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         _lastChange = lastChange;
       });
     }
+    _followRunningChange();
   }
 
   /// Sums file sizes in a background isolate; the image caches can hold
@@ -249,7 +253,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       UserSharedPrefs.getFolderPaths(),
       UserSharedPrefs.getErrorReportingEnabled(),
       UserSharedPrefs.getLastWallpaperChange(),
-      Future.wait(_constraints.map((c) => UserSharedPrefs.getBool(c.key))),
+      Future.wait(_constraints.map(
+        (c) => UserSharedPrefs.getBool(c.key, defaultValue: c.defaultOn),
+      )),
       UserSharedPrefs.getTopPicksRange(),
     ]);
     if (!mounted) return;
@@ -273,6 +279,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       };
     });
     if (_autoWallpaperEnabled) _rescheduleWorker(immediately: true);
+    _followRunningChange();
   }
 
   /// Re-registers the background worker so it picks up new settings. Calls
@@ -303,14 +310,15 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
   Future<void> changeWallpaper() async {
     if (_changingNow) return;
+    setState(() => _changeStatus = "Finding wallpapers…");
     try {
       // Make sure the worker picks from the current tags and sources.
       if (_wallpaperSources.any(const {"internet", "favorites", "toppicks"}.contains)) {
-        setState(() => _changeStatus = "Finding wallpapers…");
         await WallpaperManager.refreshPool();
       }
-      if (mounted) setState(() => _changeStatus = "Applying wallpaper…");
-      // Returns once the wallpaper is actually set (download, crop, apply).
+      // Returns once the wallpaper is actually set (download, crop, apply);
+      // until then the button shows which of those it's on.
+      _pollChangeStatus();
       await platform.invokeMethod("scheduleBackgroundWallpaperWorkerNow");
       await updateWidget();
       final lastChange = await UserSharedPrefs.getLastWallpaperChange();
@@ -327,9 +335,12 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         showSnackBar(
           context: context,
           color: Colors.red,
-          message: e.code == "CHANGE_FAILED"
-              ? "Couldn't change the wallpaper — no suitable image found"
-              : "Error: ${e.message ?? e.code}",
+          message: switch (e.code) {
+            "CHANGE_FAILED" => "Couldn't change the wallpaper — no suitable image found",
+            "OFFLINE" => "Couldn't download a wallpaper — check your connection",
+            "BUSY" => "Another wallpaper change is still running",
+            _ => "Error: ${e.message ?? e.code}",
+          },
         );
       }
     } catch (e) {
@@ -337,7 +348,53 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         showSnackBar(context: context, color: Colors.red, message: "Error: $e");
       }
     } finally {
+      _changeStatusPoll?.cancel();
       if (mounted) setState(() => _changeStatus = null);
+    }
+  }
+
+  Future<String?> _nativeChangeStatus() async {
+    try {
+      return await platform.invokeMethod<String>("getWallpaperChangeStatus");
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Mirrors the native change's current step on the button.
+  void _pollChangeStatus() {
+    _changeStatusPoll?.cancel();
+    _changeStatusPoll = Timer.periodic(
+      const Duration(milliseconds: 400),
+      (_) async {
+        final status = await _nativeChangeStatus();
+        if (status != null && mounted && _changingNow) {
+          setState(() => _changeStatus = status);
+        }
+      },
+    );
+  }
+
+  /// Shows a change this page didn't start on the button until it ends: the
+  /// worker, the widget, or a Change Now from before the app was restarted
+  /// (the system can restart it when the new wallpaper re-themes the phone).
+  Future<void> _followRunningChange() async {
+    if (_changingNow) return;
+    String? status = await _nativeChangeStatus();
+    if (status == null || !mounted || _changingNow) return;
+    setState(() => _changeStatus = status);
+    while (status != null) {
+      await Future.delayed(const Duration(milliseconds: 500));
+      if (!mounted) return;
+      status = await _nativeChangeStatus();
+      if (status != null && mounted) setState(() => _changeStatus = status);
+    }
+    final lastChange = await UserSharedPrefs.getLastWallpaperChange();
+    if (mounted) {
+      setState(() {
+        _changeStatus = null;
+        _lastChange = lastChange;
+      });
     }
   }
 
@@ -934,7 +991,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 SizedBox(height: 16),
 
                 // ========== CHECK UPDATE ==========
-                ListTile(
+                if (!Config.isFdroidBuild) ListTile(
                   leading: Icon(
                     _updateAvailable ? Icons.update : Icons.system_update,
                     color: scheme.primary,
@@ -999,33 +1056,53 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               left: 16,
               right: 16,
               bottom: widget.isNavBarVisible ? 20 : 4,
-              child: FilledButton.icon(
-                style: FilledButton.styleFrom(
-                  backgroundColor: scheme.primary,
-                  foregroundColor: scheme.onPrimary,
-                  // Stay in full colour while busy so the progress is visible.
-                  disabledBackgroundColor: scheme.primary,
-                  disabledForegroundColor: scheme.onPrimary,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                ),
-                onPressed: _changingNow ? null : changeWallpaper,
-                icon: _changingNow
-                    ? SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: scheme.onPrimary,
-                        ),
-                      )
-                    : const Icon(Icons.wallpaper),
-                label: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 200),
-                  child: Text(
-                    _changeStatus ?? "Change Now",
-                    key: ValueKey(_changeStatus),
+              child: Stack(
+                // Hands the full width on to the button, as before the Stack.
+                fit: StackFit.passthrough,
+                children: [
+                  FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: scheme.primary,
+                      foregroundColor: scheme.onPrimary,
+                      // Stay in full colour while busy so the progress is visible.
+                      disabledBackgroundColor: scheme.primary,
+                      disabledForegroundColor: scheme.onPrimary,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                    onPressed: _changingNow ? null : changeWallpaper,
+                    icon: _changingNow
+                        ? SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: scheme.onPrimary,
+                            ),
+                          )
+                        : const Icon(Icons.wallpaper),
+                    label: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 200),
+                      child: Text(
+                        _changeStatus ?? "Change Now",
+                        key: ValueKey(_changeStatus),
+                      ),
+                    ),
                   ),
-                ),
+                  if (_changingNow)
+                    Positioned(
+                      left: 32,
+                      right: 32,
+                      bottom: 5,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(2),
+                        child: LinearProgressIndicator(
+                          minHeight: 3,
+                          color: scheme.onPrimary,
+                          backgroundColor: scheme.onPrimary.withValues(alpha: 0.25),
+                        ),
+                      ),
+                    ),
+                ],
               ),
             ),
           ],
@@ -1355,7 +1432,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         ),
         const SizedBox(height: 8),
         Text(
-          "Auto wallpaper change runs every time the device is plugged in or on interval if all enabled constraints are met.",
+          "Auto change runs on the interval above whenever all selected constraints are met. Charging means plugged in.",
           style: TextStyle(
             fontSize: 12,
             color: scheme.onSurfaceVariant,

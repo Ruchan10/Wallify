@@ -56,7 +56,7 @@ object WidgetUtils {
             "Next change in $intervalMinutes min"
         } else {
             try {
-                val fmt = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault())
+                val fmt = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US)
                 val lastChange = fmt.parse(lastChangeStr)
                 if (lastChange != null) {
                     val nextChange = lastChange.time + intervalMinutes * 60_000L

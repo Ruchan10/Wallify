@@ -12,8 +12,9 @@
 -keep class androidx.work.** { *; }
 -dontwarn androidx.work.**
 
-# Flutter specific
--keep class io.flutter.** { *; }
+# Flutter specific. Deferred components are unused and pull in Google Play
+# Core, which F-Droid's scanner rejects, so let R8 strip them.
+-keep class !io.flutter.embedding.engine.deferredcomponents.**, !io.flutter.embedding.android.FlutterPlayStoreSplitApplication, io.flutter.** { *; }
 -dontwarn io.flutter.**
 
 # Keep wallpaper manager plugin

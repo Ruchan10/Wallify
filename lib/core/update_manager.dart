@@ -15,7 +15,7 @@ class UpdateManager {
   static bool _isChecking = false;
 
   static Future<void> checkForUpdates() async {
-    if (_isChecking) return;
+    if (Config.isFdroidBuild || _isChecking) return;
     _isChecking = true;
 
     try {

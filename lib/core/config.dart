@@ -1,9 +1,13 @@
 import 'package:wallify/model/wallpaper_model.dart';
 
 class Config {
+  /// Set with `--dart-define=FDROID=true`. F-Droid ships its own updates, so
+  /// these builds never check GitHub for new APKs.
+  static const bool isFdroidBuild = bool.fromEnvironment('FDROID');
+
   static bool _updateAvailable = false;
   static bool _isUpdateDialogOpen = false;
-  static String _appVersion = '1.6.1';
+  static String _appVersion = '1.6.3';
   static String _appName = 'Wallify';
   static Map<String, dynamic> _versionData = {};
   static String _cachedLatestVersion = '';

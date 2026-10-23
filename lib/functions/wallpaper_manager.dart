@@ -83,6 +83,9 @@ class WallpaperManager {
   static Timer? _refreshTimer;
   static int _refreshGeneration = 0;
 
+  /// Tags or sources changed since the last refresh (see [scheduleRefresh]).
+  static bool _settingsChanged = false;
+
   /// Refreshes the pool the background worker picks from, after settings
   /// stop changing for a moment. Several quick edits (adding three tags,
   /// toggling sources) cost one fetch, and a run still in progress is
@@ -90,6 +93,7 @@ class WallpaperManager {
   static void scheduleRefresh({
     Duration delay = const Duration(milliseconds: 1200),
   }) {
+    _settingsChanged = true;
     _refreshTimer?.cancel();
     _refreshTimer = Timer(delay, () => refreshPool());
   }
@@ -111,6 +115,14 @@ class WallpaperManager {
       if (stale() || fetched.isEmpty) return;
 
       await UserSharedPrefs.saveWallpapers(fetched);
+      // After a settings change, stop offering the worker files cached for the
+      // old settings now, not once the new pool has cached. Otherwise keep
+      // them: they still fit, and Internet draws a random tag per refresh, so
+      // the new pool rarely overlaps the cache.
+      if (_settingsChanged) {
+        _settingsChanged = false;
+        await WallpaperCacheManager.retainOnly(fetched);
+      }
       unawaited(
         WallpaperCacheManager.cacheWallpapers(fetched, isCancelled: stale),
       );

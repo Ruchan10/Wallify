@@ -4,22 +4,15 @@ import 'package:wallify/functions/wallpaper_cache_manager.dart';
 import 'package:wallify/functions/wallpaper_manager.dart';
 
 class WallpaperPrefetcher {
-  static const int prefetchCount = 3;
-
+  /// Refreshes the background worker's pool on app start once its cached
+  /// wallpapers are used up, so automatic changes don't depend on the network.
+  /// Caching a few new wallpapers on their own would replace the worker's
+  /// whole cached list with them.
   static Future<void> prefetchNext() async {
     try {
-      final sources = await UserSharedPrefs.getWallpaperSources();
-      if (!sources.contains("internet") && !sources.contains("favorites")) {
-        return;
-      }
-      final fetched = await WallpaperManager.fetchImagesFromAllSources(
-        sources: sources,
-      );
-      if (fetched.isEmpty) return;
-      await WallpaperCacheManager.cacheWallpapers(
-        fetched.take(prefetchCount).toList(),
-      );
-      debugPrint("WallpaperPrefetcher: cached ${fetched.length} wallpapers");
+      if (!await UserSharedPrefs.getAutoWallpaperEnabled()) return;
+      if ((await WallpaperCacheManager.getCachedPaths()).isNotEmpty) return;
+      await WallpaperManager.refreshPool();
     } catch (e) {
       debugPrint("WallpaperPrefetcher failed: $e");
     }

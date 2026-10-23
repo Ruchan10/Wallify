@@ -5,7 +5,7 @@ desktop wallpaper on a schedule.
 
 <a href="https://www.buymeacoffee.com/rk10" target="_blank"><img src="https://img.buymeacoffee.com/button-api/?text=Buy me a coffee&slug=rk10&button_colour=FFDD00&font_colour=000000&outline_colour=000000&coffee_colour=ffffff" height="40" /></a>
 
-<img src="https://raw.githubusercontent.com/Ruchan10/Wallify/main/assets/screenshots/flutter_01.png" width="45%">
+<img src="fastlane/metadata/android/en-US/images/phoneScreenshots/1.png" width="45%">
 
 ## Phone
 
@@ -120,4 +120,17 @@ Issues and pull requests are welcome.
 
 ## 📝 License
 
-MIT
+Wallify is free software, licensed under the
+[GNU General Public License v3.0 or later](LICENSE).
+
+The app bundles two unmodified MediaPipe models (Apache-2.0), downloaded from
+Google's official model storage:
+
+| File | Source | SHA-256 |
+| --- | --- | --- |
+| `blaze_face_short_range.tflite` | [face_detector/blaze_face_short_range/float16/1](https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite) | `b4578f35940bf5a1a655214a1cce5cab13eba73c1297cd78e1a04c2380b0152f` |
+| `efficientdet_lite0.tflite` | [object_detector/efficientdet_lite0/int8/1](https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/int8/1/efficientdet_lite0.tflite) | `0720bf247bd76e6594ea28fa9c6f7c5242be774818997dbbeffc4da460c723bb` |
+
+MediaPipe's built-in usage statistics are disabled: the Google transport it
+reports through is replaced with no-op classes, so face detection never
+leaves the device.

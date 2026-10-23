@@ -7,15 +7,6 @@ plugins {
     kotlin("android")
 }
 
-val localProperties = Properties()
-val localPropertiesFile = rootProject.file("local.properties")
-if (localPropertiesFile.exists()) {
-    localProperties.load(localPropertiesFile.inputStream())
-}
-
-val flutterVersionCode = localProperties.getProperty("flutter.versionCode") ?: "1"
-val flutterVersionName = localProperties.getProperty("flutter.versionName") ?: "1.0"
-
 val keystoreProperties = Properties()
 val keystorePropertiesFile = rootProject.file("key.properties")
 if (keystorePropertiesFile.exists()) {
@@ -35,8 +26,8 @@ android {
         applicationId = "com.rk.wallify"
         minSdk = flutter.minSdkVersion
         targetSdk = 36
-        versionCode = flutterVersionCode.toInt()
-        versionName = flutterVersionName
+        versionCode = flutter.versionCode
+        versionName = flutter.versionName
         vectorDrawables.useSupportLibrary = true
     }
 
@@ -74,6 +65,12 @@ kotlin {
     compilerOptions {
         jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11
     }
+}
+
+// MediaPipe uploads usage stats to Google through datatransport. Drop it;
+// no-op stand-ins live in src/main/java/com/google/android/datatransport.
+configurations.all {
+    exclude(group = "com.google.android.datatransport")
 }
 
 dependencies {

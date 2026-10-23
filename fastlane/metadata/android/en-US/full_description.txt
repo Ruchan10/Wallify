@@ -1,0 +1,29 @@
+<p>Wallify finds wallpapers for you and changes them on a schedule, so your home and lock screens always look fresh.</p>
+
+<p><b>Discover</b></p>
+<ul>
+<li>Browse and search wallpapers from Wallhaven, Unsplash, Pexels, Pixabay and Lorem Picsum</li>
+<li>Quick filters for nature, landscape, minimal, dark, anime and more</li>
+<li>"For You" picks built from your own tags, plus a Top Picks feed</li>
+<li>Save favorites and see the history of every wallpaper you've used</li>
+</ul>
+
+<p><b>Automatic changes</b></p>
+<ul>
+<li>Change the wallpaper on an interval you choose, or every time you plug in to charge</li>
+<li>Pick images from the internet, Top Picks, your favorites or a folder on your phone</li>
+<li>Apply to the home screen, the lock screen, or both</li>
+<li>Only change when the phone is charging, the battery or storage isn't low</li>
+<li>"No Faces" keeps photos of people off your lock screen, using on-device face detection</li>
+<li>Smart cropping keeps the subject of each photo in frame</li>
+</ul>
+
+<p><b>Extras</b></p>
+<ul>
+<li>Home screen widgets and app shortcuts to change the wallpaper with one tap</li>
+<li>Material You colors taken from your current wallpaper, plus light and dark themes</li>
+<li>Offline cache, and export or import all of your settings</li>
+<li>Optional "AI Magic" that creates a new wallpaper inspired by one you like (needs your own Google Gemini key)</li>
+</ul>
+
+<p>Wallhaven and Unsplash work out of the box. Free API keys for Pexels and Pixabay unlock more images and can be entered in Settings. There are no ads and no account, and face detection runs entirely on your device.</p>

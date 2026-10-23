@@ -1,0 +1,44 @@
+AntiFeatures:
+  NonFreeNet:
+    en-US: Wallpapers come from Wallhaven, Unsplash, Pexels and Pixabay. The optional
+      "AI Magic" feature uses Google Gemini.
+Categories:
+  - Theming
+License: GPL-3.0-or-later
+AuthorName: Ruchan Kayastha
+SourceCode: https://github.com/Ruchan10/Wallify
+IssueTracker: https://github.com/Ruchan10/Wallify/issues
+Changelog: https://github.com/Ruchan10/Wallify/releases
+Donate: https://www.buymeacoffee.com/rk10
+
+AutoName: Wallify
+
+RepoType: git
+Repo: https://github.com/Ruchan10/Wallify.git
+
+Builds:
+  - versionName: 1.6.3
+    versionCode: 10602
+    commit: 1.6.3
+    output: build/app/outputs/flutter-apk/app-release.apk
+    srclibs:
+      - flutter@3.47.6
+    rm:
+      - desktop
+    prebuild:
+      - export PUB_CACHE=$(pwd)/.pub-cache
+      - $$flutter$$/bin/flutter config --no-analytics
+      - $$flutter$$/bin/flutter pub get
+    scandelete:
+      - .pub-cache/hosted/pub.dev/*/example
+      - .pub-cache/hosted/pub.dev/*/extension/devtools/build
+    build:
+      - export PUB_CACHE=$(pwd)/.pub-cache
+      - $$flutter$$/bin/flutter build apk --release --dart-define=FDROID=true
+    ndk: 28.2.13676358
+
+AutoUpdateMode: Version
+UpdateCheckMode: Tags
+UpdateCheckData: pubspec.yaml|version:\s.+\+(\d+)|.|version:\s(.+)\+
+CurrentVersion: 1.6.3
+CurrentVersionCode: 10602
