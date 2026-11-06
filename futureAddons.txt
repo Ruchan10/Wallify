@@ -1,2 +1,2 @@
 
-- dd more sources
+- add more sources
