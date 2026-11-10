@@ -17,9 +17,9 @@ RepoType: git
 Repo: https://github.com/Ruchan10/Wallify.git
 
 Builds:
-  - versionName: 1.6.3
+  - versionName: 1.6.4
     versionCode: 10602
-    commit: 1.6.3
+    commit: 1.6.4
     output: build/app/outputs/flutter-apk/app-release.apk
     srclibs:
       - flutter@3.47.6
@@ -40,5 +40,5 @@ Builds:
 AutoUpdateMode: Version
 UpdateCheckMode: Tags
 UpdateCheckData: pubspec.yaml|version:\s.+\+(\d+)|.|version:\s(.+)\+
-CurrentVersion: 1.6.3
+CurrentVersion: 1.6.4
 CurrentVersionCode: 10602
